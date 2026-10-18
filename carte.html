@@ -64,8 +64,6 @@ button:disabled{opacity:.4;cursor:default}
 .lig button{padding:1px 6px;font-size:12px}
 #palRech{margin:6px 8px;padding:5px;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px}
 #palCorps{flex:1;overflow:auto;padding:0 8px 8px;font-size:12px}
-.cat{padding:3px 4px;cursor:pointer;border-bottom:1px solid #2c2c2c}
-.cat .n{opacity:.45}
 .grille{display:flex;flex-wrap:wrap;gap:4px;padding:6px 2px}
 .vig{width:46px;height:46px;background:#2a2a2a;border:1px solid var(--bord);border-radius:3px;
   display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;
@@ -86,16 +84,28 @@ button:disabled{opacity:.4;cursor:default}
 .survol .cel{display:flex;flex-direction:column;align-items:center;gap:2px}
 .survol .cel span{font-size:10px;line-height:1.15;max-width:88px;text-align:center;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#ctx{position:fixed;z-index:9600;min-width:190px;max-width:320px;max-height:80vh;overflow:auto;
+#ctx,.ssmenu{position:fixed;z-index:9600;min-width:190px;max-width:340px;max-height:80vh;overflow:auto;
   background:#f4f2ea;color:#111;border:1px solid #333;border-radius:4px;box-shadow:0 6px 20px rgba(0,0,0,.55);
   font-size:13px;padding:3px 0;user-select:none;-webkit-user-select:none}
+.ssmenu{display:none;z-index:9601}
+.ouvert > .ssmenu{display:block}
 #ctx .tt{font-weight:700;padding:4px 10px 5px;border-bottom:1px solid #bbb;margin-bottom:2px}
 #ctx .it{display:flex;justify-content:space-between;gap:18px;padding:4px 10px;cursor:pointer;white-space:nowrap}
-#ctx .it:hover{background:#2f5f9e;color:#fff}
+#ctx .it:hover,#ctx .it.ouvert{background:#2f5f9e;color:#fff}
 #ctx .it .rc{opacity:.6;font-size:11px}
-#ctx .sm{padding:4px 10px 2px;font-size:11px;font-weight:700;color:#555;border-top:1px solid #ccc;margin-top:2px}
-#ctx .sm + .it, #ctx .sous{padding-left:20px}
+#ctx .it.smi > .rc{opacity:.8}
 #ctx .vide{padding:4px 10px;color:#666;font-style:italic}
+.onglets{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--bord);margin-top:4px}
+.onglet{padding:2px 7px;font-size:11px;background:#262626;border:1px solid var(--bord);border-bottom:none;
+  border-radius:3px 3px 0 0;cursor:pointer;color:var(--doux)}
+.onglet.actif{background:#3a3a3a;color:var(--accent)}
+.wcontenu{padding:4px 0 2px 6px;border-left:2px solid #333}
+.wliste{border:1px solid var(--bord);max-height:150px;overflow:auto;margin:4px 0;background:#232323}
+.wli{padding:2px 6px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wli:hover{background:#2c2c2c}
+.wli.actif{background:#2f5f9e;color:#fff}
+.wboite{width:100%;margin:4px 0;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);padding:3px}
+.wtitre{font-weight:600;font-size:11px;color:var(--doux);margin:6px 0 2px}
 .etiq{position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;pointer-events:none;
   font:bold 11px Arial,sans-serif;padding:0 2px;line-height:1.2;z-index:2}
 @media (max-width:700px){ #cote{position:absolute;right:0;top:44px;bottom:0;z-index:50;width:min(320px,90vw)} }
@@ -1945,36 +1955,70 @@ function ouvrirMenu(p, cx, cy){
   const te = _typeEtEtat(p.seg);
   if(!te) return;
   const {cmds, sousMenus} = commandesDe(te.type);
+  const visibles = cmds.filter(c => c.nom);
+
+  // Arbre du menu, comme MenuDisplayer de VASSAL : une commande citée par
+  // un trait SubMenu va dans ce sous-menu, qui peut lui-même figurer dans
+  // un autre ; chaque sous-menu prend la place de sa première commande.
+  const parent = new Map();
+  for(const sm of sousMenus) for(const n of sm.cmds) if(n && n !== sm.nom && !parent.has(n)) parent.set(n, sm.nom);
+  const racine = {items: []}, noeuds = new Map();
+  const sousMenu = (nom, prof) => {
+    if(noeuds.has(nom)) return noeuds.get(nom);
+    const nd = {nom, items: []};
+    noeuds.set(nom, nd);
+    const pp = parent.get(nom);
+    (pp && prof < 8 ? sousMenu(pp, prof + 1) : racine).items.push(nd);
+    return nd;
+  };
+  for(const c of visibles){
+    const pp = parent.get(c.nom);
+    (pp ? sousMenu(pp, 0) : racine).items.push(c);
+  }
+
   const m = document.createElement('div');
   m.id = 'ctx';
   const tt = document.createElement('div');
   tt.className = 'tt'; tt.textContent = p.el.title || p.nom;
   m.appendChild(tt);
-  const visibles = cmds.filter(c => c.nom);
-  const dansSous = new Map();
-  for(const sm of sousMenus) for(const n of sm.cmds) dansSous.set(n, sm.nom);
-  const item = (c, sous) => {
-    const it = document.createElement('div');
-    it.className = 'it' + (sous ? ' sous' : '');
-    const a = document.createElement('span'); a.textContent = c.nom;
-    const b = document.createElement('span'); b.className = 'rc'; b.textContent = libelleTouche(c.touche);
-    it.append(a, b);
-    it.addEventListener('click', e => {
-      e.stopPropagation();
-      fermerMenu();
-      if(c.touche) executerTouche(p, c.touche); else executerTouche(p, null, c);
-    });
-    return it;
+  const remplir = (conteneur, items) => {
+    for(const c of items){
+      const it = document.createElement('div');
+      it.className = 'it';
+      const a = document.createElement('span'); a.textContent = c.nom;
+      const b = document.createElement('span'); b.className = 'rc';
+      it.append(a, b);
+      if(c.items){
+        // Sous-menu : s'ouvre au survol, ou au toucher.
+        it.classList.add('smi');
+        b.textContent = '▸';
+        const sm = document.createElement('div');
+        sm.className = 'ssmenu';
+        remplir(sm, c.items);
+        it.appendChild(sm);
+        const ouvrir = () => {
+          for(const f of it.parentElement.children) if(f !== it) f.classList.remove('ouvert');
+          it.classList.add('ouvert');
+          placerSousMenu(it, sm);
+        };
+        it.addEventListener('mouseenter', ouvrir);
+        it.addEventListener('mouseleave', () => it.classList.remove('ouvert'));
+        it.addEventListener('click', e => { e.stopPropagation(); if(e.target === it || e.target.parentElement === it) ouvrir(); });
+      } else {
+        b.textContent = libelleTouche(c.touche);
+        it.addEventListener('mouseenter', () => {
+          for(const f of it.parentElement.children) if(f !== it) f.classList.remove('ouvert');
+        });
+        it.addEventListener('click', e => {
+          e.stopPropagation();
+          fermerMenu();
+          if(c.touche) executerTouche(p, c.touche); else executerTouche(p, null, c);
+        });
+      }
+      conteneur.appendChild(it);
+    }
   };
-  for(const c of visibles) if(!dansSous.has(c.nom)) m.appendChild(item(c));
-  for(const sm of sousMenus){
-    const lst = visibles.filter(c => dansSous.get(c.nom) === sm.nom);
-    if(!lst.length) continue;
-    const h = document.createElement('div');
-    h.className = 'sm'; h.textContent = sm.nom + ' ▸';
-    m.appendChild(h);
-    for(const c of lst) m.appendChild(item(c, true));
-  }
+  remplir(m, racine.items);
   if(!visibles.length){
     const v = document.createElement('div');
     v.className = 'vide'; v.textContent = 'Aucune commande';
@@ -1984,6 +2028,15 @@ function ouvrirMenu(p, cx, cy){
   const x = Math.min(cx, window.innerWidth - m.offsetWidth - 4);
   const y = Math.min(cy, window.innerHeight - m.offsetHeight - 4);
   m.style.left = Math.max(4, x) + 'px'; m.style.top = Math.max(4, y) + 'px';
+}
+
+// À droite de l'entrée, ou à gauche faute de place ; jamais hors de l'écran.
+function placerSousMenu(it, sm){
+  const r = it.getBoundingClientRect();
+  let x = r.right - 2, y = r.top - 4;
+  if(x + sm.offsetWidth > window.innerWidth - 4) x = Math.max(4, r.left - sm.offsetWidth + 2);
+  if(y + sm.offsetHeight > window.innerHeight - 4) y = Math.max(4, window.innerHeight - sm.offsetHeight - 4);
+  sm.style.left = x + 'px'; sm.style.top = y + 'px';
 }
 
 // Raccourcis des pions : comme dans VASSAL, la touche s'adresse à toute la
@@ -2261,20 +2314,31 @@ async function _chargerBDD(){
   const doc = new DOMParser().parseFromString(await r.text(), 'application/xml');
   const mod = doc.documentElement;
   const cats = [], slots = [], idxCat = new Map();
-  const parcourir = (el, chemin) => {
+  // Arbre des widgets de la palette, tel que VASL le construit :
+  // TabWidget (onglets), ListWidget (liste), BoxWidget (liste déroulante),
+  // PanelWidget (grille), et les PieceSlot dans l'ordre du module.
+  let nid = 0;
+  const construire = (el, chemin) => {
+    const t = el.tagName.split('.').pop();
+    const nom = el.getAttribute('entryName') || el.getAttribute('name') || '';
+    const noeud = {id: nid++, t, nom, enfants: []};
     for(const c of el.children){
       const tag = c.tagName.split('.').pop();
       if(tag === 'PieceSlot'){
         const ch = chemin.join(' / ');
         if(!idxCat.has(ch)){ idxCat.set(ch, cats.length); cats.push(ch); }
-        slots.push({n: c.getAttribute('entryName') || '?', g: c.getAttribute('gpid'),
-                    c: idxCat.get(ch), cmd: (c.textContent || '').trim()});
-      } else {
+        const x = {n: c.getAttribute('entryName') || '?', g: c.getAttribute('gpid'),
+                   c: idxCat.get(ch), cmd: (c.textContent || '').trim()};
+        slots.push(x);
+        noeud.enfants.push(x);
+      } else if(/Widget$/.test(tag)){
         const n = c.getAttribute('entryName') || c.getAttribute('name') || '';
-        parcourir(c, n ? [...chemin, n] : chemin);
+        noeud.enfants.push(construire(c, n ? [...chemin, n] : chemin));
       }
     }
+    return noeud;
   };
+  const arbre = {id: nid++, t: 'Racine', nom: '', enfants: []};
   const protos = new Map();
   for(const e of doc.getElementsByTagName('*'))
     if(e.tagName.endsWith('.PrototypeDefinition'))
@@ -2282,7 +2346,7 @@ async function _chargerBDD(){
   for(const w of mod.children){
     if(w.tagName.split('.').pop() !== 'PieceWindow') continue;
     const nom = w.getAttribute('name');
-    if(FENETRES_PALETTE.includes(nom)) parcourir(w, nom === '?' ? ['?'] : []);
+    if(FENETRES_PALETTE.includes(nom)) arbre.enfants.push(construire(w, nom === '?' ? ['?'] : []));
   }
   // Tous les PieceSlot du module, par gpid : un pion peut en poser un
   // autre (Place Marker, Replace, DM, ACQ), même hors de la palette.
@@ -2301,7 +2365,7 @@ async function _chargerBDD(){
       noms.unshift(a.getAttribute('entryName') || a.getAttribute('name') || '');
     parChemin.set(noms.join('\u0001'), parGpid.get(e.getAttribute('gpid')));
   }
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, version: mod.getAttribute('version')};
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, version: mod.getAttribute('version')};
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
   chatLog(`📚 Base VASL ${_bdd.version} : ${slots.length} pions, ${cats.length} catégories`);
@@ -2314,7 +2378,7 @@ function lireSlot(x){
   return x.lu;
 }
 
-let _palOuverte = null, _palFiltre = '';
+let _palFiltre = '';
 
 async function dessinerPalette(){
   const box = document.getElementById('palCorps');
@@ -2323,6 +2387,7 @@ async function dessinerPalette(){
     try { await chargerBDD(); } catch(e){ box.innerHTML = '<div style="padding:8px">Base indisponible.</div>'; return; }
   }
   const B = _bdd;
+  const defil = box.scrollTop;
   box.innerHTML = '';
   if(_palFiltre){
     const t = B.pions.filter(x => x.n.toLowerCase().includes(_palFiltre)).slice(0, 200);
@@ -2333,22 +2398,91 @@ async function dessinerPalette(){
     box.appendChild(remplirGrille(t));
     return;
   }
-  const parCat = new Map();
-  for(const x of B.pions){
-    if(!parCat.has(x.c)) parCat.set(x.c, []);
-    parCat.get(x.c).push(x);
-  }
-  for(const [ci, liste] of parCat){
+  rendreWidget(B.arbre, box);
+  box.scrollTop = defil;
+}
+
+// ── Widgets de la palette VASL. Seule la branche sélectionnée est dessinée :
+// les vignettes ne se chargent qu'à l'ouverture de leur panneau.
+// La sélection de chaque widget est retenue d'une visite à l'autre.
+const _palSel = (() => {
+  try { return new Map(JSON.parse(localStorage.getItem('palSel') || '[]')); } catch(e){ return new Map(); }
+})();
+function _choisir(noeud, i){
+  _palSel.set(noeud.id, i);
+  try { localStorage.setItem('palSel', JSON.stringify([..._palSel])); } catch(e){}
+  dessinerPalette();
+}
+
+function rendreWidget(n, boite){
+  const widgets = n.enfants.filter(e => e.enfants);
+  const pions = n.enfants.filter(e => !e.enfants);
+  const sel = Math.min(_palSel.get(n.id) || 0, Math.max(0, widgets.length - 1));
+  const contenu = () => {
+    const z = document.createElement('div');
+    z.className = 'wcontenu';
+    if(widgets[sel]) rendreWidget(widgets[sel], z);
+    return z;
+  };
+  // Une fenêtre de palette qui contient plusieurs widgets les présente en
+  // onglets, comme PieceWindow (la fenêtre « ? » : un onglet par nation).
+  if(n.t === 'TabWidget' || n.t === 'Racine' || (n.t === 'PieceWindow' && widgets.length > 1)){
+    // Onglets : un par widget enfant.
+    if(pions.length) boite.appendChild(remplirGrille(pions));
+    if(!widgets.length) return;
+    const o = document.createElement('div');
+    o.className = 'onglets';
+    widgets.forEach((w, i) => {
+      const b = document.createElement('div');
+      b.className = 'onglet' + (i === sel ? ' actif' : '');
+      b.textContent = w.nom || '—';
+      b.addEventListener('click', () => _choisir(n, i));
+      o.appendChild(b);
+    });
+    boite.append(o, contenu());
+  } else if(n.t === 'BoxWidget'){
+    // Liste déroulante.
     const t = document.createElement('div');
-    t.className = 'cat';
-    t.innerHTML = `<span class="n">${_palOuverte === ci ? '▾' : '▸'}</span> `;
-    t.append(B.cats[ci] || '—');
-    const n = document.createElement('span');
-    n.className = 'n'; n.textContent = ` (${liste.length})`;
-    t.appendChild(n);
-    t.addEventListener('click', () => { _palOuverte = _palOuverte === ci ? null : ci; dessinerPalette(); });
-    box.appendChild(t);
-    if(_palOuverte === ci) box.appendChild(remplirGrille(liste));
+    t.className = 'wtitre'; t.textContent = n.nom;
+    const s = document.createElement('select');
+    s.className = 'wboite';
+    widgets.forEach((w, i) => s.add(new Option(w.nom || '—', i, false, i === sel)));
+    s.addEventListener('change', () => _choisir(n, +s.value));
+    boite.append(t, s);
+    if(pions.length) boite.appendChild(remplirGrille(pions));
+    if(widgets.length) boite.appendChild(contenu());
+  } else if(n.t === 'ListWidget'){
+    // Liste : le choix d'une entrée affiche son contenu en dessous.
+    if(widgets.length){
+      const l = document.createElement('div');
+      l.className = 'wliste';
+      widgets.forEach((w, i) => {
+        const e = document.createElement('div');
+        e.className = 'wli' + (i === sel ? ' actif' : '');
+        e.textContent = w.nom || '—';
+        e.addEventListener('click', () => _choisir(n, i));
+        l.appendChild(e);
+      });
+      boite.appendChild(l);
+    }
+    if(pions.length) boite.appendChild(remplirGrille(pions));
+    if(widgets.length) boite.appendChild(contenu());
+  } else {
+    // PanelWidget, PieceWindow : tout le contenu, dans l'ordre du module ;
+    // un panneau imbriqué porte son titre.
+    let lot = [];
+    const vider = () => { if(lot.length) boite.appendChild(remplirGrille(lot)); lot = []; };
+    for(const e of n.enfants){
+      if(!e.enfants){ lot.push(e); continue; }
+      vider();
+      if(e.t === 'PanelWidget' && e.nom){
+        const t = document.createElement('div');
+        t.className = 'wtitre'; t.textContent = e.nom;
+        boite.appendChild(t);
+      }
+      rendreWidget(e, boite);
+    }
+    vider();
   }
 }
 
