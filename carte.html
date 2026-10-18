@@ -126,6 +126,8 @@ button:disabled{opacity:.4;cursor:default}
   <button id="btVlog" onclick="ecrireVlog()" disabled>Exporter .vlog</button>
   <span id="logTxt"></span>
   <span class="sep"></span>
+  <button id="btUnmoved" onclick="leverDeplaces()" title="Mark unmoved — lève le statut Moved de tous les pions"><img id="icUnmoved" alt="" style="height:16px;vertical-align:-3px"> Unmoved</button>
+  <span class="sep"></span>
   <button onclick="basculerCote()">Pions</button>
 </div>
 <div class="barre" id="des">
@@ -940,14 +942,19 @@ function _etiquettes(ts){
 function _deplace(ts){
   if(!ts) return null;
   for(let i = 0; i < ts.typ.length; i++){
-    if(!/^moved;/.test(ts.typ[i])) continue;
-    if(!/^true/.test((ts.eta[i] || '').replace(/\\/g, ''))) return null;
+    const id = ts.typ[i].split(';')[0];
+    if(id !== 'moved' && id !== 'markmoved') continue;
+    if(!/^true/.test((ts.eta[i] || '').replace(/\\/g, ''))) continue;
     const ch = ts.typ[i].replace(/\\/g, '').split(';');
+    // VASL (MarkMoved) : « moved;image » — bandeau <image>.svg contre le
+    // bord droit du pion, aligné en haut.
+    if(id === 'moved') return {img: (ch[1] || 'moved') + '.svg', droite: true};
+    // VASSAL (MovementMarkable) : icône posée au coin haut-gauche du pion,
+    // décalée de (dx, dy).
     return {img: ch[1] || 'moved', dx: parseInt(ch[2], 10) || 0, dy: parseInt(ch[3], 10) || 0};
   }
   return null;
 }
-
 // Tourelle (trait VASL « turr ») : image <avant|arrière><TCA>.svg.
 //   turr;avant;arrière;touche cw;touche ccw  — état : « TCA;BU »
 function _tourelle(ts){
@@ -1182,8 +1189,8 @@ async function majApparence(p, d){
       const o = new Image();
       o.className = 'couche'; o.src = u;
       await o.decode().catch(() => {});
-      o.style.cssText = `width:${o.naturalWidth * SC}px;height:${o.naturalHeight * SC}px;`
-                      + `left:${p.sz/2 + d.deplace.dx * SC}px;top:${p.sz/2 + d.deplace.dy * SC}px`;
+      o.style.cssText = `width:${o.naturalWidth * SC}px;height:${o.naturalHeight * SC}px;top:`
+        + (d.deplace.droite ? `0;left:${p.sz}px` : `${d.deplace.dy * SC}px;left:${d.deplace.dx * SC}px`);
       couches.push(o);
     }
   }
@@ -1469,9 +1476,47 @@ function deplacer(liste, x, y){
     _logCmd(`M/${a.p.uid}/${_carteJeu}/${a.p.x}/${a.p.y}/${_dessous(a.p)}`
           + `/${_carteJeu}/${a.x}/${a.y}/${a.sous}/${joueur()}`);
   }
+  // Comme la carte de VASL : un pion qui change de place est marqué
+  // « moved », puis reçoit la touche de mouvement (Ctrl+Alt+M), qui
+  // inscrit notamment le joueur dans sa propriété Owner.
+  for(const a of avant){
+    if(a.x === a.p.x && a.y === a.p.y) continue;
+    marquerDeplace(a.p, true);
+    executerTouche(a.p, TOUCHE_MOUVEMENT);
+  }
   new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
   selectionnerPile(kArr);
   chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
+}
+
+// ── Statut « moved » (traits moved de VASL et markmoved de VASSAL).
+const TOUCHE_MOUVEMENT = _touche(77, 650);     // moveKey de la carte VASL
+
+function marquerDeplace(p, oui){
+  const te = _typeEtEtat(p.seg);
+  if(!te) return false;
+  const T = decoderTraits(te.type), S = decoderTraits(te.etat);
+  let change = false;
+  T.forEach((t, i) => {
+    if(!/^(moved|markmoved);/.test(t)) return;
+    const v = oui ? 'true' : 'false';
+    if((S[i] || '').replace(/\\+$/, '') !== v){ S[i] = v; change = true; }
+  });
+  if(!change) return false;
+  _avantAction();
+  const neuf = encoderTraits(S);
+  p.seg = '+/' + p.uid + '/' + te.type + '/' + neuf;
+  _logCmd(`D/${p.uid}/${neuf}/${te.etat}`);
+  majApparence(p);
+  return true;
+}
+
+// Bouton « mark unmoved » de la carte : lève le statut sur tous les pions.
+function leverDeplaces(){
+  let n = 0;
+  for(const p of vivants()) if(marquerDeplace(p, false)) n++;
+  chatLog(n ? `↩️ Statut Moved levé sur ${n} pion(s)` : 'Aucun pion marqué Moved');
+  return n;
 }
 
 function retirer(p, silencieux){
@@ -1755,10 +1800,32 @@ function commandesDe(type){
         deplacer(groupe, p.x + dx, p.y + dy);
       }));
     } else if(id === 'moved'){
-      // MovementMarkable : moved;icône;dx;dy;commande;touche — état true/false.
+      // MarkMoved de VASL : commande « Moved », Ctrl+M — état true/false.
+      ajouter(i, 'Moved', _touche(77, 2), ({S}) => {
+        S[i] = /^true/.test(S[i] || '') ? 'false' : 'true';
+      });
+    } else if(id === 'markmoved'){
+      // MovementMarkable de VASSAL : markmoved;icône;dx;dy;commande;touche.
       ajouter(i, ch[4] || 'Mark Moved', lireTouche(ch[5]) || _touche(77, 2), ({S}) => {
         S[i] = /^true/.test(S[i] || '') ? 'false' : 'true';
       });
+    } else if(id === 'PROP'){
+      // DynamicProperty : PROP;nom;contraintes;commandes, chaque commande
+      // « menu:touche:type,valeur ». P fixe la valeur ($PlayerName$ = le
+      // joueur), I l'incrémente ; les saisies au clavier sont ignorées.
+      for(const cmd of (ch[3] || '').split(/(?<!\\),/)){
+        const f = cmd.replace(/\\,/g, '\u0001').split(':');
+        if(f.length < 3) continue;
+        const touche = lireTouche(f[1].replace(/\u0001/g, ','));
+        const [type, ...val] = f[2].split('\u0001');
+        const v = val.join(',').replace(/\\(.)/g, '$1');
+        if(type === 'P' && !/[{}]/.test(v)) ajouter(i, f[0], touche, ({S}) => {
+          S[i] = v.replace(/\$PlayerName\$/g, joueur()).replace(/\//g, '\\/');
+        });
+        else if(type === 'I' && /^-?\d+$/.test(v)) ajouter(i, f[0], touche, ({S}) => {
+          S[i] = String((parseInt(S[i], 10) || 0) + parseInt(v, 10));
+        });
+      }
     } else if(id === 'sendto'){
       // SendToLocation : la pièce quitte la carte de jeu (Casualties…).
       // La carte est donnée par une expression {"Nom"} ou en clair.
@@ -2912,6 +2979,7 @@ document.addEventListener('DOMContentLoaded', () => {
   r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
   if(window.innerWidth < 700) basculerCote();
   _brancherCommandes();
+  chargerImage('mov.gif').then(u => { if(u) document.getElementById('icUnmoved').src = u; });
   // Ce qu'on voit d'une unité dissimulée dépend de qui l'on est.
   document.getElementById('joueur').addEventListener('change', () => vivants().forEach(p => majApparence(p)));
   _brancherDes();
