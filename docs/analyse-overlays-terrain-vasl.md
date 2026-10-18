@@ -365,7 +365,7 @@ quand on masque les pions.
    fichier.
 3. Mettre à jour le journal : une règle `m` n'est plus « sans couleur ».
 
-**Étape 2 — Motifs (underlays)**
+**Étape 2 — Motifs (underlays)** — **faite** : `chargerMotif`, `poserMotifs` ; les règles `m` de `LOS_SSR` remises dans l’ordre du fichier (`WallToCactus` venait de l’exemple commenté)
 
 4. Charger et mettre en cache `boardData/<motif>.gif`.
 5. Appliquer le motif comme au § 4.4, sur l'image de base non repeinte, avant
