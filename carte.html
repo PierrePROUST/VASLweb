@@ -74,6 +74,8 @@ button:disabled{opacity:.4;cursor:default}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
+.pion.coup{animation:coup 1.6s ease-out}
+@keyframes coup{0%,40%{box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{box-shadow:none}}
 .fantome{position:fixed;z-index:9999;pointer-events:none;opacity:.8}
 .cible{position:absolute;z-index:9000;pointer-events:none;width:24px;height:24px;margin:-12px 0 0 -12px;
   border:3px solid var(--accent);border-radius:50%}
@@ -129,6 +131,15 @@ button:disabled{opacity:.4;cursor:default}
   <button id="btVlog" onclick="ecrireVlog()" disabled>Exporter .vlog</button>
   <span id="logTxt"></span>
   <span class="sep"></span>
+  <span id="barreLog" style="display:none">
+    <button id="lgDebut" onclick="allerLog(0)" title="Début du log">⏮</button>
+    <button id="lgArr" onclick="reculerLog()" title="Coup précédent [Page précédente]">◀</button>
+    <span id="logPos" style="font-variant-numeric:tabular-nums;color:var(--doux)">0 / 0</span>
+    <button id="lgAv" onclick="avancerLog()" title="Coup suivant [Page suivante]">▶</button>
+    <button id="lgFin" onclick="allerLog(_etapes.length)" title="Fin du log">⏭</button>
+    <span id="logCoup" style="font-size:12px;color:var(--doux);max-width:260px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle"></span>
+    <span class="sep"></span>
+  </span>
   <button id="btUnmoved" onclick="leverDeplaces()" title="Mark unmoved — lève le statut Moved de tous les pions"><img id="icUnmoved" alt="" style="height:16px;vertical-align:-3px"> Unmoved</button>
   <span class="sep"></span>
   <button onclick="basculerCote()">Pions</button>
@@ -1402,15 +1413,17 @@ function importerPions(texte, label, annexes){
   chatLog(`♟️ ${n} pion(s) sur « ${_carteJeu} »` + (caches ? ` dont ${caches} HIP, non affiché(s)` : ''));
 
   lireInfo(_source);
-  const coups = rejouerLog(segs.slice(iLog));
-  if(coups) chatLog(`🎬 .vlog rejoué jusqu'au bout : ${coups} commande(s)`);
+  // Un .vlog s'ouvre, comme dans VASSAL, sur l'état de départ : on le
+  // parcourt ensuite coup par coup.
+  preparerRelecture(segs.slice(iLog));
   _etendreCarte();
   new Set(vivants().map(cle)).forEach(rendrePile);
 
   // Enregistrement armé d'emblée : l'état de départ du .vlog est figé au
   // premier coup joué.
-  _logEnr = []; _logDepart = null;
+  _logEnr = []; _logDepart = null; _logGroupes = [];
   majBoutons();
+  if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
 }
 
 // ═══ RELECTURE D'UN .vlog ═══
@@ -1448,7 +1461,13 @@ function rejouerLog(segs){
     } else if(s.startsWith('+/')){
       if(/^\+\/[^/]+\/stack\//.test(s)) continue;
       const d = lirePiece(s);
-      if(!parUid(d.uid)){ creerPion(s, 1e9); n++; }
+      if(!parUid(d.uid)){
+        const q = creerPion(s, 1e9);
+        // Née hors de la carte de jeu (« null;0;0 ») : elle attend le M/
+        // qui la place, à l'écart comme une pièce envoyée ailleurs.
+        if(d.carte !== _carteJeu){ q.deleted = true; q.ailleurs = d.carte || 'null'; q.el.remove(); }
+        n++;
+      }
     } else if(s.startsWith('-/')){
       const p = parUid(s.substring(2));
       if(p){ p.deleted = true; p.el.remove(); n++; }
@@ -1465,8 +1484,13 @@ function rejouerLog(segs){
       }
     } else if(s.startsWith('M/')){
       const t = _decoupeCmd(s.substring(2));
-      const p = parUid(_nul(t[0]));
+      const p = pions.find(q => q.uid === _nul(t[0]) && (!q.deleted || q.ailleurs));
       if(!p || t.length < 5) continue;
+      // Retour sur la carte de jeu d'une pièce tenue à l'écart.
+      if(p.ailleurs && t[1] === _carteJeu){
+        p.deleted = false; p.ailleurs = null;
+        document.getElementById('mapInner').appendChild(p.el);
+      }
       if(t[1] !== _carteJeu){
         const te = _typeEtEtat(p.seg);
         if(te) p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, t[1], parseInt(t[2], 10) || 0, parseInt(t[3], 10) || 0);
@@ -1494,7 +1518,155 @@ function _empiler(p, dessous){
 // un M/ par pion déplacé, du fond vers le sommet, chacun désignant la
 // pièce qui doit se trouver dessous.
 function _avantAction(){
+  // Jouer au milieu d'une relecture : la partie repart de cette position,
+  // les coups suivants du fichier sont abandonnés.
+  if(!_relecture && _logPos < _etapes.length){
+    chatLog(`✂️ Relecture interrompue au coup ${_logPos} : ${_etapes.length - _logPos} coup(s) suivant(s) abandonné(s)`);
+    _etapes.length = _logPos;
+    _instantanes.length = _logPos;
+    majBarreLog();
+  }
   if(_logEnr && !_logDepart) _logDepart = etatPartie();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LECTURE D'UN .vlog — coup par coup
+// Un coup est une entrée « LOG » de BasicLogger ; les sous-commandes d'un
+// coup composé (une pile qui bouge, un pion posé puis placé) la suivent
+// dans des segments à part. Avancer rejoue le coup ; reculer restaure
+// l'instantané pris juste avant lui.
+// ═══════════════════════════════════════════════════════════════
+let _etapes = [];          // coups : listes de segments
+let _logPos = 0;           // coups déjà joués
+let _instantanes = [];     // état avant chaque coup joué
+let _relecture = false;    // vrai pendant qu'un coup est rejoué
+
+function preparerRelecture(segs){
+  _etapes = []; _logPos = 0; _instantanes = [];
+  for(const sg of segs){
+    if(sg.startsWith('LOG\t') || !_etapes.length) _etapes.push([sg]);
+    else _etapes[_etapes.length - 1].push(sg);
+  }
+  // Les entrées vides (« LOG\t » seul) ne sont pas des coups.
+  _etapes = _etapes.filter(e => e.some(x => x.replace(/^LOG\t/, '').replace(/\\+$/, '').trim()));
+  majBarreLog();
+}
+
+function _instantane(){
+  return {info: _infoEtat,
+          pions: pions.map(p => ({p, seg: p.seg, x: p.x, y: p.y, ordre: p.ordre, deleted: p.deleted, ailleurs: p.ailleurs}))};
+}
+
+function _restaurer(snap){
+  const connus = new Set(snap.pions.map(e => e.p));
+  // Pions nés après l'instantané : ils disparaissent.
+  for(const p of pions) if(!connus.has(p)) p.el.remove();
+  pions = snap.pions.map(e => e.p);
+  for(const e of snap.pions){
+    const p = e.p;
+    const segChange = p.seg !== e.seg;
+    Object.assign(p, {seg: e.seg, x: e.x, y: e.y, ordre: e.ordre, deleted: e.deleted, ailleurs: e.ailleurs});
+    if(p.deleted) p.el.remove();
+    else if(!p.el.isConnected) document.getElementById('mapInner').appendChild(p.el);
+    if(segChange && !p.deleted) majApparence(p);
+  }
+  if(_infoEtat !== snap.info){ _infoEtat = snap.info; majChampsInfo(); }
+}
+
+// Résumé lisible d'un coup, pour la barre de lecture.
+function _resumeCoup(etape){
+  const parts = [];
+  for(let sg of etape){
+    sg = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
+    if(sg.startsWith('M/')){
+      const t = _decoupeCmd(sg.substring(2));
+      const q = pions.find(x => x.uid === _nul(t[0]));
+      if(!q) continue;
+      if(t[1] !== _carteJeu){ parts.push(`${q.nom} → ${t[1]}`); continue; }
+      const a = ancragePlusProche(+t[2], +t[3]);
+      parts.push(`${q.nom} → ${a ? a.label : t[2] + ',' + t[3]}`);
+    } else if(sg.startsWith('-/')){
+      const q = pions.find(x => x.uid === sg.substring(2));
+      if(q) parts.push(`${q.nom} retiré`);
+    } else if(sg.startsWith('+/')){
+      if(!/\/stack\//.test(sg)) parts.push(`${lirePiece(sg).nom} posé`);
+    } else if(sg.startsWith('D/')){
+      const q = pions.find(x => x.uid === _nul(_decoupeCmd(sg.substring(2))[0]));
+      if(q) parts.push(`${q.nom} modifié`);
+    } else if(sg.startsWith('CHAT')){
+      const m = _desechappe(sg.substring(4)).match(/^\*\*\* \((.+?)\) ([\d,]+)/);
+      parts.push(m ? `${m[1]} ${m[2]}` : '💬');
+    } else if(sg.startsWith('INFO\t')) parts.push('infos du scénario');
+  }
+  // Un déplacement résume le coup : les changements d'état qui
+  // l'accompagnent (marque Moved, propriétaire) ne sont pas répétés, et
+  // une pile qui bouge s'écrit « 3 pions → 42M5 ».
+  const uniques = [...new Set(parts)];
+  const moves = uniques.filter(x => x.includes(' → '));
+  const autres = uniques.filter(x => !x.includes(' → ') && !(moves.length && x.endsWith(' modifié')));
+  const dest = [...new Set(moves.map(x => x.split(' → ')[1]))];
+  const tete = moves.length > 1 && dest.length === 1 ? [`${moves.length} pions → ${dest[0]}`] : moves;
+  return [...tete, ...autres].join(' · ') || '—';
+}
+
+function avancerLog(){
+  if(_logPos >= _etapes.length) return false;
+  const etape = _etapes[_logPos];
+  const resume = _resumeCoup(etape);
+  _instantanes[_logPos] = _instantane();
+  const avant = new Map(pions.map(p => [p, p.x + ',' + p.y + p.seg]));
+  _relecture = true;
+  try { rejouerLog(etape); } finally { _relecture = false; }
+  _logPos++;
+  new Set(pions.map(cle)).forEach(rendrePile);
+  if(_pileSel) afficherPile();
+  // Les pions touchés par le coup sont signalés, et la vue les rejoint.
+  const touches = vivants().filter(p => avant.get(p) !== p.x + ',' + p.y + p.seg);
+  signalerCoup(touches);
+  document.getElementById('logCoup').textContent = resume;
+  majBarreLog();
+  return true;
+}
+
+function reculerLog(){
+  if(_logPos <= 0) return false;
+  _logPos--;
+  _restaurer(_instantanes[_logPos]);
+  new Set(pions.map(cle)).forEach(rendrePile);
+  if(_pileSel) afficherPile();
+  document.getElementById('logCoup').textContent = _logPos ? _resumeCoup(_etapes[_logPos - 1]) : 'début';
+  majBarreLog();
+  return true;
+}
+
+function allerLog(cible){
+  while(_logPos < cible && avancerLog());
+  while(_logPos > cible && reculerLog());
+}
+
+function signalerCoup(liste){
+  document.querySelectorAll('.pion.coup').forEach(e => e.classList.remove('coup'));
+  if(!liste.length) return;
+  for(const p of liste){
+    p.el.classList.add('coup');
+    setTimeout(() => p.el.classList.remove('coup'), 1600);
+  }
+  // La vue suit le coup s'il sort de l'écran.
+  const w = document.getElementById('mapWrap').getBoundingClientRect();
+  const r = liste[0].el.getBoundingClientRect();
+  if(r.right < w.left || r.left > w.right || r.bottom < w.top || r.top > w.bottom){
+    const wrap = document.getElementById('mapWrap');
+    wrap.scrollLeft = liste[0].x * SC * zoom - wrap.clientWidth / 2;
+    wrap.scrollTop  = liste[0].y * SC * zoom - wrap.clientHeight / 2;
+  }
+}
+
+function majBarreLog(){
+  const b = document.getElementById('barreLog');
+  b.style.display = _etapes.length ? '' : 'none';
+  document.getElementById('logPos').textContent = `${_logPos} / ${_etapes.length}`;
+  document.getElementById('lgDebut').disabled = document.getElementById('lgArr').disabled = _logPos <= 0;
+  document.getElementById('lgFin').disabled = document.getElementById('lgAv').disabled = _logPos >= _etapes.length;
 }
 
 function _dessous(p){
@@ -2224,6 +2396,12 @@ function _brancherCommandes(){
   document.getElementById('mapWrap').addEventListener('scroll', fermerMenu);
   document.addEventListener('keydown', e => {
     if(e.key === 'Escape'){ fermerMenu(); return; }
+    if((e.key === 'PageDown' || e.key === 'PageUp') && _etapes.length
+       && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)){
+      e.preventDefault();
+      if(e.key === 'PageDown') avancerLog(); else reculerLog();
+      return;
+    }
     if(!_pileSel || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if(['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
     const k = toucheClavier(e);
@@ -2940,16 +3118,26 @@ function _brancherDes(){
 let _logEnr = null;       // commandes jouées depuis l'ouverture
 let _logDepart = null;    // état de la partie avant le premier coup
 
+// Toutes les commandes nées d'une même action du joueur — le même tour de
+// boucle d'événements — forment un coup, écrit en une seule entrée LOG
+// composée, comme le fait VASSAL.
+let _logGroupes = [], _actionNo = 0, _actionOuverte = false;
 function _logCmd(c){
   if(!_logEnr) return;
+  if(!_actionOuverte){
+    _actionNo++; _actionOuverte = true;
+    setTimeout(() => { _actionOuverte = false; }, 0);
+  }
   _logEnr.push(c);
+  _logGroupes.push(_actionNo);
   majBoutons();
 }
+const _nbActions = () => new Set(_logGroupes).size;
 
 function majBoutons(){
   document.getElementById('btVsav').disabled = !_source;
   document.getElementById('btVlog').disabled = !(_logEnr && _logEnr.length);
-  document.getElementById('logTxt').textContent = _logEnr && _logEnr.length ? '⏺ ' + _logEnr.length : '';
+  document.getElementById('logTxt').textContent = _logEnr && _logEnr.length ? '⏺ ' + _nbActions() : '';
 }
 
 // Piles de la carte de jeu, d'après l'état courant. VASL écrit aussi les
@@ -3023,8 +3211,17 @@ function ecrireVlog(){
     chatLog('⚠️ Aucune action jouée depuis l\'ouverture : rien à rejouer dans VASL.');
     return false;
   }
-  _telecharger([..._logDepart, ..._logEnr.map(c => 'LOG\t' + c)].join('\x1b'), _nomExport('vlog'));
-  chatLog(`📼 .vlog écrit : ${_logEnr.length} action(s)`);
+  // GameModule.encode : un coup composé est la suite de ses commandes
+  // séparées par ESC ; dans le fichier, ces ESC sont précédés d'une
+  // contre-oblique (SequenceEncoder de BasicLogger).
+  const entrees = [];
+  _logEnr.forEach((c, i) => {
+    if(i && _logGroupes[i] === _logGroupes[i - 1]) entrees[entrees.length - 1].push(c);
+    else entrees.push([c]);
+  });
+  const lignes = entrees.map(l => 'LOG\t' + (l.length > 1 ? l.map(c => '\x1b' + c).join('') : l[0]).replace(/\x1b/g, '\\\x1b'));
+  _telecharger([..._logDepart, ...lignes].join('\x1b'), _nomExport('vlog'));
+  chatLog(`📼 .vlog écrit : ${entrees.length} coup(s), ${_logEnr.length} commande(s)`);
   return true;
 }
 
