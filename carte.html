@@ -33,6 +33,20 @@ button:disabled{opacity:.4;cursor:default}
 #journal{max-height:96px;overflow:auto;background:var(--barre);border-top:1px solid var(--bord);
   padding:4px 10px;font-size:12px;color:var(--doux)}
 #journal div{white-space:pre-wrap}
+#des{gap:4px;padding:4px 10px}
+#des button{padding:3px 8px;font-size:13px}
+#des label{font-size:12px;color:var(--doux);display:flex;align-items:center;gap:4px}
+#des input,#des select{background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);
+  border-radius:4px;padding:2px 4px;font:inherit;font-size:12px}
+#des input[type=number]{width:44px}
+#joueur{width:90px}
+#journal .jet{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--texte);padding:1px 0}
+#journal .jet img{width:22px;height:22px}
+#journal .jet .cat{font-weight:600}
+#journal .jet .tot{font-weight:700;color:var(--accent)}
+#journal .jet .spe{color:#f0b040}
+#journal .jet .san{color:#ff5a5a;font-weight:700}
+#journal .jet .qui{color:var(--doux)}
 .sep{width:1px;align-self:stretch;background:var(--bord);margin:0 4px}
 #logTxt{color:#e05252;font-size:12px}
 #corps{flex:1;display:flex;min-height:0}
@@ -90,6 +104,26 @@ button:disabled{opacity:.4;cursor:default}
   <span id="logTxt"></span>
   <span class="sep"></span>
   <button onclick="basculerCote()">Pions</button>
+</div>
+<div class="barre" id="des">
+  <button onclick="lancerDR('Other')" title="DR [F2]">DR</button>
+  <button onclick="lancerDR('IFT')" title="IFT attack DR [Ctrl+Maj+I]">IFT</button>
+  <button onclick="lancerDR('TH')" title="To Hit DR [Ctrl+Maj+H]">TH</button>
+  <button onclick="lancerDR('TK')" title="To Kill DR [Ctrl+Maj+K]">TK</button>
+  <button onclick="lancerDR('MC')" title="Morale Check DR [Ctrl+Maj+M]">MC</button>
+  <button onclick="lancerDR('Rally')" title="Rally DR [Ctrl+Maj+R]">Rally</button>
+  <button onclick="lancerDR('CC')" title="Close Combat DR [Ctrl+Maj+C]">CC</button>
+  <button onclick="lancerDR('TC')" title="Task Check DR [Ctrl+Maj+T]">TC</button>
+  <span class="sep"></span>
+  <button onclick="lancerdr('Other')" title="dr [F1]">dr</button>
+  <button onclick="lancerdr('SA')" title="Sniper Activation dr [Ctrl+Maj+S]">SA</button>
+  <button onclick="lancerdr('RS')" title="Random Selection dr [Ctrl+Maj+D]">RS</button>
+  <span class="sep"></span>
+  <label>Joueur <input id="joueur" value="web" autocomplete="off"></label>
+  <label>SAN Axis <input type="number" id="sanAxis" min="0" max="12" placeholder="?"></label>
+  <label>Allied <input type="number" id="sanAllied" min="0" max="12" placeholder="?"></label>
+  <label title="Booby Trap (A/B/C)">Piège Axis <select id="bbAxis"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
+  <label>Allied <select id="bbAllied"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
 </div>
 <div id="corps">
   <div id="mapWrap">
@@ -1128,6 +1162,7 @@ function importerPions(texte, label, annexes){
   const caches = vivants().filter(p => p.cache).length;
   chatLog(`♟️ ${n} pion(s) sur « ${_carteJeu} »` + (caches ? ` dont ${caches} HIP, non affiché(s)` : ''));
 
+  lireInfo(_source);
   const coups = rejouerLog(segs.slice(iLog));
   if(coups) chatLog(`🎬 .vlog rejoué jusqu'au bout : ${coups} commande(s)`);
   _etendreCarte();
@@ -1165,7 +1200,13 @@ function rejouerLog(segs){
   for(let s of segs){
     if(s.startsWith('LOG\t')) s = s.substring(4);
     s = s.replace(/\\+$/, '');
-    if(s.startsWith('+/')){
+    if(s.startsWith('CHAT')){
+      afficherChat(_desechappe(s.substring(4)));
+      n++;
+    } else if(s.startsWith('INFO\t')){
+      _infoEtat = s.substring(5); majChampsInfo();
+      n++;
+    } else if(s.startsWith('+/')){
       if(/^\+\/[^/]+\/stack\//.test(s)) continue;
       const d = lirePiece(s);
       if(!parUid(d.uid)){ creerPion(s, 1e9); n++; }
@@ -1243,7 +1284,7 @@ function deplacer(liste, x, y){
   for(const a of avant){
     _majSeg(a.p);
     _logCmd(`M/${a.p.uid}/${_carteJeu}/${a.p.x}/${a.p.y}/${_dessous(a.p)}`
-          + `/${_carteJeu}/${a.x}/${a.y}/${a.sous}/web`);
+          + `/${_carteJeu}/${a.x}/${a.y}/${a.sous}/${joueur()}`);
   }
   new Set([...avant.map(a => a.k), kArr]).forEach(rendrePile);
   selectionnerPile(kArr);
@@ -1268,7 +1309,7 @@ function changerRang(p, sens){
   const avant = _dessous(p);
   [s[i], s[j]] = [s[j], s[i]];
   s.forEach((q, k) => { q.ordre = k; });
-  _logCmd(`M/${p.uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/${_carteJeu}/${p.x}/${p.y}/${avant}/web`);
+  _logCmd(`M/${p.uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/${_carteJeu}/${p.x}/${p.y}/${avant}/${joueur()}`);
   rendrePile(cle(p)); afficherPile();
 }
 
@@ -1286,7 +1327,7 @@ function poserDepuisPalette(x, cx, cy){
   p.ordre = Math.max(-1, ...pile(cle(p)).filter(q => q !== p).map(q => q.ordre)) + 1;
   p.neuf = true;
   _logCmd('+/' + uid + '/' + te.type + '/' + _majPosEtat(te.etat, 'null', 0, 0));
-  _logCmd(`M/${uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/null/0/0/null/web`);
+  _logCmd(`M/${uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/null/0/0/null/${joueur()}`);
   rendrePile(cle(p));
   selectionnerPile(cle(p));
   chatLog(`➕ ${x.n} posé en ${pos.label || cle(p)}`);
@@ -1635,6 +1676,246 @@ function remplirGrille(liste){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DÉS — d'après ASLDiceBot et ASLChatter (VASL)
+// Le jet est un message de chat au format d'ASLDiceBot, que VASL relit
+// et décore lui-même :
+//   *** (IFT DR) 3,1 ***   <Pierre>      Axis SAN    [1 / 8   avg   6,62 (6,62)]    (01.51)
+// Le premier dé est le COLORÉ, le second le blanc. Le SAN se contrôle
+// sur le total du DR original (A14.2), comme IsSpecialDiceRoll().
+// ═══════════════════════════════════════════════════════════════
+const DE_COLORE = 'R', DE_BLANC = 'W';     // DC<n>_<couleur>.png du module
+
+const joueur = () => (document.getElementById('joueur').value.trim() || 'web');
+const _d6 = () => {
+  // Tirage uniforme sans biais de modulo.
+  const t = new Uint8Array(1);
+  do { crypto.getRandomValues(t); } while(t[0] >= 252);
+  return 1 + (t[0] % 6);
+};
+
+// ── Informations de scénario (ScenInfo, segment « INFO\t ») :
+//   qui joue en premier, joueur, tour, ELR Axis, SAN Axis, ELR Allied,
+//   SAN Allied, piège Axis, piège Allied, météo…
+let _infoEtat = 'Axis\tAxis\t1\t?\t?\t?\t?\t?\t?';
+let _infoModifiee = false;
+const INFO_SAN_AXIS = 4, INFO_SAN_ALLIED = 6, INFO_BB_AXIS = 7, INFO_BB_ALLIED = 8;
+
+function _infoChamp(i){
+  return (_infoEtat.split('\t')[i] || '?').replace(/\\/g, '').trim();
+}
+function _infoFixer(i, v){
+  const f = _infoEtat.split('\t');
+  while(f.length <= i) f.push('?');
+  f[i] = v;
+  _infoEtat = f.join('\t');
+}
+
+function lireInfo(segs){
+  const seg = segs.find(x => x.startsWith('INFO\t'));
+  _infoEtat = seg ? seg.substring(5) : 'Axis\tAxis\t1\t?\t?\t?\t?\t?\t?';
+  _infoModifiee = false;
+  majChampsInfo();
+  const sa = _infoChamp(INFO_SAN_AXIS), sl = _infoChamp(INFO_SAN_ALLIED);
+  if(seg) chatLog(`🎯 SAN Axis ${sa} · Allied ${sl}`);
+}
+
+function majChampsInfo(){
+  const n = v => /^\d+$/.test(v) ? v : '';
+  document.getElementById('sanAxis').value = n(_infoChamp(INFO_SAN_AXIS));
+  document.getElementById('sanAllied').value = n(_infoChamp(INFO_SAN_ALLIED));
+  const b = v => ['A','B','C'].includes(v) ? v : '?';
+  document.getElementById('bbAxis').value = b(_infoChamp(INFO_BB_AXIS));
+  document.getElementById('bbAllied').value = b(_infoChamp(INFO_BB_ALLIED));
+}
+
+// Saisie : VASL diffuse et consigne la fiche entière (SetInfo).
+function changerInfo(){
+  const v = id => document.getElementById(id).value.trim();
+  _avantAction();
+  _infoFixer(INFO_SAN_AXIS, v('sanAxis') || '?');
+  _infoFixer(INFO_SAN_ALLIED, v('sanAllied') || '?');
+  _infoFixer(INFO_BB_AXIS, v('bbAxis'));
+  _infoFixer(INFO_BB_ALLIED, v('bbAllied'));
+  _infoModifiee = true;
+  _logCmd('INFO\t' + _infoEtat);
+  chatLog(`🎯 SAN Axis ${_infoChamp(INFO_SAN_AXIS)} · Allied ${_infoChamp(INFO_SAN_ALLIED)}`
+        + ` — pièges Axis ${_infoChamp(INFO_BB_AXIS)} · Allied ${_infoChamp(INFO_BB_ALLIED)}`);
+}
+
+// IsSpecialDiceRoll() : SAN des deux camps sur le total, pièges sur 11-12.
+function _special(total){
+  const san = c => { const v = parseInt(_infoChamp(c), 10); return !isNaN(v) && v === total; };
+  const ax = san(INFO_SAN_AXIS), al = san(INFO_SAN_ALLIED);
+  if(ax && al) return 'Axis/Allied SAN    ';
+  if(ax) return 'Axis SAN    ';
+  if(al) return 'Allied SAN    ';
+  if(total >= 11){
+    const bt = c => { const v = _infoChamp(c); return v === 'A' || (v === 'B' && total === 11) || (v === 'C' && total === 12); };
+    const bx = bt(INFO_BB_AXIS), bl = bt(INFO_BB_ALLIED);
+    if(bx && bl) return 'Axis/Allied Booby Trap    ';
+    if(bx) return 'Axis Booby Trap   ';
+    if(bl) return 'Allied Booby Trap   ';
+  }
+  return '';
+}
+
+// ── Statistiques de la session, par catégorie et au total (DiceStats).
+const _stats = new Map();
+function _stat(cle){
+  if(!_stats.has(cle)) _stats.set(cle, {n: 0, somme: 0, detail: new Map()});
+  return _stats.get(cle);
+}
+function _ajouterStat(cle, valeur){
+  const s = _stat(cle);
+  s.n++; s.somme += valeur;
+  s.detail.set(valeur, (s.detail.get(valeur) || 0) + 1);
+}
+const _fmt2 = v => v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const _moy = cle => { const s = _stats.get(cle); return s && s.n ? _fmt2(s.somme / s.n) : '-'; };
+const _surTotal = (cle, v) => { const s = _stats.get(cle); return s ? `${s.detail.get(v) || 0} / ${s.n}` : '-/-'; };
+
+// Numéro de série d'ASLDiceBot : séries de 99, numéros tirés dans le désordre.
+let _serie = 0, _rangSerie = 99, _ordreSerie = [];
+function _numeroSerie(){
+  if(_rangSerie >= 99){
+    _serie++; _rangSerie = 0;
+    _ordreSerie = Array.from({length: 99}, (_, i) => i + 1);
+    for(let i = 98; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [_ordreSerie[i], _ordreSerie[j]] = [_ordreSerie[j], _ordreSerie[i]];
+    }
+  }
+  const d2 = n => String(n).padStart(2, '0');
+  return d2(_serie) + '.' + d2(_ordreSerie[_rangSerie++]);
+}
+
+function lancerDR(cat){
+  const c = _d6(), b = _d6();
+  _ajouterStat('D2_Total', c + b); _ajouterStat('D2_' + cat, c + b);
+  const msg = `*** (${cat} DR) ${c},${b} ***   <${joueur()}>      ${_special(c + b)}`
+            + `[${_surTotal('D2_Total', c + b)}   avg   ${_moy('D2_' + cat)} (${_moy('D2_Total')})]`
+            + `    (${_numeroSerie()})`;
+  _publierJet(msg);
+  return {c, b, total: c + b};
+}
+
+function lancerdr(cat){
+  const d = _d6();
+  _ajouterStat('D1_Total', d); _ajouterStat('D1_' + cat, d);
+  const msg = `*** (${cat} dr) ${d} ***   <${joueur()}>      `
+            + `[${_surTotal('D1_Total', d)}   avg   ${_moy('D1_' + cat)} (${_moy('D1_Total')})]`
+            + `    (${_numeroSerie()})`;
+  _publierJet(msg);
+  return {d};
+}
+
+// VASSAL encode le texte du chat en entités HTML.
+function _publierJet(msg){
+  _avantAction();
+  _logCmd('CHAT' + msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+  afficherChat(msg);
+}
+
+function _desechappe(s){
+  return (s || '').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');
+}
+
+// ── Affichage d'un message de chat, jets décodés comme ASLChatter :
+// images des dés, total, joueur, SAN ou piège, et les annonces de règle
+// du niveau « Full ASL ».
+function afficherChat(msg){
+  const m = msg.match(/^\*\*\* \((.+?) (DR|dr)\) ([\d,]+) \*\*\*.*?<([^>]*)>\s*(.*)$/);
+  if(!m){ chatLog('💬 ' + msg); return; }
+  const [, catBrute, type, des, qui, reste] = m;
+  const cat = catBrute.replace('ENEMY ', '');
+  const v = des.split(',').map(Number);
+  const ligne = document.createElement('div');
+  ligne.className = 'jet';
+  const t = document.createElement('span');
+  t.className = 'cat'; t.textContent = `${catBrute === 'Other' ? '' : catBrute + ' '}${type}`;
+  ligne.appendChild(t);
+  v.forEach((n, i) => {
+    const im = document.createElement('img');
+    im.alt = String(n); im.title = String(n);
+    chargerImage(`DC${n}_${i === 0 && type === 'DR' ? DE_COLORE : DE_BLANC}.png`).then(u => { if(u) im.src = u; });
+    ligne.appendChild(im);
+  });
+  const tot = document.createElement('span');
+  tot.className = 'tot';
+  tot.textContent = type === 'DR' ? `= ${v[0] + v[1]}` : '';
+  ligne.appendChild(tot);
+  const q = document.createElement('span');
+  q.className = 'qui'; q.textContent = qui;
+  ligne.appendChild(q);
+  if(type === 'DR'){
+    const san = (reste.match(/^(Axis\/Allied|Axis|Allied) (SAN|Booby Trap)/) || [])[0];
+    // ASLChatter ne signale pas le SAN sur Rally, TK et CC, ni les pièges hors TC.
+    const montre = san && (/Booby/.test(san) ? cat === 'TC' : !['TK','CC','Rally'].includes(cat));
+    if(montre){
+      const s = document.createElement('span');
+      s.className = 'san'; s.textContent = '🎯 ' + san;
+      ligne.appendChild(s);
+    }
+    const sp = _annoncesDR(cat, v[0], v[1]);
+    if(sp.length){
+      const s = document.createElement('span');
+      s.className = 'spe'; s.textContent = sp.join(', ');
+      ligne.appendChild(s);
+    }
+  }
+  const j = document.getElementById('journal');
+  j.appendChild(ligne);
+  j.scrollTop = j.scrollHeight;
+}
+
+function _annoncesDR(cat, a, b){
+  const sp = [];
+  switch(cat){
+    case 'TH':
+      if(a === b){ if(a === 1) sp.push('Unlikely Hit (C3.6)'); sp.push('Multiple Hits 15..40mm (C3.8)'); }
+      sp.push(a < b ? 'Turret' : 'Hull');
+      break;
+    case 'TK':
+      if(a === 6 && b === 6) sp.push('Dud (C7.35)');
+      break;
+    case 'MC':
+      if(a === 1 && b === 1) sp.push('Heat of Battle (A15.1)');
+      else if(a === 6 && b === 6) sp.push('Casualty MC (A10.31)');
+      break;
+    case 'Rally':
+      if(a === 1 && b === 1) sp.push('Heat of Battle (A15.1) or Field Promotion (A18.11)');
+      else if(a === 6 && b === 6) sp.push('Fate -> Casualty Reduction (A10.64)');
+      break;
+    case 'IFT':
+      if(a === b){ if(a === 1) sp.push('Unlikely Kill vs * (A7.309)'); sp.push('Cower if MMC w/o LDR'); }
+      break;
+    case 'CC':
+      if(a === 1 && b === 1) sp.push('Infiltration (A11.22), Field Promotion (A18.12), Unlikely Kill (A11.501)');
+      else if(a === 6 && b === 6) sp.push('Infiltration (A11.22)');
+      break;
+  }
+  return sp;
+}
+
+// Raccourcis d'ASLChatter : F2 DR, F1 dr, Ctrl+Maj+lettre par catégorie.
+function _brancherDes(){
+  for(const id of ['sanAxis', 'sanAllied', 'bbAxis', 'bbAllied'])
+    document.getElementById(id).addEventListener('change', changerInfo);
+  const DR = {I: 'IFT', H: 'TH', K: 'TK', M: 'MC', R: 'Rally', C: 'CC', T: 'TC'};
+  const dr = {S: 'SA', D: 'RS'};
+  document.addEventListener('keydown', e => {
+    if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if(e.key === 'F2'){ e.preventDefault(); lancerDR('Other'); return; }
+    if(e.key === 'F1'){ e.preventDefault(); lancerdr('Other'); return; }
+    if(e.ctrlKey && e.shiftKey){
+      const k = e.key.toUpperCase();
+      if(DR[k]){ e.preventDefault(); lancerDR(DR[k]); }
+      else if(dr[k]){ e.preventDefault(); lancerdr(dr[k]); }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORT .vsav ET .vlog
 // On repart des segments du fichier chargé : seules changent les
 // positions, les piles de la carte de jeu, les pions retirés et ceux
@@ -1681,6 +1962,7 @@ function etatPartie(){
       if(mc && mc[1] === _carteJeu) continue;          // régénérée
       sortie.push(seg); continue;
     }
+    if(seg.startsWith('INFO\t')){ sortie.push('INFO\t' + _infoEtat); continue; }
     const m = seg.match(/^\+\/([^/]+)\//);
     const p = m && parUidMap.get(m[1]);
     if(!p){ sortie.push(seg); continue; }
@@ -1690,6 +1972,8 @@ function etatPartie(){
   // Pions posés ou créés par le log : avant la fin de sauvegarde.
   const neufs = vivants().filter(p => !connus.has(p.uid)).map(p => p.seg);
   const ajout = [...neufs, ..._segmentsPiles()];
+  // SAN saisis ici alors que le fichier n'avait pas d'informations de scénario.
+  if(_infoModifiee && !_source.some(x => x.startsWith('INFO\t'))) ajout.push('INFO\t' + _infoEtat);
   const iFin = sortie.lastIndexOf('end_save');
   if(iFin >= 0) sortie.splice(iFin, 0, ...ajout); else sortie.push(...ajout);
   return sortie;
@@ -1790,6 +2074,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const r = document.getElementById('palRech');
   r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
   if(window.innerWidth < 700) basculerCote();
+  _brancherDes();
   // La carte qui défile ou zoome emporte la pile survolée : on referme.
   const w = document.getElementById('mapWrap');
   w.addEventListener('scroll', cacherSurvol);
