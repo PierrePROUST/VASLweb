@@ -33,31 +33,80 @@ button:disabled{opacity:.4;cursor:default}
 #journal{max-height:96px;overflow:auto;background:var(--barre);border-top:1px solid var(--bord);
   padding:4px 10px;font-size:12px;color:var(--doux)}
 #journal div{white-space:pre-wrap}
+.sep{width:1px;align-self:stretch;background:var(--bord);margin:0 4px}
+#logTxt{color:#e05252;font-size:12px}
+#corps{flex:1;display:flex;min-height:0}
+#corps #mapWrap{flex:1}
+#cote{width:320px;display:flex;flex-direction:column;background:var(--barre);
+  border-left:1px solid var(--bord);min-height:0}
+#cote.ferme{display:none}
+#cote h2{font-size:13px;margin:0;padding:6px 8px;background:#262626;border-bottom:1px solid var(--bord)}
+#pile{max-height:40%;overflow:auto;border-bottom:1px solid var(--bord)}
+#pile:empty::before{content:"Cliquer un pion pour voir sa pile.";display:block;padding:8px;color:var(--doux);font-size:12px}
+.lig{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid #2c2c2c;
+  touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
+.lig img{width:36px;height:36px;object-fit:contain;pointer-events:none}
+.lig span{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lig button{padding:1px 6px;font-size:12px}
+#palRech{margin:6px 8px;padding:5px;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px}
+#palCorps{flex:1;overflow:auto;padding:0 8px 8px;font-size:12px}
+.cat{padding:3px 4px;cursor:pointer;border-bottom:1px solid #2c2c2c}
+.cat .n{opacity:.45}
+.grille{display:flex;flex-wrap:wrap;gap:4px;padding:6px 2px}
+.vig{width:46px;height:46px;background:#2a2a2a;border:1px solid var(--bord);border-radius:3px;
+  display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;
+  user-select:none;-webkit-user-select:none}
+.vig img{max-width:42px;max-height:42px;pointer-events:none}
+.pion{position:absolute;touch-action:none;cursor:pointer}
+.pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
+  -webkit-user-drag:none;user-select:none}
+.pion.sel{outline:2px solid var(--accent);outline-offset:1px}
+.fantome{position:fixed;z-index:9999;pointer-events:none;opacity:.8}
+.cible{position:absolute;z-index:9000;pointer-events:none;width:24px;height:24px;margin:-12px 0 0 -12px;
+  border:3px solid var(--accent);border-radius:50%}
+@media (max-width:700px){ #cote{position:absolute;right:0;top:44px;bottom:0;z-index:50;width:min(320px,90vw)} }
 </style>
 </head>
 <body>
 <div class="barre">
   <h1>VASL — Carte</h1>
   <button onclick="doOpen()">Ouvrir .vsav / .vlog</button>
+  <span class="sep"></span>
   <button onclick="zoomOut()" title="Zoom arrière">−</button>
   <span id="zoomTxt">100 %</span>
   <button onclick="zoomIn()" title="Zoom avant">+</button>
   <button onclick="zoomFit()">Ajuster</button>
   <button onclick="setZoom(1)">100 %</button>
+  <span class="sep"></span>
+  <button id="btVsav" onclick="ecrireVsav()" disabled>Exporter .vsav</button>
+  <button id="btVlog" onclick="ecrireVlog()" disabled>Exporter .vlog</button>
+  <span id="logTxt"></span>
+  <span class="sep"></span>
+  <button onclick="basculerCote()">Pions</button>
 </div>
-<div id="mapWrap">
-  <div id="mapScaler"><div id="mapInner"></div></div>
-  <div id="vide">Ouvrir un fichier .vsav ou .vlog, ou le déposer ici,<br>pour afficher la carte du scénario.</div>
+<div id="corps">
+  <div id="mapWrap">
+    <div id="mapScaler"><div id="mapInner"></div></div>
+    <div id="vide">Ouvrir un fichier .vsav ou .vlog, ou le déposer ici,<br>pour afficher la carte du scénario.</div>
+  </div>
+  <div id="cote">
+    <h2>Pile sélectionnée</h2>
+    <div id="pile"></div>
+    <h2>Palette VASL</h2>
+    <input id="palRech" placeholder="Rechercher un pion…" autocomplete="off">
+    <div id="palCorps"></div>
+  </div>
 </div>
 <div id="journal"></div>
 <input type="file" id="fileImport" style="display:none" onchange="handleFileImport(this)">
 
 <script>
 // ═══════════════════════════════════════════════════════════════
-// VASL — CHARGEMENT DE LA CARTE SEUL
+// VASL — CARTE ET PIONS
 // Repris de baseVaslWeb : lecture du .vsav, disposition des boards
 // d'après ASLBoardPicker, images tirées du dépôt GitHub de VASL,
-// recadrage, retournement, zoom et repeint des SSR de terrain.
+// recadrage, retournement, zoom et repeint des SSR de terrain ; puis
+// les pions : import, palette du module, export .vsav et .vlog.
 // ═══════════════════════════════════════════════════════════════
 const SC = 1.6;                       // échelle d'affichage, comme l'original
 const BOARD_MARGIN = 400;             // marge de carte VASSAL
@@ -159,12 +208,16 @@ async function openGameFile(file){
     const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
     const kind = _sniffFileType(head, file.name);
     let texte;
+    // savedata et moduledata : repris tels quels à l'écriture, VASSAL y
+    // vérifie la version du module et les extensions chargées.
+    const annexes = new Map();
     if(kind === 'vsav'){
       const files = await _zipRead(await file.arrayBuffer());
-      let raw = files.get('savedGame');
-      if(!raw) for(const [n, d] of files)
-        if(n.toLowerCase().endsWith('savedgame')){ raw = d; break; }
+      let raw = null, nomRaw = null;
+      for(const [n, d] of files)
+        if(n === 'savedGame' || n.toLowerCase().endsWith('savedgame')){ raw = d; nomRaw = n; break; }
       if(!raw){ chatLog(`❌ Pas d'entrée savedGame dans ${label}`); return; }
+      for(const [n, d] of files) if(n !== nomRaw) annexes.set(n, d);
       texte = _xorDecode(raw);
     } else if(kind === 'raw'){
       texte = _xorDecode(new Uint8Array(await file.arrayBuffer()));
@@ -178,6 +231,7 @@ async function openGameFile(file){
     chatLog(`🗺️ ${label} — boards : `
       + boards.map(b => b.name + (b.reversed ? ' (retourné)' : '')).join(', '));
     await _renderBoards(boards);
+    importerPions(texte, label, annexes);
   } catch(err){
     chatLog('❌ Lecture impossible : ' + (err && err.message ? err.message : err));
     console.error(err);
@@ -472,6 +526,7 @@ async function _renderBoards(boards){
   }
 
   _setMapSize(Math.round((totalW + BOARD_MARGIN*2) * SC), Math.round((totalH + BOARD_MARGIN*2) * SC));
+  _buildHexTable(boards);
   const M = Math.round(BOARD_MARGIN * SC);
   let ok = 0; const fail = [];
 
@@ -591,9 +646,982 @@ function _setupPanZoom(){
   }, {passive:false});
 }
 
+// ═══════════════════════════════════════════════════════════════
+// TABLE DES HEXAGONES — positions légales des pions
+// Un pion occupe le centre d'un hexagone ou le milieu d'un de ses six
+// côtés (Bypass, marqueurs d'hexside). Repère : pixels VASL natifs,
+// marge de carte comprise — celui des coordonnées du .vsav.
+// ═══════════════════════════════════════════════════════════════
+const C26 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const HEX_HY = 32.25;          // centre → milieu du côté haut/bas
+const HEX_HX = 28.125;         // composante x des côtés obliques
+const COTES = [null, [0,-HEX_HY], [HEX_HX,-HEX_HY/2], [HEX_HX,HEX_HY/2],
+               [0,HEX_HY], [-HEX_HX,HEX_HY/2], [-HEX_HX,-HEX_HY/2]];
+const SNAP_COTE = 0.45;        // le côté ne gagne que tout près de son milieu
+let _hexTable = [];
+
+function _buildHexTable(boards){
+  _hexTable = [];
+  for(const b of boards){
+    const g = geoBoard(b);
+    const cropX = b.crop ? (b.crop.x || 0) : 0;
+    const cropY = b.crop ? (b.crop.y || 0) : 0;
+    const dispW = b.dispW || g.w, dispH = b.dispH || g.h;
+    for(let i = 0; i < g.cols; i++){
+      const col = i < 26 ? C26[i] : C26[i-26] + C26[i-26];
+      for(let r = 1; r <= g.rows; r++){
+        const lx = i * g.hw - cropX;
+        const ly = (i % 2 ? g.hh : g.hh/2) + (r - 1) * g.hh - cropY;
+        if(ly < -g.hh/2 || ly > dispH + g.hh/2) continue;
+        if(lx < -g.hw/2 || lx > dispW + g.hw/2) continue;
+        const px = b.reversed ? dispW - lx : lx;
+        const py = b.reversed ? dispH - ly : ly;
+        _hexTable.push({name: b.name + col + r,
+          x: (b.px || 0) + px + BOARD_MARGIN, y: (b.py || 0) + py + BOARD_MARGIN});
+      }
+    }
+  }
+}
+
+// Ancrage légal le plus proche d'un point (pixels natifs), ou null au
+// large des boards : le pion reste alors où on l'a lâché.
+function ancragePlusProche(x, y){
+  let hex = null, dh = Infinity;
+  for(const h of _hexTable){
+    const d = (h.x-x)*(h.x-x) + (h.y-y)*(h.y-y);
+    if(d < dh){ dh = d; hex = h; }
+  }
+  if(!hex || dh > 75*75) return null;
+  let side = 0, ds = Infinity;
+  for(let s = 1; s <= 6; s++){
+    const mx = hex.x + COTES[s][0], my = hex.y + COTES[s][1];
+    const d = (mx-x)*(mx-x) + (my-y)*(my-y);
+    if(d < ds){ ds = d; side = s; }
+  }
+  const rayon = HEX_HY * SNAP_COTE;
+  if(!(ds < rayon*rayon && ds < dh)) side = 0;
+  return {
+    x: Math.round(hex.x + (side ? COTES[side][0] : 0)),
+    y: Math.round(hex.y + (side ? COTES[side][1] : 0)),
+    label: hex.name + (side ? '/' + ['','N','NE','SE','S','SO','NO'][side] : '')
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LECTURE D'UNE PIÈCE VASSAL
+// Un segment AddPiece : +/UID/TYPE/ÉTAT. TYPE et ÉTAT sont des listes de
+// traits séparées par des tabulations ; le dernier trait est le
+// BasicPiece (« piece;clone;suppr;image;nom »), dont l'état commence par
+// « carte;x;y; ».
+// ═══════════════════════════════════════════════════════════════
+function _splitUnescaped(s, sep){
+  const out = []; let cur = '';
+  for(let i = 0; i < s.length; i++){
+    if(s[i] === '\\' && i+1 < s.length){ cur += s[i] + s[i+1]; i++; continue; }
+    if(s[i] === sep){ out.push(cur); cur = ''; continue; }
+    cur += s[i];
+  }
+  out.push(cur);
+  return out;
+}
+
+// TYPE et ÉTAT ont toujours le même nombre de champs tabulés : on
+// cherche la frontière qui les équilibre, certains traits contenant un
+// « / » non échappé.
+function _splitTypeState(seg){
+  const parts = _splitUnescaped(seg, '/');
+  if(parts.length < 4) return null;
+  for(let k = parts.length - 1; k > 2; k--){
+    const typ = parts.slice(2, k).join('/').split('\t');
+    const eta = parts.slice(k).join('/').split('\t');
+    if(typ.length === eta.length) return {typ, eta};
+  }
+  return null;
+}
+
+// Les deux moitiés brutes d'un segment, telles qu'on les réécrit.
+// Le type se termine au BasicPiece ; le « / » qui suit est le séparateur.
+function _typeEtEtat(seg){
+  if(!seg) return null;
+  const m = seg.match(/piece;[^;]*;[^;]*;[^;]*;[^\\\t]*\//);
+  if(!m) return null;
+  const debut = seg.indexOf('/', 2) + 1;
+  return {type: seg.substring(debut, m.index + m[0].length - 1),
+          etat: seg.substring(m.index + m[0].length)};
+}
+
+// Couches d'images (traits emb2 / Embellishment). L'état est le niveau :
+// positif la couche est dessinée, négatif elle est en sommeil.
+function _parseLayers(ts){
+  const out = [];
+  if(!ts) return out;
+  for(let i = 0; i < ts.typ.length; i++){
+    if(!/^emb2;/.test(ts.typ[i])) continue;
+    const ch = ts.typ[i].split(';');
+    let liste = ch.find(c => /\.(svg|gif|png)/i.test(c));
+    if(!liste) liste = ch.find(c => /(^|,)\s*\\?[A-Za-z]{2}\\?\/[\w()+.-]+/.test(c));
+    if(!liste) continue;
+    const images = liste.replace(/\\/g,'').split(',').map(s => s.trim());
+    const iL = ch.indexOf(liste);
+    const dx = parseInt(ch[iL-2], 10), dy = parseInt(ch[iL-1], 10);
+    const niveau = parseInt((ts.eta[i] || '').replace(/\\+$/,'').trim(), 10);
+    out.push({images, dx: isNaN(dx) ? 0 : dx, dy: isNaN(dy) ? 0 : dy,
+      niveau: isNaN(niveau) ? 0 : Math.abs(niveau), actif: !isNaN(niveau) && niveau > 0});
+  }
+  return out;
+}
+
+const _imgCouche = e => e.images[Math.max(0, Math.min(e.images.length-1, e.niveau-1))];
+
+// Visage du pion : la couche active la plus externe qui porte un pion
+// complet (dossier de nationalité en minuscules : ge/, am/…). Les
+// dossiers ML/ et MS/ sont des marqueurs, superposés par-dessus.
+function _faceFromLayers(etats){
+  for(const e of etats){
+    if(!e.actif || !e.images.length) continue;
+    const img = _imgCouche(e);
+    if(img && /^[a-z]{2}\//.test(img)) return img;
+  }
+  for(const e of etats){
+    if(!e.actif) continue;
+    const img = _imgCouche(e);
+    if(img && img.trim()) return img;
+  }
+  return null;
+}
+
+// Trait d'un type donné : son type et son état, ou null.
+function _trait(ts, re){
+  if(!ts) return null;
+  for(let i = 0; i < ts.typ.length; i++)
+    if(re.test(ts.typ[i].replace(/\\/g,''))) return {t: ts.typ[i].replace(/\\/g,''), e: (ts.eta[i] || '').replace(/\\/g,'')};
+  return null;
+}
+
+// Tout ce que l'affichage tire d'un segment AddPiece.
+function lirePiece(seg){
+  const ts = _splitTypeState(seg);
+  const etatBP = seg.substring(seg.lastIndexOf('\t') + 1);
+  const sm = etatBP.match(/^([^;]*);(-?\d+);(-?\d+);/);
+  let img = '', nom = '';
+  const pm = seg.match(/piece;[^;]*;[^;]*;([^;]*);([^;\/\t]*)/);
+  if(pm){ img = pm[1].replace(/\\/g,'').trim(); nom = pm[2].replace(/\\/g,'').trim(); }
+  const couches = _parseLayers(ts);
+  if(!img) img = _faceFromLayers(couches) || '';
+  // Orientation : facette courante d'un trait rotate, en degrés.
+  let rot = 0;
+  const r = _trait(ts, /^rotate;\d+;/);
+  if(r){
+    const faces = parseInt(r.t.split(';')[1], 10) || 6;
+    const v = parseInt(r.e, 10);
+    if(!isNaN(v)) rot = Math.round((v % faces) * (360 / faces));
+  }
+  // Dissimulation : l'état du trait conceal porte l'identifiant du joueur
+  // qui a masqué la pièce, et son type l'image affichée à sa place.
+  const c = _trait(ts, /^conceal;/);
+  const masque = c && c.e.split(';')[0].trim() && c.e.split(';')[0].trim() !== 'null'
+    ? ((c.t.split(';')[2] || '').trim() || '?') : null;
+  // HIP (trait Hideable « hide ») : la pièce n'est pas visible du tout.
+  const h = _trait(ts, /^hide;/);
+  const hip = !!(h && h.e.split(';')[0].trim() && h.e.split(';')[0].trim() !== 'null');
+  return {
+    uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
+    carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
+    img, nom: nom || img.split('/').pop(), couches, rot, masque, hip
+  };
+}
+
+// ── Images des pions, tirées du dépôt VASL.
+// Les SVG VASL déclarent width/height sans viewBox : sans lui ils ne se
+// mettent pas à l'échelle. Leur silhouette, en lien relatif, est
+// incorporée ; leurs polices Nimbus remplacées par une pile système.
+const VASL_IMAGES_URL =
+  'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/images/';
+const _imgCache = new Map();      // chemin → Promise<URL de Blob | null>
+
+function _ensureViewBox(svg){
+  const m = svg.match(/<svg\b[^>]*>/i);
+  if(!m || /\bviewBox\s*=/i.test(m[0])) return svg;
+  const w = (m[0].match(/\bwidth\s*=\s*"([\d.]+)/i) || [])[1];
+  const hh = (m[0].match(/\bheight\s*=\s*"([\d.]+)/i) || [])[1];
+  if(!w || !hh) return svg;
+  return svg.replace(m[0], m[0].replace(/<svg\b/i, `<svg viewBox="0 0 ${w} ${hh}"`));
+}
+
+function chargerImage(path){
+  if(!path) return Promise.resolve(null);
+  if(!_imgCache.has(path)) _imgCache.set(path, _chargerImage(path));
+  return _imgCache.get(path);
+}
+
+async function _chargerImage(path){
+  try {
+    let r = await fetch(VASL_IMAGES_URL + path);
+    // Certains pions n'existent qu'en SVG, d'autres qu'en GIF.
+    if(!r.ok && /\.(svg|gif)$/i.test(path)){
+      const autre = /\.svg$/i.test(path) ? path.replace(/\.svg$/i, '.gif') : path.replace(/\.gif$/i, '.svg');
+      const r2 = await fetch(VASL_IMAGES_URL + autre);
+      if(r2.ok){ r = r2; path = autre; }
+    }
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    if(!/\.svg$/i.test(path)){
+      const mime = /\.gif$/i.test(path) ? 'image/gif' : /\.png$/i.test(path) ? 'image/png' : 'image/jpeg';
+      return URL.createObjectURL(new Blob([await r.arrayBuffer()], {type: mime}));
+    }
+    let svg = await r.text();
+    svg = svg.replace(/@font-face\s*\{[^}]*\}/g, '')
+             .replace(/font-family\s*:\s*Nimbus Sans L/g, 'font-family:Helvetica,Arial,sans-serif');
+    const dir = path.substring(0, path.lastIndexOf('/') + 1);
+    const sil = svg.match(/href="(\.\/)?(svg\/[^"]+\.(?:png|svg|gif))"/i);
+    if(sil){
+      const ref = sil[0].slice(6, -1), rel = sil[2];
+      const ext = rel.split('.').pop().toLowerCase();
+      const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'gif' ? 'image/gif' : 'image/png';
+      try {
+        const pr = await fetch(VASL_IMAGES_URL + dir + rel);
+        if(!pr.ok) throw 0;
+        const buf = new Uint8Array(await pr.arrayBuffer());
+        let bin = '';
+        for(let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+        svg = svg.split(ref).join('data:' + mime + ';base64,' + btoa(bin));
+      } catch(e){
+        svg = svg.replace(/<image[^>]*href="\.?\/?svg\/[^"]*"[^>]*\/?>/g, '');
+      }
+    }
+    return URL.createObjectURL(new Blob([_ensureViewBox(svg)], {type: 'image/svg+xml'}));
+  } catch(e){
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PIONS SUR LA CARTE
+// Chaque pion garde son segment VASSAL complet : ses traits ne sont pas
+// reconstructibles depuis l'affichage, et c'est ce segment, position
+// mise à jour, que l'export réécrit.
+//   seg     « +/uid/TYPE/ÉTAT » courant
+//   x, y    position en pixels VASL natifs
+//   ordre   rang dans la pile, du fond vers le sommet
+// ═══════════════════════════════════════════════════════════════
+const STACK_DX = 4, STACK_DY = -4;    // décalage d'empilement, à l'écran
+let pions = [];
+let _pileSel = null;                  // clé de la pile sélectionnée
+let _source = null;                   // segments de l'état chargé
+let _carteJeu = 'Main Map';           // nom VASSAL de la carte de jeu
+let _annexes = new Map();
+let _nomFichier = 'partie';
+let _coucheParUid = new Map();        // uid → couche (@@n) de sa pile d'origine
+let _uidSeq = 0;
+
+const cle = p => p.x + ',' + p.y;
+const vivants = () => pions.filter(p => !p.deleted);
+function pile(k){
+  return vivants().filter(p => cle(p) === k).sort((a, b) => a.ordre - b.ordre);
+}
+function nouvelUid(){ return String(Date.now()) + String(++_uidSeq); }
+
+function _majPosEtat(etat, carte, x, y){
+  const t = etat.lastIndexOf('\t');
+  const f = etat.substring(t + 1).split(';');
+  if(f.length < 3) return etat;
+  f[0] = carte; f[1] = String(x); f[2] = String(y);
+  return etat.substring(0, t + 1) + f.join(';');
+}
+
+// Réécrit la position dans le segment du pion.
+function _majSeg(p){
+  const te = _typeEtEtat(p.seg);
+  if(!te) return;
+  p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, _carteJeu, p.x, p.y);
+}
+
+function creerPion(seg, ordre){
+  const d = lirePiece(seg);
+  const el = document.createElement('div');
+  el.className = 'pion';
+  const face = document.createElement('img');
+  el.appendChild(face);
+  const p = {id: pions.length, uid: d.uid, seg, x: d.x, y: d.y, ordre, nom: d.nom,
+             el, face, sz: Math.round(48 * SC), deleted: false};
+  pions.push(p);
+  el.addEventListener('pointerdown', e => _pionPointerDown(e, p));
+  document.getElementById('mapInner').appendChild(el);
+  majApparence(p, d);
+  return p;
+}
+
+// Face, surimpressions et orientation, d'après le segment courant.
+async function majApparence(p, d){
+  d = d || lirePiece(p.seg);
+  p.nom = d.nom;
+  p.el.title = d.masque ? 'Pion dissimulé' : d.nom;
+  p.el.style.display = d.hip ? 'none' : '';
+  p.cache = d.hip;
+  const imgFace = d.masque || d.img;
+  const url = d.masque === '?' ? _pionInconnu() : await chargerImage(imgFace);
+  p.el.querySelectorAll('img.couche').forEach(e => e.remove());
+  if(url){
+    p.face.src = url;
+    await p.face.decode().catch(() => {});
+    // Taille propre au pion : 48 px pour un 1/2", 60 px pour un 5/8".
+    if(p.face.naturalWidth) p.sz = Math.round(p.face.naturalWidth * SC);
+  } else {
+    p.face.removeAttribute('src');
+    p.el.style.background = '#b81414';
+    p.el.title = `${d.nom} — image introuvable : ${imgFace || '?'}`;
+  }
+  p.face.style.transform = d.rot ? `rotate(${d.rot}deg)` : '';
+  // Les couches de marqueur (ML/, MS/…) se superposent au visage ; une
+  // image de nationalité est une autre face du pion, pas une surimpression.
+  if(!d.masque){
+    for(const c of d.couches){
+      if(!c.actif) continue;
+      const im = _imgCouche(c);
+      if(!im || !im.trim() || im === d.img || /^[a-z]{2}\//.test(im) || /^ovr/i.test(im)) continue;
+      const u = await chargerImage(im);
+      if(!u) continue;
+      const o = document.createElement('img');
+      o.className = 'couche';
+      o.src = u;
+      if(c.dx || c.dy) o.style.transform = `translate(${c.dx*SC}px,${c.dy*SC}px)`;
+      p.el.appendChild(o);
+    }
+  }
+  rendrePile(cle(p));
+}
+
+// « ? » neutre, pour une pièce dissimulée dont le trait ne nomme pas
+// d'image de masque : on ne montre jamais la face cachée.
+function _pionInconnu(){
+  return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" '
+    + 'width="48" height="48"><rect width="48" height="48" rx="3" fill="#555" stroke="#111"/>'
+    + '<text x="24" y="33" font-family="Arial" font-size="26" font-weight="bold" '
+    + 'fill="#fff" text-anchor="middle">?</text></svg>');
+}
+
+function rendrePile(k){
+  const s = pile(k).filter(p => !p.cache);
+  s.forEach((p, i) => {
+    p.el.style.width = p.el.style.height = p.sz + 'px';
+    p.el.style.left = (p.x * SC - p.sz/2 + i*STACK_DX) + 'px';
+    p.el.style.top  = (p.y * SC - p.sz/2 + i*STACK_DY) + 'px';
+    p.el.style.zIndex = 10 + i;
+    p.el.classList.toggle('sel', k === _pileSel);
+  });
+}
+
+function _etendreCarte(){
+  let w = _mapW, h = _mapH;
+  for(const p of vivants()){
+    w = Math.max(w, Math.ceil(p.x * SC + 80));
+    h = Math.max(h, Math.ceil(p.y * SC + 80));
+  }
+  if(w > _mapW || h > _mapH) _setMapSize(w, h);
+}
+
+// ═══ IMPORT ═══
+// Les piles VASSAL sont des pièces « stack » dont l'état liste les
+// identifiants du fond vers le sommet : +/<uid>/stack/Main Map;x;y;id0;…;@@couche
+function _parseStacks(segs){
+  const rangs = new Map();
+  _coucheParUid = new Map();
+  for(const seg of segs){
+    if(!/^\+\/[^/]+\/stack\//.test(seg)) continue;
+    const ch = seg.substring(seg.indexOf('/stack/') + 7).replace(/\\/g, '').split(';');
+    const ids = ch.slice(3).filter(c => c && !c.startsWith('@@'));
+    const at = ch.slice(3).find(c => c.startsWith('@@'));
+    const couche = at ? parseInt(at.substring(2), 10) : -1;
+    ids.forEach((u, i) => { rangs.set(u, i); _coucheParUid.set(u, Number.isFinite(couche) ? couche : -1); });
+  }
+  return rangs;
+}
+
+// La carte de jeu porte le nom par défaut de VASSAL ; à défaut, la plus
+// peuplée hors fenêtres auxiliaires (Casualties, Scenario Aid…).
+function _carteDeJeu(infos){
+  const tally = {};
+  for(const d of infos) if(d.carte && d.carte !== 'null') tally[d.carte] = (tally[d.carte] || 0) + 1;
+  const noms = Object.keys(tally);
+  const std = ['Main Map', 'Carte principale'].find(n => tally[n]);
+  if(std) return std;
+  const AUX = /Casualties|Field Maintenance|Campaign Roster|Scenario Aid|Charts?|Reference|Dice|Roster|Aid Card/i;
+  const jeu = noms.filter(n => !AUX.test(n));
+  return (jeu.length ? jeu : noms).sort((a, b) => tally[b] - tally[a])[0] || 'Main Map';
+}
+
+function importerPions(texte, label, annexes){
+  for(const p of pions) p.el.remove();
+  pions = []; _pileSel = null; afficherPile();
+  const segs = texte.split('\x1b');
+  // L'état de la partie précède le premier « LOG » ; la suite, dans un
+  // .vlog, ce sont les coups.
+  let iLog = segs.findIndex(s => s.startsWith('LOG\t'));
+  if(iLog < 0) iLog = segs.length;
+  _source = segs.slice(0, iLog).filter(s => !s.startsWith('UNDO'));
+  _annexes = annexes || new Map();
+  _nomFichier = label.replace(/\.(vsav|vlog)$/i, '');
+
+  const rangs = _parseStacks(_source);
+  const candidats = [];
+  _source.forEach((seg, i) => {
+    if(!seg.startsWith('+/') || /^\+\/[^/]+\/stack\//.test(seg)) return;
+    const d = lirePiece(seg);
+    if(d.carte !== null) candidats.push({seg, d, i});
+  });
+  _carteJeu = _carteDeJeu(candidats.map(c => c.d));
+  let n = 0;
+  for(const c of candidats){
+    if(c.d.carte !== _carteJeu) continue;     // autres fenêtres : réécrites telles quelles
+    creerPion(c.seg, rangs.has(c.d.uid) ? rangs.get(c.d.uid) : 1000 + c.i);
+    n++;
+  }
+  const caches = vivants().filter(p => p.cache).length;
+  chatLog(`♟️ ${n} pion(s) sur « ${_carteJeu} »` + (caches ? ` dont ${caches} HIP, non affiché(s)` : ''));
+
+  const coups = rejouerLog(segs.slice(iLog));
+  if(coups) chatLog(`🎬 .vlog rejoué jusqu'au bout : ${coups} commande(s)`);
+  _etendreCarte();
+  new Set(vivants().map(cle)).forEach(rendrePile);
+
+  // Enregistrement armé d'emblée : l'état de départ du .vlog est figé au
+  // premier coup joué.
+  _logEnr = []; _logDepart = null;
+  majBoutons();
+}
+
+// ═══ RELECTURE D'UN .vlog ═══
+// Commandes de BasicCommandEncoder, séparateur « / » :
+//   +/id/type/état · -/id · D/id/nouvelÉtat/ancienÉtat
+//   M/id/carte/x/y/dessous/carteAnc/xAnc/yAnc/dessousAnc/joueur
+// Les sous-commandes d'un coup composé suivent leur « LOG » dans des
+// segments à part : tout segment de la zone de log est donc examiné.
+function _decoupeCmd(s){
+  const out = []; let cur = '', q = false;
+  for(let i = 0; i < s.length; i++){
+    const c = s[i];
+    if(c === '\\' && i+1 < s.length){ cur += c + s[i+1]; i++; continue; }
+    if(c === "'" && (cur === '' || q)){ q = !q; continue; }
+    if(c === '/' && !q){ out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+const _nul = v => (v === 'null' || v === '' ? null : v);
+const parUid = uid => pions.find(p => p.uid === uid && !p.deleted);
+
+function rejouerLog(segs){
+  let n = 0;
+  for(let s of segs){
+    if(s.startsWith('LOG\t')) s = s.substring(4);
+    s = s.replace(/\\+$/, '');
+    if(s.startsWith('+/')){
+      if(/^\+\/[^/]+\/stack\//.test(s)) continue;
+      const d = lirePiece(s);
+      if(!parUid(d.uid)){ creerPion(s, 1e9); n++; }
+    } else if(s.startsWith('-/')){
+      const p = parUid(s.substring(2));
+      if(p){ p.deleted = true; p.el.remove(); n++; }
+    } else if(s.startsWith('D/')){
+      const t = _decoupeCmd(s.substring(2));
+      const p = parUid(_nul(t[0]));
+      const te = p && _typeEtEtat(p.seg);
+      if(te && t[1]){
+        p.seg = '+/' + p.uid + '/' + te.type + '/' + t[1];
+        const d = lirePiece(p.seg);
+        if(d.carte === _carteJeu){ p.x = d.x; p.y = d.y; }
+        majApparence(p, d);
+        n++;
+      }
+    } else if(s.startsWith('M/')){
+      const t = _decoupeCmd(s.substring(2));
+      const p = parUid(_nul(t[0]));
+      if(!p || t.length < 5) continue;
+      if(t[1] !== _carteJeu){ p.deleted = true; p.el.remove(); n++; continue; }
+      p.x = parseInt(t[2], 10); p.y = parseInt(t[3], 10);
+      _empiler(p, parUid(_nul(t[4])));
+      _majSeg(p);
+      n++;
+    }
+  }
+  return n;
+}
+
+// Range p juste au-dessus de « dessous » dans sa pile, ou au fond.
+function _empiler(p, dessous){
+  const s = pile(cle(p)).filter(q => q !== p);
+  const i = dessous && s.includes(dessous) ? s.indexOf(dessous) + 1 : (dessous ? s.length : 0);
+  s.splice(i, 0, p);
+  s.forEach((q, k) => { q.ordre = k; });
+}
+
+// ═══ JEU : DÉPLACER, POSER, RETIRER ═══
+// Chaque action est appliquée puis consignée au log, comme VASSAL :
+// un M/ par pion déplacé, du fond vers le sommet, chacun désignant la
+// pièce qui doit se trouver dessous.
+function _avantAction(){
+  if(_logEnr && !_logDepart) _logDepart = etatPartie();
+}
+
+function _dessous(p){
+  const s = pile(cle(p));
+  const i = s.indexOf(p);
+  return i > 0 ? s[i-1].uid : 'null';
+}
+
+// Position finale d'un lâcher : l'ancrage d'hexagone, ou une pile déjà
+// là — les piles d'un fichier VASL ne tombent pas toujours au pixel
+// près sur nos centres calculés.
+function positionDepot(x, y){
+  const a = ancragePlusProche(x, y) || {x: Math.round(x), y: Math.round(y)};
+  let best = null, bd = 12*12;
+  for(const p of vivants()){
+    const d = (p.x-a.x)*(p.x-a.x) + (p.y-a.y)*(p.y-a.y);
+    if(d < bd){ bd = d; best = p; }
+  }
+  return best ? {x: best.x, y: best.y, label: a.label} : a;
+}
+
+function deplacer(liste, x, y){
+  if(!liste.length) return;
+  _avantAction();
+  const pos = positionDepot(x, y);
+  const avant = liste.map(p => ({p, x: p.x, y: p.y, sous: _dessous(p), k: cle(p)}));
+  const kArr = pos.x + ',' + pos.y;
+  let haut = Math.max(-1, ...pile(kArr).filter(q => !liste.includes(q)).map(q => q.ordre));
+  for(const p of liste){ p.x = pos.x; p.y = pos.y; p.ordre = ++haut; }
+  for(const a of avant){
+    _majSeg(a.p);
+    _logCmd(`M/${a.p.uid}/${_carteJeu}/${a.p.x}/${a.p.y}/${_dessous(a.p)}`
+          + `/${_carteJeu}/${a.x}/${a.y}/${a.sous}/web`);
+  }
+  new Set([...avant.map(a => a.k), kArr]).forEach(rendrePile);
+  selectionnerPile(kArr);
+  chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
+}
+
+function retirer(p){
+  _avantAction();
+  const k = cle(p);
+  p.deleted = true; p.el.remove();
+  _logCmd('-/' + p.uid);
+  rendrePile(k); afficherPile();
+  chatLog(`✖️ ${p.nom} retiré`);
+}
+
+// Monte (+1) ou descend (-1) un pion dans sa pile.
+function changerRang(p, sens){
+  const s = pile(cle(p));
+  const i = s.indexOf(p), j = i + sens;
+  if(j < 0 || j >= s.length) return;
+  _avantAction();
+  const avant = _dessous(p);
+  [s[i], s[j]] = [s[j], s[i]];
+  s.forEach((q, k) => { q.ordre = k; });
+  _logCmd(`M/${p.uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/${_carteJeu}/${p.x}/${p.y}/${avant}/web`);
+  rendrePile(cle(p)); afficherPile();
+}
+
+// Pose un pion de la palette : le type VASSAL vient du PieceSlot, l'état
+// initial aussi (il porte déjà le gpid). VASL procède en deux temps — la
+// pièce naît sans position, puis un M/ la place au sommet de la pile.
+function poserDepuisPalette(x, cx, cy){
+  if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le pion doit rejoindre une carte VASL.'); return; }
+  const te = _typeEtEtat(x.cmd);
+  if(!te){ chatLog(`⚠️ ${x.n} : définition VASSAL illisible`); return; }
+  _avantAction();
+  const pos = positionDepot(cx, cy);
+  const uid = nouvelUid();
+  const p = creerPion('+/' + uid + '/' + te.type + '/' + _majPosEtat(te.etat, _carteJeu, pos.x, pos.y), 0);
+  p.ordre = Math.max(-1, ...pile(cle(p)).filter(q => q !== p).map(q => q.ordre)) + 1;
+  p.neuf = true;
+  _logCmd('+/' + uid + '/' + te.type + '/' + _majPosEtat(te.etat, 'null', 0, 0));
+  _logCmd(`M/${uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/null/0/0/null/web`);
+  rendrePile(cle(p));
+  selectionnerPile(cle(p));
+  chatLog(`➕ ${x.n} posé en ${pos.label || cle(p)}`);
+}
+
+// ── Geste sur un pion : glisser déplace toute la pile, un simple clic
+// la sélectionne. Un pion seul se tire depuis la liste de la pile.
+function _pionPointerDown(e, p){
+  e.stopPropagation();
+  if(e.button > 0) return;
+  const k = cle(p);
+  glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
+    const c = clientVersCarte(cx, cy);
+    if(c) deplacer(pile(k), c.x, c.y);
+  }, () => selectionnerPile(k));
+}
+
+// Glisser générique avec fantôme : la capture est prise sur le document,
+// faute de quoi le geste se perd en quittant l'élément de départ.
+function glisser(e, src, taille, auLacher, auClic){
+  const x0 = e.clientX, y0 = e.clientY;
+  let fantome = null, cible = null;
+  const bouge = ev => {
+    if(!fantome && Math.hypot(ev.clientX-x0, ev.clientY-y0) < 8) return;
+    ev.preventDefault();
+    if(!fantome){
+      fantome = document.createElement('img');
+      fantome.className = 'fantome';
+      if(src) fantome.src = src;
+      fantome.style.width = fantome.style.height = Math.max(24, taille) + 'px';
+      document.body.appendChild(fantome);
+      cible = document.createElement('div');
+      cible.className = 'cible';
+      document.getElementById('mapInner').appendChild(cible);
+    }
+    fantome.style.left = (ev.clientX - fantome.offsetWidth/2) + 'px';
+    fantome.style.top  = (ev.clientY - fantome.offsetHeight/2) + 'px';
+    const c = clientVersCarte(ev.clientX, ev.clientY);
+    const a = c && positionDepot(c.x, c.y);
+    cible.style.display = a ? '' : 'none';
+    if(a){ cible.style.left = a.x*SC + 'px'; cible.style.top = a.y*SC + 'px'; }
+  };
+  const fin = ev => {
+    document.removeEventListener('pointermove', bouge);
+    document.removeEventListener('pointerup', fin);
+    document.removeEventListener('pointercancel', fin);
+    if(fantome){
+      fantome.remove(); cible.remove();
+      if(ev.type === 'pointerup') auLacher(ev.clientX, ev.clientY);
+    } else if(ev.type === 'pointerup' && auClic) auClic();
+  };
+  document.addEventListener('pointermove', bouge);
+  document.addEventListener('pointerup', fin);
+  document.addEventListener('pointercancel', fin);
+}
+
+// Point de l'écran → pixels VASL natifs, ou null hors de la carte.
+function clientVersCarte(cx, cy){
+  const wr = document.getElementById('mapWrap').getBoundingClientRect();
+  if(cx < wr.left || cx > wr.right || cy < wr.top || cy > wr.bottom) return null;
+  const mr = document.getElementById('mapInner').getBoundingClientRect();
+  return {x: (cx - mr.left) / zoom / SC, y: (cy - mr.top) / zoom / SC};
+}
+
+// ── Panneau de la pile sélectionnée, du sommet vers le fond.
+function selectionnerPile(k){
+  const ancien = _pileSel;
+  _pileSel = k;
+  if(ancien) rendrePile(ancien);
+  if(k) rendrePile(k);
+  afficherPile();
+}
+
+function afficherPile(){
+  const box = document.getElementById('pile');
+  box.innerHTML = '';
+  if(!_pileSel) return;
+  const s = pile(_pileSel).filter(p => !p.cache).reverse();
+  for(const p of s){
+    const l = document.createElement('div');
+    l.className = 'lig';
+    l.title = 'Glisser vers la carte pour déplacer ce pion seul';
+    const im = document.createElement('img');
+    if(p.face.src) im.src = p.face.src;
+    const t = document.createElement('span');
+    t.textContent = p.el.title || p.nom;
+    l.append(im, t);
+    for(const [txt, titre, f] of [['▲', 'Monter', () => changerRang(p, +1)],
+                                  ['▼', 'Descendre', () => changerRang(p, -1)],
+                                  ['✕', 'Retirer de la carte', () => retirer(p)]]){
+      const b = document.createElement('button');
+      b.textContent = txt; b.title = titre;
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      b.addEventListener('click', f);
+      l.appendChild(b);
+    }
+    l.addEventListener('pointerdown', e => glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
+      const c = clientVersCarte(cx, cy);
+      if(c) deplacer([p], c.x, c.y);
+    }));
+    box.appendChild(l);
+  }
+}
+
+function basculerCote(){ document.getElementById('cote').classList.toggle('ferme'); }
+
+// ═══════════════════════════════════════════════════════════════
+// BASE DE DONNÉES DES PIONS — le buildFile du module VASL
+// Chaque PieceSlot y donne le nom, le gpid et la définition VASSAL
+// complète du pion (« +/null/TYPE/ÉTAT »), celle-là même que VASL écrit
+// quand on tire un pion de sa palette. On la lit une fois, à la première
+// ouverture de la palette.
+// ═══════════════════════════════════════════════════════════════
+const VASL_BUILDFILE_URL =
+  'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/buildFile';
+const FENETRES_PALETTE = ['VASL Counters', '?'];
+let _bdd = null, _bddPromesse = null;
+
+function chargerBDD(){
+  if(!_bddPromesse) _bddPromesse = _chargerBDD().catch(e => {
+    _bddPromesse = null;
+    chatLog('❌ Base de données VASL indisponible : ' + e.message);
+    throw e;
+  });
+  return _bddPromesse;
+}
+
+async function _chargerBDD(){
+  chatLog('⏳ Lecture de la base de données des pions VASL…');
+  const r = await fetch(VASL_BUILDFILE_URL);
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const doc = new DOMParser().parseFromString(await r.text(), 'application/xml');
+  const mod = doc.documentElement;
+  const cats = [], slots = [], idxCat = new Map();
+  const parcourir = (el, chemin) => {
+    for(const c of el.children){
+      const tag = c.tagName.split('.').pop();
+      if(tag === 'PieceSlot'){
+        const ch = chemin.join(' / ');
+        if(!idxCat.has(ch)){ idxCat.set(ch, cats.length); cats.push(ch); }
+        slots.push({n: c.getAttribute('entryName') || '?', g: c.getAttribute('gpid'),
+                    c: idxCat.get(ch), cmd: (c.textContent || '').trim()});
+      } else {
+        const n = c.getAttribute('entryName') || c.getAttribute('name') || '';
+        parcourir(c, n ? [...chemin, n] : chemin);
+      }
+    }
+  };
+  for(const w of mod.children){
+    if(w.tagName.split('.').pop() !== 'PieceWindow') continue;
+    const nom = w.getAttribute('name');
+    if(FENETRES_PALETTE.includes(nom)) parcourir(w, nom === '?' ? ['?'] : []);
+  }
+  _bdd = {cats, pions: slots, version: mod.getAttribute('version')};
+  chatLog(`📚 Base VASL ${_bdd.version} : ${slots.length} pions, ${cats.length} catégories`);
+  return _bdd;
+}
+
+// Image représentative d'un PieceSlot, calculée à la demande.
+function imageSlot(x){
+  if(x.img === undefined) x.img = lirePiece(x.cmd.replace(/^\+\/null\//, '+/0/')).img || null;
+  return x.img;
+}
+
+let _palOuverte = null, _palFiltre = '';
+
+async function dessinerPalette(){
+  const box = document.getElementById('palCorps');
+  if(!_bdd){
+    box.innerHTML = '<div style="padding:8px;color:var(--doux)">Chargement de la base VASL…</div>';
+    try { await chargerBDD(); } catch(e){ box.innerHTML = '<div style="padding:8px">Base indisponible.</div>'; return; }
+  }
+  const B = _bdd;
+  box.innerHTML = '';
+  if(_palFiltre){
+    const t = B.pions.filter(x => x.n.toLowerCase().includes(_palFiltre)).slice(0, 200);
+    const info = document.createElement('div');
+    info.style.cssText = 'opacity:.6;margin:4px 0';
+    info.textContent = t.length + ' pion(s)' + (t.length === 200 ? ' (200 premiers)' : '');
+    box.appendChild(info);
+    box.appendChild(remplirGrille(t));
+    return;
+  }
+  const parCat = new Map();
+  for(const x of B.pions){
+    if(!parCat.has(x.c)) parCat.set(x.c, []);
+    parCat.get(x.c).push(x);
+  }
+  for(const [ci, liste] of parCat){
+    const t = document.createElement('div');
+    t.className = 'cat';
+    t.innerHTML = `<span class="n">${_palOuverte === ci ? '▾' : '▸'}</span> `;
+    t.append(B.cats[ci] || '—');
+    const n = document.createElement('span');
+    n.className = 'n'; n.textContent = ` (${liste.length})`;
+    t.appendChild(n);
+    t.addEventListener('click', () => { _palOuverte = _palOuverte === ci ? null : ci; dessinerPalette(); });
+    box.appendChild(t);
+    if(_palOuverte === ci) box.appendChild(remplirGrille(liste));
+  }
+}
+
+function remplirGrille(liste){
+  const g = document.createElement('div');
+  g.className = 'grille';
+  for(const x of liste){
+    const d = document.createElement('div');
+    d.className = 'vig';
+    d.title = `${x.n}  (gpid ${x.g})`;
+    const im = document.createElement('img');
+    im.alt = '';
+    d.appendChild(im);
+    g.appendChild(d);
+    chargerImage(imageSlot(x)).then(u => { if(u) im.src = u; });
+    // Glisser vers la carte, ou clic : pose au centre de la vue.
+    d.addEventListener('pointerdown', e => glisser(e, im.src, 48 * SC * zoom, (cx, cy) => {
+      const c = clientVersCarte(cx, cy);
+      if(c) poserDepuisPalette(x, c.x, c.y);
+      else chatLog('Lâché hors de la carte : rien posé');
+    }, () => {
+      const wr = document.getElementById('mapWrap').getBoundingClientRect();
+      const c = clientVersCarte(wr.left + wr.width/2, wr.top + wr.height/2);
+      if(c) poserDepuisPalette(x, c.x, c.y);
+    }));
+  }
+  return g;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EXPORT .vsav ET .vlog
+// On repart des segments du fichier chargé : seules changent les
+// positions, les piles de la carte de jeu, les pions retirés et ceux
+// posés depuis la palette. Tout le reste — boards, autres fenêtres,
+// options — est réécrit mot pour mot.
+// ═══════════════════════════════════════════════════════════════
+let _logEnr = null;       // commandes jouées depuis l'ouverture
+let _logDepart = null;    // état de la partie avant le premier coup
+
+function _logCmd(c){
+  if(!_logEnr) return;
+  _logEnr.push(c);
+  majBoutons();
+}
+
+function majBoutons(){
+  document.getElementById('btVsav').disabled = !_source;
+  document.getElementById('btVlog').disabled = !(_logEnr && _logEnr.length);
+  document.getElementById('logTxt').textContent = _logEnr && _logEnr.length ? '⏺ ' + _logEnr.length : '';
+}
+
+// Piles de la carte de jeu, d'après l'état courant. VASL écrit aussi les
+// piles d'un seul pion. La couche (@@n) est celle de la pièce du fond
+// dans le fichier d'origine, -1 (« non liée ») sinon.
+function _segmentsPiles(){
+  const out = [];
+  let n = 0;
+  for(const k of new Set(vivants().map(cle))){
+    const s = pile(k);
+    let couche = -1;
+    for(const p of s) if(_coucheParUid.has(p.uid)){ couche = _coucheParUid.get(p.uid); break; }
+    out.push(`+/w${Date.now()}${++n}/stack/${_carteJeu};${s[0].x};${s[0].y};`
+             + s.map(p => p.uid).join(';') + `;@@${couche}`);
+  }
+  return out;
+}
+
+function etatPartie(){
+  const parUidMap = new Map(pions.map(p => [p.uid, p]));
+  const sortie = [], connus = new Set();
+  for(const seg of _source){
+    if(/^\+\/[^/]+\/stack\//.test(seg)){
+      const mc = seg.replace(/\\/g, '').match(/\/stack\/([^;]+);/);
+      if(mc && mc[1] === _carteJeu) continue;          // régénérée
+      sortie.push(seg); continue;
+    }
+    const m = seg.match(/^\+\/([^/]+)\//);
+    const p = m && parUidMap.get(m[1]);
+    if(!p){ sortie.push(seg); continue; }
+    connus.add(p.uid);
+    if(!p.deleted) sortie.push(p.seg);
+  }
+  // Pions posés ou créés par le log : avant la fin de sauvegarde.
+  const neufs = vivants().filter(p => !connus.has(p.uid)).map(p => p.seg);
+  const ajout = [...neufs, ..._segmentsPiles()];
+  const iFin = sortie.lastIndexOf('end_save');
+  if(iFin >= 0) sortie.splice(iFin, 0, ...ajout); else sortie.push(...ajout);
+  return sortie;
+}
+
+function _telecharger(texte, nom){
+  const files = new Map([['savedGame', _vcskEncode(texte)]]);
+  for(const [n, d] of _annexes) files.set(n, d);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(_zipWrite(files));
+  a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function _nomExport(ext){
+  const d = new Date();
+  const j = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+  return `${_nomFichier}_${j}.${ext}`;
+}
+
+function ecrireVsav(){
+  if(!_source) return false;
+  _telecharger(etatPartie().join('\x1b'), _nomExport('vsav'));
+  chatLog(`💾 .vsav écrit : ${vivants().length} pion(s) sur « ${_carteJeu} »`);
+  return true;
+}
+
+// BasicLogger : état de départ, puis « LOG\t<commande> » par action.
+function ecrireVlog(){
+  if(!_logEnr || !_logEnr.length || !_logDepart){
+    chatLog('⚠️ Aucune action jouée depuis l\'ouverture : rien à rejouer dans VASL.');
+    return false;
+  }
+  _telecharger([..._logDepart, ..._logEnr.map(c => 'LOG\t' + c)].join('\x1b'), _nomExport('vlog'));
+  chatLog(`📼 .vlog écrit : ${_logEnr.length} action(s)`);
+  return true;
+}
+
+// ObfuscatingOutputStream : « !VCSK » + clé, puis les octets XOR-és en
+// hexadécimal minuscule, comme VASSAL.
+function _vcskEncode(texte){
+  const octets = new TextEncoder().encode(texte);
+  const k = 1 + Math.floor(Math.random() * 254);
+  const h = new Array(octets.length);
+  for(let i = 0; i < octets.length; i++) h[i] = ((octets[i] ^ k) & 0xFF).toString(16).padStart(2, '0');
+  return new TextEncoder().encode('!VCSK' + k.toString(16).padStart(2, '0') + h.join(''));
+}
+
+// ── Écriture ZIP en méthode STORED : format valide, lisible par VASSAL.
+let _crcTable = null;
+function _crc32(bytes){
+  if(!_crcTable){
+    _crcTable = new Uint32Array(256);
+    for(let i = 0; i < 256; i++){
+      let c = i;
+      for(let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      _crcTable[i] = c >>> 0;
+    }
+  }
+  let crc = 0xFFFFFFFF;
+  for(let i = 0; i < bytes.length; i++) crc = _crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function _zipWrite(files){
+  const enc = new TextEncoder();
+  const locals = [], centrals = [];
+  let offset = 0;
+  for(const [name, data] of files){
+    const nb = enc.encode(name), crc = _crc32(data), size = data.length;
+    const lh = new Uint8Array(30 + nb.length), lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, size, true); lv.setUint32(22, size, true);
+    lv.setUint16(26, nb.length, true);
+    lh.set(nb, 30);
+    locals.push(lh, data);
+    const cd = new Uint8Array(46 + nb.length), cv = new DataView(cd.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, size, true); cv.setUint32(24, size, true);
+    cv.setUint16(28, nb.length, true); cv.setUint32(42, offset, true);
+    cd.set(nb, 46);
+    centrals.push(cd);
+    offset += lh.length + size;
+  }
+  let cdSize = 0;
+  for(const c of centrals) cdSize += c.length;
+  const eo = new Uint8Array(22), ev = new DataView(eo.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, files.size, true); ev.setUint16(10, files.size, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+  return new Blob([...locals, ...centrals, eo], {type: 'application/octet-stream'});
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   _setupDropZone();
   _setupPanZoom();
+  const r = document.getElementById('palRech');
+  r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
+  if(window.innerWidth < 700) basculerCote();
+  dessinerPalette();
 });
 </script>
 </body>
