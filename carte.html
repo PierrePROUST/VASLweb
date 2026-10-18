@@ -106,8 +106,11 @@ button:disabled{opacity:.4;cursor:default}
 .wli.actif{background:#2f5f9e;color:#fff}
 .wboite{width:100%;margin:4px 0;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);padding:3px}
 .wtitre{font-weight:600;font-size:11px;color:var(--doux);margin:6px 0 2px}
-.etiq{position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;pointer-events:none;
-  font:bold 11px Arial,sans-serif;padding:0 2px;line-height:1.2;z-index:2}
+.etiq{position:absolute;white-space:nowrap;pointer-events:none;padding:0 1px;z-index:2}
+.editLabel{position:fixed;z-index:9700;display:flex;gap:4px;align-items:center;background:#f4f2ea;color:#111;
+  border:1px solid #333;border-radius:4px;padding:4px 6px;box-shadow:0 4px 14px rgba(0,0,0,.5);font-size:12px}
+.editLabel input{width:180px;padding:3px 5px;border:1px solid #888;border-radius:3px;font:inherit;font-size:13px}
+.editLabel button{background:#2f5f9e;color:#fff;border:none;padding:3px 8px}
 @media (max-width:700px){ #cote{position:absolute;right:0;top:44px;bottom:0;z-index:50;width:min(320px,90vw)} }
 </style>
 </head>
@@ -922,21 +925,48 @@ function _developperPrototypes(ts, prof){
 
 // Texte des traits Label (TextLabel) : l'état est le texte saisi.
 //   label;touche;menu;taille;couleur;fond;posV;décV;posH;décH;…
+// ── Labels (trait TextLabel de VASSAL, « label; ») :
+//   label;touche;menu;taille;fond;texte;posV;décV;posH;décH;justV;justH;
+//         format du nom;police;style;rotation;propriété;description
+// L'état est le texte saisi. Un pion en porte souvent plusieurs : Label,
+// Name des chefs (écrit à 270°), ROF, Gun, MH, Strength, Cloak ID…
+const _texteLabel = v => (v || '').replace(/\\+$/, '').replace(/\\(.)/g, '$1').trim();
+
 function _etiquettes(ts){
   const out = [];
   if(!ts) return out;
   for(let i = 0; i < ts.typ.length; i++){
     if(!/^label;/.test(ts.typ[i])) continue;
-    const texte = (ts.eta[i] || '').replace(/\\(.)/g, '$1').replace(/\\+$/, '').trim();
+    // Un label en HTML est rendu en texte brut : il vient du fichier.
+    const texte = _texteLabel(ts.eta[i]).replace(/<[^>]*>/g, '');
     if(!texte) continue;
     const ch = ts.typ[i].split(';');
     const rgb = v => /^\d+,\d+,\d+$/.test(v || '') ? `rgb(${v})` : null;
-    out.push({texte, taille: parseInt(ch[3], 10) || 10, couleur: rgb(ch[4]) || '#000',
-              fond: rgb(ch[5]), pos: ch[6] || 't'});
+    out.push({texte, taille: parseInt(ch[3], 10) || 10,
+              fond: rgb(ch[4]), couleur: rgb(ch[5]) || '#000',
+              posV: ch[6] || 't', decV: parseInt(ch[7], 10) || 0,
+              posH: ch[8] || 'c', decH: parseInt(ch[9], 10) || 0,
+              justV: ch[10] || 'b', justH: ch[11] || 'c',
+              police: ch[13] || 'Dialog', style: parseInt(ch[14], 10) || 0,
+              rotation: parseInt(ch[15], 10) || 0});
   }
   return out;
 }
 
+// Nom du pion, comme Labeler.getName() : chaque label non vide applique
+// son format (« $pieceName$ ($label$) ») au nom des traits intérieurs.
+function _nomAvecLabels(ts, nom){
+  if(!ts) return nom;
+  for(let i = ts.typ.length - 1; i >= 0; i--){
+    if(!/^label;/.test(ts.typ[i])) continue;
+    const texte = _texteLabel(ts.eta[i]);
+    if(!texte) continue;
+    const format = (ts.typ[i].split(';')[12] || '$pieceName$ ($label$)').replace(/\\(.)/g, '$1');
+    nom = format.replace(/\$pieceName\$/g, nom).replace(/\$label\$/g, texte)
+                .replace(/\$[^$]*\$/g, '').replace(/\(\s*\)/g, '').trim() || nom;
+  }
+  return nom;
+}
 // Marque « déplacé » (trait moved) : icône posée par son coin haut-gauche
 // au centre du pion, décalée de (dx, dy), comme MovementMarkable.
 function _deplace(ts){
@@ -982,6 +1012,7 @@ function lirePiece(seg){
   if(pm){ img = pm[1].replace(/\\/g,'').trim(); nom = pm[2].replace(/\\/g,'').trim(); }
   const couches = _parseLayers(ts);
   if(!img) img = _faceFromLayers(couches) || '';
+  nom = _nomAvecLabels(ts, nom || img.split('/').pop());
   // Orientation : facette courante d'un trait rotate, en degrés.
   let rot = 0;
   const r = _trait(ts, /^rotate;\d+;/);
@@ -1198,17 +1229,19 @@ async function majApparence(p, d){
     const e = document.createElement('div');
     e.className = 'couche etiq';
     e.textContent = t.texte;
-    e.style.fontSize = Math.round(t.taille * SC) + 'px';
+    const famille = /serif/i.test(t.police) && !/sans/i.test(t.police) ? 'Georgia,serif'
+                  : /mono/i.test(t.police) ? 'monospace' : 'Arial,Helvetica,sans-serif';
+    e.style.font = `${t.style & 2 ? 'italic ' : ''}${t.style & 1 ? 'bold ' : ''}`
+                 + `${Math.round(t.taille * SC)}px/1.15 ${famille}`;
     e.style.color = t.couleur;
     if(t.fond) e.style.background = t.fond;
-    if(t.pos === 'b') e.style.top = '100%';
-    else if(t.pos === 'c'){ e.style.top = '50%'; e.style.transform = 'translate(-50%,-50%)'; }
-    else e.style.bottom = '100%';
+    e._label = t;
     couches.push(e);
   }
   if(gen !== p.gen) return;
   p.el.querySelectorAll('.couche').forEach(e => e.remove());
   p.el.append(...couches);
+  for(const e of p.el.querySelectorAll('.etiq')) placerLabel(e, p.sz);
   rendrePile(cle(p));
   // La liste de pile copie le pion affiché : elle suit son image.
   if(_pileSel === cle(p)) afficherPile();
@@ -1267,6 +1300,26 @@ function _pionInconnu(){
     + 'width="48" height="48"><rect width="48" height="48" rx="3" fill="#555" stroke="#111"/>'
     + '<text x="24" y="33" font-family="Arial" font-size="26" font-weight="bold" '
     + 'fill="#fff" text-anchor="middle">?</text></svg>');
+}
+
+// Position d'un label, comme Labeler.getLabelPosition() : point de départ
+// au bord du pion désigné (posV, posH), décalage (le vertical compte vers
+// le bas), puis justification selon la taille du texte. La rotation se
+// fait autour du centre du pion.
+function placerLabel(e, sz){
+  const t = e._label;
+  const w = e.offsetWidth, h = e.offsetHeight;
+  let x = t.decH * SC, y = t.decV * SC;
+  if(t.posV === 't') y -= sz/2; else if(t.posV === 'b') y += sz/2;
+  if(t.posH === 'l') x -= sz/2; else if(t.posH === 'r') x += sz/2;
+  if(t.justV === 'b') y -= h; else if(t.justV === 'c') y -= h/2;
+  if(t.justH === 'c') x -= w/2; else if(t.justH === 'r') x -= w;
+  e.style.left = (sz/2 + x) + 'px';
+  e.style.top = (sz/2 + y) + 'px';
+  if(t.rotation){
+    e.style.transformOrigin = `${-x}px ${-y}px`;
+    e.style.transform = `rotate(${t.rotation}deg)`;
+  }
 }
 
 function rendrePile(k){
@@ -1487,6 +1540,64 @@ function deplacer(liste, x, y){
   new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
   selectionnerPile(kArr);
   chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
+}
+
+// ── Saisie d'un label, sur la carte, à la place de la boîte de VASSAL.
+// Une touche envoyée à une pile entière n'ouvre qu'une saisie, qui
+// s'applique à chaque pion concerné. Entrée valide, Échap annule ; un
+// texte vide efface le label.
+function editerLabel(p, i, titre, lot){
+  if(lot && lot.label){ lot.label.cibles.push({p, i}); return; }
+  const cibles = [{p, i}];
+  if(lot) lot.label = {cibles};
+  fermerEditeurLabel();
+  const te = _typeEtEtat(p.seg);
+  const actuel = te ? _texteLabel(decoderTraits(te.etat)[i]) : '';
+  const box = document.createElement('div');
+  box.id = 'editLabel'; box.className = 'editLabel';
+  const t = document.createElement('span'); t.textContent = titre;
+  const inp = document.createElement('input'); inp.value = actuel;
+  const ok = document.createElement('button'); ok.textContent = 'OK';
+  box.append(t, inp, ok);
+  document.body.appendChild(box);
+  const r = p.el.getBoundingClientRect();
+  box.style.left = Math.max(4, Math.min(r.left, window.innerWidth - box.offsetWidth - 4)) + 'px';
+  box.style.top = Math.max(4, Math.min(r.bottom + 6, window.innerHeight - box.offsetHeight - 4)) + 'px';
+  const valider = () => {
+    const v = inp.value.replace(/[\t\x1b\\]/g, ' ').trim().replace(/\//g, '\\/');
+    fermerEditeurLabel();
+    for(const c of cibles) fixerTrait(c.p, c.i, v);
+    chatLog(`🏷️ ${titre} : ${inp.value.trim() || '(effacé)'}`);
+  };
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if(e.key === 'Enter') valider();
+    else if(e.key === 'Escape') fermerEditeurLabel();
+  });
+  ok.addEventListener('click', valider);
+  box.addEventListener('pointerdown', e => e.stopPropagation());
+  setTimeout(() => { inp.focus(); inp.select(); }, 0);
+}
+
+function fermerEditeurLabel(){
+  const b = document.getElementById('editLabel');
+  if(b) b.remove();
+}
+
+// Change l'état d'un trait d'un pion, avec son « D/ ».
+function fixerTrait(p, i, valeur){
+  if(!p || p.deleted) return false;
+  const te = _typeEtEtat(p.seg);
+  if(!te) return false;
+  const S = decoderTraits(te.etat);
+  if(S[i] === valeur) return false;
+  S[i] = valeur;
+  _avantAction();
+  const neuf = encoderTraits(S);
+  p.seg = '+/' + p.uid + '/' + te.type + '/' + neuf;
+  _logCmd(`D/${p.uid}/${neuf}/${te.etat}`);
+  majApparence(p);
+  return true;
 }
 
 // ── Statut « moved » (traits moved de VASL et markmoved de VASSAL).
@@ -1723,11 +1834,8 @@ function commandesDe(type){
         ajouter(i, ch[5], lireTouche(ch[3]), tourner(-1));
       }
     } else if(id === 'label'){
-      ajouter(i, ch[2], lireTouche(ch[1]), ({S, p}) => {
-        const avant = (S[i] || '').replace(/\\(.)/g, '$1');
-        const v = window.prompt(`${p.nom} — ${ch[2] || 'Label'} :`, avant);
-        if(v !== null) S[i] = v.replace(/[\t\x1b]/g, ' ').replace(/\//g, '\\/');
-      });
+      ajouter(i, ch[2], lireTouche(ch[1]), ({p, effets, lot}) =>
+        effets.push(() => editerLabel(p, i, (ch[2] || 'Label').replace(/\\(.)/g, '$1'), lot)));
     } else if(id === 'delete'){
       ajouter(i, ch[1], lireTouche(ch[2]), ({p, effets}) => effets.push(() => retirer(p)));
     } else if(id === 'clone'){
@@ -2109,7 +2217,10 @@ function placerSousMenu(it, sm){
 // Raccourcis des pions : comme dans VASSAL, la touche s'adresse à toute la
 // sélection — ici la pile sélectionnée. Elle passe avant ceux des dés.
 function _brancherCommandes(){
-  document.addEventListener('pointerdown', e => { if(!e.target.closest('#ctx')) fermerMenu(); }, true);
+  document.addEventListener('pointerdown', e => {
+    if(!e.target.closest('#ctx')) fermerMenu();
+    if(!e.target.closest('#editLabel')) fermerEditeurLabel();
+  }, true);
   document.getElementById('mapWrap').addEventListener('scroll', fermerMenu);
   document.addEventListener('keydown', e => {
     if(e.key === 'Escape'){ fermerMenu(); return; }
