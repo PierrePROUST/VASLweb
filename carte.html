@@ -976,15 +976,18 @@ function lirePiece(seg){
   // Dissimulation : l'état du trait conceal porte l'identifiant du joueur
   // qui a masqué la pièce, et son type l'image affichée à sa place.
   const c = _trait(ts, /^conceal;/);
-  const masque = c && c.e.split(';')[0].trim() && c.e.split(';')[0].trim() !== 'null'
+  const masqueProprio = c ? c.e.split(';')[0].trim() : '';
+  const masque = masqueProprio && masqueProprio !== 'null'
     ? ((c.t.split(';')[2] || '').trim() || '?') : null;
+  const masqueNation = c ? (c.t.split(';')[3] || '').trim() : '';
   // HIP (trait Hideable « hide ») : la pièce n'est pas visible du tout.
   const h = _trait(ts, /^hide;/);
   const hip = !!(h && h.e.split(';')[0].trim() && h.e.split(';')[0].trim() !== 'null');
   return {
     uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
-    img, nom: nom || img.split('/').pop(), couches, rot, masque, hip,
+    img, nom: nom || img.split('/').pop(), couches, rot, masque, hip, masqueNation,
+    masqueProprio: masque ? masqueProprio : null,
     etiquettes: _etiquettes(ts), tourelle: _tourelle(ts), deplace: _deplace(ts)
   };
 }
@@ -1122,11 +1125,14 @@ async function majApparence(p, d){
   const gen = p.gen = (p.gen || 0) + 1;
   d = d || lirePiece(p.seg);
   p.nom = d.nom;
-  p.el.title = d.masque ? 'Pion dissimulé' : d.nom;
+  // Comme Concealable de VASL : l'adversaire ne voit que le « ? », le
+  // joueur qui a dissimulé l'unité la voit, marquée d'un petit « ? ».
+  const voile = d.masque && d.masqueProprio !== joueur() ? d.masque : null;
+  p.el.title = voile ? 'Pion dissimulé' : d.nom + (d.masque ? ' (?)' : '');
   p.el.style.display = d.hip ? 'none' : '';
   p.cache = d.hip;
-  const imgFace = d.masque || d.img;
-  const url = d.masque === '?' ? _pionInconnu() : await chargerImage(imgFace);
+  const imgFace = voile || d.img;
+  const url = voile === '?' ? _pionInconnu() : await chargerImage(imgFace);
   if(gen !== p.gen) return;
   if(url){
     p.face.src = url;
@@ -1141,8 +1147,17 @@ async function majApparence(p, d){
   p.face.style.transform = d.rot ? `rotate(${d.rot}deg)` : '';
   // Les couches de marqueur (ML/, MS/…) se superposent au visage ; une
   // image de nationalité est une autre face du pion, pas une surimpression.
-  const couches = d.masque ? [] : await imagesCouches(d, SC, p.sz);
-  if(!d.masque && d.tourelle){
+  const couches = voile ? [] : await imagesCouches(d, SC, p.sz);
+  if(d.masque && !voile && d.masqueNation){
+    const u = await chargerImage(`${d.masqueNation}/${d.masqueNation}qmarkme.svg`);
+    if(u){
+      const o = new Image();
+      o.className = 'couche'; o.src = u;
+      o.style.cssText = 'left:0;top:0;width:100%;height:100%';
+      couches.push(o);
+    }
+  }
+  if(!voile && d.tourelle){
     const u = await chargerImage(d.tourelle);
     if(u){
       const o = new Image();
@@ -1151,7 +1166,7 @@ async function majApparence(p, d){
       couches.push(o);
     }
   }
-  if(!d.masque && d.deplace){
+  if(!voile && d.deplace){
     const u = await chargerImage(d.deplace.img);
     if(u){
       const o = new Image();
@@ -1162,7 +1177,7 @@ async function majApparence(p, d){
       couches.push(o);
     }
   }
-  if(!d.masque) for(const t of d.etiquettes){
+  if(!voile) for(const t of d.etiquettes){
     const e = document.createElement('div');
     e.className = 'couche etiq';
     e.textContent = t.texte;
@@ -1444,7 +1459,7 @@ function deplacer(liste, x, y){
     _logCmd(`M/${a.p.uid}/${_carteJeu}/${a.p.x}/${a.p.y}/${_dessous(a.p)}`
           + `/${_carteJeu}/${a.x}/${a.y}/${a.sous}/${joueur()}`);
   }
-  new Set([...avant.map(a => a.k), kArr]).forEach(rendrePile);
+  new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
   selectionnerPile(kArr);
   chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
 }
@@ -1455,6 +1470,7 @@ function retirer(p, silencieux){
   const k = cle(p);
   p.deleted = true; p.el.remove();
   _logCmd('-/' + p.uid);
+  ajusterDissimulation(k);
   rendrePile(k); afficherPile();
   if(!silencieux) chatLog(`✖️ ${p.nom} retiré`);
 }
@@ -1469,6 +1485,7 @@ function changerRang(p, sens){
   [s[i], s[j]] = [s[j], s[i]];
   s.forEach((q, k) => { q.ordre = k; });
   _logCmd(`M/${p.uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/${_carteJeu}/${p.x}/${p.y}/${avant}/${joueur()}`);
+  ajusterDissimulation(cle(p));
   rendrePile(cle(p)); afficherPile();
 }
 
@@ -1507,6 +1524,7 @@ function poserTraits(T, S, x, y, ref, placement){
   s.forEach((q, k) => { q.ordre = k; });
   _logCmd('+/' + uid + '/' + type + '/' + encoderTraits(S0));
   _logCmd(`M/${uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/null/0/0/null/${joueur()}`);
+  ajusterDissimulation(cle(p));
   rendrePile(cle(p));
   return p;
 }
@@ -1693,7 +1711,10 @@ function commandesDe(type){
       // HIP : l'état est l'identifiant du joueur qui cache la pièce.
       ajouter(i, ch[2], lireTouche(ch[1]), ({S}) => basculerJoueur(S, i));
     } else if(id === 'conceal'){
-      ajouter(i, 'Conceal', toucheAncienne(ch[1], 2), ({S}) => basculerJoueur(S, i));
+      ajouter(i, 'Conceal', toucheAncienne(ch[1], 2), ({p, effets}) => effets.push(() => dissimuler(p)));
+    } else if(id === 'concealment'){
+      // Le « ? » lui-même : sa commande réévalue la pile (Concealment.keyEvent).
+      ajouter(i, 'Conceal', _touche(67, 2), ({p, effets}) => effets.push(() => ajusterDissimulation(cle(p))));
     } else if(id === 'obs'){
       ajouter(i, ch[3] || 'Mask', toucheAncienne(ch[1], 2), ({S}) => basculerJoueur(S, i));
     } else if(id === 'turr'){
@@ -1803,6 +1824,111 @@ function envoyer(p, carte, x, y){
   _logCmd(`M/${p.uid}/${carte}/${x}/${y}/null/${_carteJeu}/${ax}/${ay}/${sous}/${joueur()}`);
   rendrePile(k); afficherPile();
   chatLog(`📤 ${p.nom} → ${carte}`);
+}
+
+// ═══ DISSIMULATION — Concealable et Concealment (VASL) ═══
+// Un « ? » (trait concealment;propriétaire;nation) dissimule les unités
+// de sa nationalité placées SOUS lui dans la pile ; une unité dissimulée
+// porte dans son trait conceal l'identifiant du joueur qui l'a masquée.
+
+// Ce que les traits d'un pion disent de la dissimulation.
+function infoDissimulation(p){
+  const te = _typeEtEtat(p.seg);
+  if(!te) return {};
+  const T = decoderTraits(te.type), S = decoderTraits(te.etat);
+  for(let i = 0; i < T.length; i++){
+    const ch = T[i].split(';');
+    if(ch[0] === 'conceal'){
+      const proprio = (S[i] || '').split(';')[0].replace(/\\/g, '').trim();
+      return {i, unite: true, nation: (ch[3] || '').trim(), image: (ch[2] || '').replace(/\\/g, ''),
+              marqueur: (ch[5] || '').trim(), proprio: proprio && proprio !== 'null' ? proprio : null};
+    }
+    if(ch[0] === 'concealment') return {i, compteur: true, nation: (ch[2] || '').trim()};
+  }
+  return {};
+}
+
+// Masque (`qui` = joueur) ou démasque (null) une unité, avec son « D/ ».
+function fixerMasque(p, qui){
+  const te = _typeEtEtat(p.seg);
+  const m = infoDissimulation(p);
+  if(!te || !m.unite) return false;
+  const S = decoderTraits(te.etat);
+  const f = (S[m.i] || '').split(';');
+  f[0] = qui || 'null';
+  S[m.i] = f.join(';');
+  const neuf = encoderTraits(S);
+  if(neuf === te.etat) return false;
+  _avantAction();
+  p.seg = '+/' + p.uid + '/' + te.type + '/' + neuf;
+  _logCmd(`D/${p.uid}/${neuf}/${te.etat}`);
+  majApparence(p);
+  return true;
+}
+
+// Ctrl+C sur une unité (Concealable.myKeyEvent) : déjà dissimulée, elle
+// est démasquée ; sinon elle est masquée et, faute de « ? » de sa
+// nationalité au-dessus d'elle, on pose celui que désigne son trait.
+function dissimuler(p){
+  const m = infoDissimulation(p);
+  if(!m.unite) return;
+  if(m.proprio){
+    if(m.proprio === joueur() && fixerMasque(p, null)) chatLog(`👁️ ${p.nom} démasqué`);
+    return;
+  }
+  fixerMasque(p, joueur());
+  const s = pile(cle(p));
+  const dejaLa = s.slice(s.indexOf(p) + 1).some(q => { const c = infoDissimulation(q); return c.compteur && c.nation === m.nation; });
+  if(!dejaLa) poserConcealment(p, m);
+  ajusterDissimulation(cle(p));
+  chatLog(`❔ ${p.nom} dissimulé`);
+}
+
+// Le « ? » : celui que nomme le trait (chemin de composants), à défaut le
+// « ? » ou « L? » de la nationalité, selon la taille de l'image de masque.
+// Comme Concealment.setId, il prend le joueur pour propriétaire.
+function poserConcealment(p, m){
+  if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
+  const noms = m.marqueur ? _splitUnescaped(m.marqueur, '/').map(x => {
+    const c = x.replace(/\\(.)/g, '$1');
+    const k = c.indexOf(':');
+    return k < 0 ? '' : c.substring(k + 1);
+  }) : null;
+  let x = noms && _bdd.parChemin.get(noms.join('\u0001'));
+  if(!x) x = _bdd.parChemin.get(['?', m.nation, /58/.test(m.image) ? 'L?' : '?'].join('\u0001'));
+  const def = x && developperDefinition(x.cmd);
+  if(!def){ chatLog(`⚠️ ${p.nom} : contre-pion « ? » introuvable pour ${m.nation || '?'}`); return null; }
+  const i = def.T.findIndex(t => /^concealment;/.test(t));
+  if(i >= 0){
+    const ch = def.T[i].split(';');
+    ch[1] = joueur();
+    def.T[i] = ch.join(';');
+  }
+  return poserTraits(def.T, def.S, p.x, p.y, p, 2);
+}
+
+// Recalcul d'une pile (Concealment.keyEvent / Concealable.adjustConcealment) :
+// de haut en bas, une unité est dissimulée dès qu'un « ? » de sa
+// nationalité se trouve au-dessus d'elle. Seules les unités du joueur sont
+// touchées — celles de l'adversaire ne sont pas « maskable ».
+let _ajustEnCours = false;
+function ajusterDissimulation(k){
+  if(_ajustEnCours) return;
+  const s = pile(k);
+  const infos = s.map(infoDissimulation);
+  if(!infos.some(m => m.compteur || (m.unite && m.proprio === joueur()))) return;
+  _ajustEnCours = true;
+  try {
+    const nations = new Set();
+    for(let i = s.length - 1; i >= 0; i--){
+      const m = infos[i];
+      if(m.compteur){ nations.add(m.nation); continue; }
+      if(!m.unite || (m.proprio && m.proprio !== joueur())) continue;
+      const doit = nations.has(m.nation);
+      if(doit && !m.proprio) fixerMasque(s[i], joueur());
+      else if(!doit && m.proprio) fixerMasque(s[i], null);
+    }
+  } finally { _ajustEnCours = false; }
 }
 
 function cloner(p){
@@ -2165,7 +2291,17 @@ async function _chargerBDD(){
     if(e.tagName.endsWith('.PieceSlot') && e.getAttribute('gpid'))
       parGpid.set(e.getAttribute('gpid'), {n: e.getAttribute('entryName') || '?', g: e.getAttribute('gpid'),
                                            cmd: (e.textContent || '').trim()});
-  _bdd = {cats, pions: slots, protos, parGpid, version: mod.getAttribute('version')};
+  // … et par chemin de composants (ComponentPathBuilder) : c'est ainsi que
+  // le trait de dissimulation désigne son contre-pion « ? ».
+  const parChemin = new Map();
+  for(const e of doc.getElementsByTagName('*')){
+    if(!e.tagName.endsWith('.PieceSlot')) continue;
+    const noms = [];
+    for(let a = e; a && a !== mod; a = a.parentElement)
+      noms.unshift(a.getAttribute('entryName') || a.getAttribute('name') || '');
+    parChemin.set(noms.join('\u0001'), parGpid.get(e.getAttribute('gpid')));
+  }
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, version: mod.getAttribute('version')};
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
   chatLog(`📚 Base VASL ${_bdd.version} : ${slots.length} pions, ${cats.length} catégories`);
@@ -2642,6 +2778,8 @@ document.addEventListener('DOMContentLoaded', () => {
   r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
   if(window.innerWidth < 700) basculerCote();
   _brancherCommandes();
+  // Ce qu'on voit d'une unité dissimulée dépend de qui l'on est.
+  document.getElementById('joueur').addEventListener('change', () => vivants().forEach(p => majApparence(p)));
   _brancherDes();
   // La carte qui défile ou zoome emporte la pile survolée : on referme.
   const w = document.getElementById('mapWrap');
