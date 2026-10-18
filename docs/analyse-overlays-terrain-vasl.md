@@ -355,7 +355,7 @@ quand on masque les pions.
 
 ## 7. Plan d'intégration proposé
 
-**Étape 1 — Composition et repeint fidèles** (aucune donnée nouvelle)
+**Étape 1 — Composition et repeint fidèles** (aucune donnée nouvelle) — **faite** : `composerBoard`, `tableSSR`, `repeindre`
 
 1. Nouvelle fonction `async composerBoard(b)` qui renvoie un canvas de la
    taille visible et suit le pipeline du § 3. `_renderBoards` ne fait plus
