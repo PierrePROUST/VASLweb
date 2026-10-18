@@ -59,7 +59,7 @@ button:disabled{opacity:.4;cursor:default}
 #pile:empty::before{content:"Cliquer un pion pour voir sa pile.";display:block;padding:8px;color:var(--doux);font-size:12px}
 .lig{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid #2c2c2c;
   touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
-.lig img{width:36px;height:36px;object-fit:contain;pointer-events:none}
+.lig .mini{width:36px;height:36px;flex:none}
 .lig span{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lig button{padding:1px 6px;font-size:12px}
 #palRech{margin:6px 8px;padding:5px;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px}
@@ -70,7 +70,8 @@ button:disabled{opacity:.4;cursor:default}
 .vig{width:46px;height:46px;background:#2a2a2a;border:1px solid var(--bord);border-radius:3px;
   display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;
   user-select:none;-webkit-user-select:none}
-.vig img{max-width:42px;max-height:42px;pointer-events:none}
+.mini{position:relative;width:42px;height:42px;overflow:hidden;pointer-events:none}
+.mini img{position:absolute;pointer-events:none}
 .pion{position:absolute;touch-action:none;cursor:pointer}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
@@ -766,10 +767,37 @@ function _splitUnescaped(s, sep){
   return out;
 }
 
-// TYPE et ÉTAT ont toujours le même nombre de champs tabulés : on
-// cherche la frontière qui les équilibre, certains traits contenant un
-// « / » non échappé.
+// Traits d'un TYPE ou d'un ÉTAT. VASSAL emboîte les décorateurs : chaque
+// niveau échappe d'une contre-oblique les tabulations du suivant, si bien
+// que la tabulation qui ferme le trait n° i est précédée d'exactement i
+// contre-obliques. Une tabulation qui en a d'autres appartient à un
+// contenu imbriqué — la définition du DM que pose une escouade, par
+// exemple — et ne sépare rien.
+function _traits(s){
+  const out = [];
+  let debut = 0;
+  for(let k = 0; k < s.length; k++){
+    if(s[k] !== '\t') continue;
+    let b = 0;
+    while(k - 1 - b >= debut && s[k - 1 - b] === '\\') b++;
+    if(b === out.length){ out.push(s.substring(debut, k - b)); debut = k + 1; }
+  }
+  out.push(s.substring(debut));
+  return out;
+}
+
 function _splitTypeState(seg){
+  const te = _typeEtEtat(seg);
+  if(te){
+    const typ = _traits(te.type), eta = _traits(te.etat);
+    if(typ.length === eta.length) return {typ, eta};
+  }
+  return _splitTypeStateEquilibre(seg);
+}
+
+// Repli : TYPE et ÉTAT ont le même nombre de champs tabulés ; on cherche
+// la frontière qui les équilibre.
+function _splitTypeStateEquilibre(seg){
   const parts = _splitUnescaped(seg, '/');
   if(parts.length < 4) return null;
   for(let k = parts.length - 1; k > 2; k--){
@@ -782,9 +810,11 @@ function _splitTypeState(seg){
 
 // Les deux moitiés brutes d'un segment, telles qu'on les réécrit.
 // Le type se termine au BasicPiece ; le « / » qui suit est le séparateur.
+// Le nom peut contenir des « / » échappés (« MA\/SA Malf », « BU \/ CE ») :
+// les refuser rendait 519 pions de la palette impossibles à poser.
 function _typeEtEtat(seg){
   if(!seg) return null;
-  const m = seg.match(/piece;[^;]*;[^;]*;[^;]*;[^\\\t]*\//);
+  const m = seg.match(/piece;[^;]*;[^;]*;[^;]*;(?:\\.|[^\\\t\/])*\//);
   if(!m) return null;
   const debut = seg.indexOf('/', 2) + 1;
   return {type: seg.substring(debut, m.index + m[0].length - 1),
@@ -799,7 +829,10 @@ function _parseLayers(ts){
   for(let i = 0; i < ts.typ.length; i++){
     if(!/^emb2;/.test(ts.typ[i])) continue;
     const ch = ts.typ[i].split(';');
-    let liste = ch.find(c => /\.(svg|gif|png)/i.test(c));
+    // La liste d'images est le 17e champ d'un emb2. Ses chemins n'ont pas
+    // toujours d'extension ni de dossier à deux lettres (« tables\/turn_axis »).
+    let liste = ch.length > 17 && /\//.test(ch[16]) ? ch[16] : null;
+    if(!liste) liste = ch.find(c => /\.(svg|gif|png)/i.test(c));
     if(!liste) liste = ch.find(c => /(^|,)\s*\\?[A-Za-z]{2}\\?\/[\w()+.-]+/.test(c));
     if(!liste) continue;
     const images = liste.replace(/\\/g,'').split(',').map(s => s.trim());
@@ -865,10 +898,13 @@ function _developperPrototypes(ts, prof){
 
 function lirePiece(seg){
   const ts = _developperPrototypes(_splitTypeState(seg), 0);
-  const etatBP = seg.substring(seg.lastIndexOf('\t') + 1);
+  const etatBP = ts ? ts.eta[ts.eta.length - 1] : seg.substring(seg.lastIndexOf('\t') + 1);
   const sm = etatBP.match(/^([^;]*);(-?\d+);(-?\d+);/);
   let img = '', nom = '';
-  const pm = seg.match(/piece;[^;]*;[^;]*;([^;]*);([^;\/\t]*)/);
+  // Le BasicPiece est le DERNIER trait du type ; une recherche dans tout
+  // le segment pouvait tomber sur celui d'une définition imbriquée.
+  const bp = ts && ts.typ[ts.typ.length - 1];
+  const pm = (bp && /^piece;/.test(bp) ? bp + '/' : seg).match(/piece;[^;]*;[^;]*;([^;]*);((?:\\.|[^;\/\t\\])*)/);
   if(pm){ img = pm[1].replace(/\\/g,'').trim(); nom = pm[2].replace(/\\/g,'').trim(); }
   const couches = _parseLayers(ts);
   if(!img) img = _faceFromLayers(couches) || '';
@@ -920,12 +956,15 @@ function chargerImage(path){
 
 async function _chargerImage(path){
   try {
-    let r = await fetch(VASL_IMAGES_URL + path);
-    // Certains pions n'existent qu'en SVG, d'autres qu'en GIF.
-    if(!r.ok && /\.(svg|gif)$/i.test(path)){
-      const autre = /\.svg$/i.test(path) ? path.replace(/\.svg$/i, '.gif') : path.replace(/\.gif$/i, '.svg');
-      const r2 = await fetch(VASL_IMAGES_URL + autre);
-      if(r2.ok){ r = r2; path = autre; }
+    // Le module désigne bien des images sans extension (« MS/Gutted »,
+    // « ML/NoMove ») et certaines n'existent qu'en SVG, d'autres qu'en GIF :
+    // on essaie le chemin donné, puis les autres formats.
+    const base = path.replace(/\.(svg|gif|png)$/i, '');
+    const essais = [...new Set([path, base + '.svg', base + '.gif', base + '.png'])];
+    let r = null;
+    for(const e of essais){
+      r = await fetch(VASL_IMAGES_URL + e);
+      if(r.ok){ path = e; break; }
     }
     if(!r.ok) throw new Error('HTTP ' + r.status);
     if(!/\.svg$/i.test(path)){
@@ -1043,35 +1082,57 @@ async function majApparence(p, d){
   p.face.style.transform = d.rot ? `rotate(${d.rot}deg)` : '';
   // Les couches de marqueur (ML/, MS/…) se superposent au visage ; une
   // image de nationalité est une autre face du pion, pas une surimpression.
-  const couches = [];
-  if(!d.masque){
-    for(const c of d.couches){
-      if(!c.actif) continue;
-      const im = _imgCouche(c);
-      if(!im || !im.trim() || im === d.img || /^[a-z]{2}\//.test(im) || /^ovr/i.test(im)) continue;
-      const u = await chargerImage(im);
-      if(!u) continue;
-      // Comme Embellishment.draw() : l'image garde sa taille propre, à la
-      // même échelle que le pion, centrée sur lui puis décalée de (dx, dy).
-      // L'étirer à la taille du pion grossissait d'autant le chiffre de
-      // SAN du sniper (18 px dans un pion de 60).
-      const o = new Image();
-      o.className = 'couche';
-      o.src = u;
-      await o.decode().catch(() => {});
-      const w = o.naturalWidth * SC, h = o.naturalHeight * SC;
-      if(w && h){
-        o.style.width = w + 'px'; o.style.height = h + 'px';
-        o.style.left = (p.sz/2 + c.dx*SC - w/2) + 'px';
-        o.style.top  = (p.sz/2 + c.dy*SC - h/2) + 'px';
-      }
-      couches.push(o);
-    }
-  }
+  const couches = d.masque ? [] : await imagesCouches(d, SC, p.sz);
   if(gen !== p.gen) return;
   p.el.querySelectorAll('img.couche').forEach(e => e.remove());
   p.el.append(...couches);
   rendrePile(cle(p));
+}
+
+// ── Surimpressions d'un pion, prêtes à poser dans un cadre de côté
+// `cote` dessiné à l'échelle `k`. Les couches de marqueur (ML/, MS/…)
+// se superposent au visage ; une image de nationalité est une autre
+// face du pion, pas une surimpression.
+// Comme Embellishment.draw() : chaque image garde sa taille propre, à la
+// même échelle que le pion, centrée sur lui puis décalée de (dx, dy).
+// L'étirer à la taille du pion grossissait d'autant le chiffre de SAN du
+// sniper (18 px dans un pion de 60).
+async function imagesCouches(d, k, cote){
+  const out = [];
+  for(const c of d.couches){
+    if(!c.actif) continue;
+    const im = _imgCouche(c);
+    if(!im || !im.trim() || im === d.img || /^[a-z]{2}\//.test(im) || /^ovr/i.test(im)) continue;
+    const u = await chargerImage(im);
+    if(!u) continue;
+    const o = new Image();
+    o.className = 'couche';
+    o.src = u;
+    await o.decode().catch(() => {});
+    const w = o.naturalWidth * k, h = o.naturalHeight * k;
+    if(w && h){
+      o.style.width = w + 'px'; o.style.height = h + 'px';
+      o.style.left = (cote/2 + c.dx*k - w/2) + 'px';
+      o.style.top  = (cote/2 + c.dy*k - h/2) + 'px';
+    }
+    out.push(o);
+  }
+  return out;
+}
+
+// Vignette composée — fond et couches — d'un pion de la palette. Bien
+// des pions n'ont pour image de base qu'un fond vierge (« _white12 ») :
+// la Fire Lane, plusieurs First Fire… Leur dessin est tout entier dans
+// les couches, et une vignette réduite à l'image de base restait blanche.
+async function composerVignette(boite, d, cote){
+  const u = await chargerImage(d.img);
+  if(!u) return;
+  const face = new Image();
+  face.src = u;
+  await face.decode().catch(() => {});
+  const k = cote / (face.naturalWidth || 48);
+  face.style.cssText = 'left:0;top:0;width:100%;height:100%';
+  boite.replaceChildren(face, ...await imagesCouches(d, k, cote));
 }
 
 // « ? » neutre, pour une pièce dissimulée dont le trait ne nomme pas
@@ -1412,8 +1473,14 @@ function afficherPile(){
     const l = document.createElement('div');
     l.className = 'lig';
     l.title = 'Glisser vers la carte pour déplacer ce pion seul';
-    const im = document.createElement('img');
-    if(p.face.src) im.src = p.face.src;
+    // Copie réduite du pion affiché : fond, couches et orientation.
+    const im = document.createElement('div');
+    im.className = 'mini';
+    const copie = p.el.cloneNode(true);
+    copie.classList.remove('sel');
+    copie.style.cssText = `position:absolute;left:0;top:0;width:${p.sz}px;height:${p.sz}px;`
+                        + `transform:scale(${36 / p.sz});transform-origin:0 0;`;
+    im.appendChild(copie);
     const t = document.createElement('span');
     t.textContent = p.el.title || p.nom;
     l.append(im, t);
@@ -1605,10 +1672,10 @@ async function _chargerBDD(){
   return _bdd;
 }
 
-// Image représentative d'un PieceSlot, calculée à la demande.
-function imageSlot(x){
-  if(x.img === undefined) x.img = lirePiece(x.cmd.replace(/^\+\/null\//, '+/0/')).img || null;
-  return x.img;
+// Lecture d'un PieceSlot comme d'une pièce, faite à la demande.
+function lireSlot(x){
+  if(!x.lu) x.lu = lirePiece(x.cmd.replace(/^\+\/null\//, '+/0/'));
+  return x.lu;
 }
 
 let _palOuverte = null, _palFiltre = '';
@@ -1656,13 +1723,13 @@ function remplirGrille(liste){
     const d = document.createElement('div');
     d.className = 'vig';
     d.title = `${x.n}  (gpid ${x.g})`;
-    const im = document.createElement('img');
-    im.alt = '';
-    d.appendChild(im);
+    const mini = document.createElement('div');
+    mini.className = 'mini';
+    d.appendChild(mini);
     g.appendChild(d);
-    chargerImage(imageSlot(x)).then(u => { if(u) im.src = u; });
+    composerVignette(mini, lireSlot(x), 42);
     // Glisser vers la carte, ou clic : pose au centre de la vue.
-    d.addEventListener('pointerdown', e => glisser(e, im.src, 48 * SC * zoom, (cx, cy) => {
+    d.addEventListener('pointerdown', e => glisser(e, (mini.querySelector('img') || {}).src, 48 * SC * zoom, (cx, cy) => {
       const c = clientVersCarte(cx, cy);
       if(c) poserDepuisPalette(x, c.x, c.y);
       else chatLog('Lâché hors de la carte : rien posé');
