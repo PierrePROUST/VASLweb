@@ -6506,8 +6506,15 @@ async function _applyLayerOverlays(p){
   Array.from(p.el.querySelectorAll('.layer')).forEach(e => e.remove());
 
   const base = p.vaslImg;
+  // Les couches sont listées de la plus externe à la plus interne. Quand
+  // le visage vient lui-même d'une couche, celles qui la suivent sont
+  // DESSOUS : le fond coloré d'un Wire ou d'un Trench (_brownd58.svg…)
+  // est opaque et couvrirait le GIF transparent posé par-dessus.
+  const iFace = p.etats.findIndex(e => e.actif && e.images.length
+    && e.images[Math.max(0, Math.min(e.images.length-1, e.niveau-1))] === base);
   const sus = [];
-  for(const e of p.etats){
+  for(let i = 0; i < p.etats.length; i++){
+    const e = p.etats[i];
     if(!e.actif || !e.images.length) continue;
     const img = e.images[Math.max(0, Math.min(e.images.length-1, e.niveau-1))];
     if(!img || !img.trim() || img === base) continue;
@@ -6519,7 +6526,8 @@ async function _applyLayerOverlays(p){
     // marqueurs (MS/, ML/, m*.svg) se superposent réellement.
     const dossier = img.split('/')[0];
     if(NATION_INFO[dossier]) continue;
-    sus.push({img, nom: e.nom, dx: e.dx || 0, dy: e.dy || 0});
+    sus.push({img, nom: e.nom, dx: e.dx || 0, dy: e.dy || 0,
+              dessous: iFace >= 0 && i > iFace});
   }
   let n = 0;
   for(const s of sus){
@@ -6536,8 +6544,11 @@ async function _applyLayerOverlays(p){
     const k = (p.sz || 48) / 60;
     o.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;'
                     + 'pointer-events:none;'
-                    + (s.dx || s.dy ? `transform:translate(${(s.dx*k).toFixed(1)}px,${(s.dy*k).toFixed(1)}px);` : '');
-    p.el.appendChild(o);
+                    + (s.dx || s.dy ? `transform:translate(${(s.dx*k).toFixed(1)}px,${(s.dy*k).toFixed(1)}px);` : '')
+                    + (s.dessous ? 'z-index:-1;' : '');
+    // Sous le visage : placées en tête, la plus interne passe en dernier
+    // et se retrouve donc peinte la première, comme dans VASSAL.
+    if(s.dessous) p.el.prepend(o); else p.el.appendChild(o);
     n++;
   }
   return n;
@@ -11467,6 +11478,14 @@ async function _loadVaslSvg(path){
       const v = path.replace(/\.gif$/i, '.svg');
       const r2 = await fetch(VASL_IMAGES_URL + v);
       if(r2.ok){ r = r2; path = v; }
+    } else if(!r.ok && !/\.[a-z]{3,4}$/i.test(path)){
+      // Nom sans extension (« ML/Wire », « ML/Tetra », « ML/Trench ») :
+      // VASSAL complète lui-même le nom, le dépôt n'a que le fichier
+      // suffixé. On essaie donc les formats du module dans l'ordre.
+      for(const ext of ['.gif', '.svg', '.png']){
+        const r2 = await fetch(VASL_IMAGES_URL + path + ext);
+        if(r2.ok){ r = r2; path = path + ext; break; }
+      }
     }
     if(!r.ok) throw new Error('HTTP '+r.status);
 
