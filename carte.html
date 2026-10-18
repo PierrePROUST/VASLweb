@@ -33,6 +33,10 @@ button:disabled{opacity:.4;cursor:default}
 #journal{max-height:96px;overflow:auto;background:var(--barre);border-top:1px solid var(--bord);
   padding:4px 10px;font-size:12px;color:var(--doux)}
 #journal div{white-space:pre-wrap}
+#journal .rap{color:#c9c2a8;font-style:italic}
+#journal .msg{color:var(--texte)}
+#chatBarre{display:flex;gap:6px;padding:3px 10px 5px;background:var(--barre)}
+#chatIn{flex:1;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px;padding:3px 6px;font:inherit;font-size:12px}
 #des{gap:4px;padding:4px 10px}
 #des button{padding:3px 8px;font-size:13px}
 #des label{font-size:12px;color:var(--doux);display:flex;align-items:center;gap:4px}
@@ -178,6 +182,7 @@ button:disabled{opacity:.4;cursor:default}
   </div>
 </div>
 <div id="journal"></div>
+<div id="chatBarre"><input id="chatIn" placeholder="Message au chat (Entrée pour envoyer)" autocomplete="off"></div>
 <input type="file" id="fileImport" style="display:none" onchange="handleFileImport(this)">
 
 <script>
@@ -969,6 +974,19 @@ function _etiquettes(ts){
 function _nomAvecLabels(ts, nom){
   if(!ts) return nom;
   for(let i = ts.typ.length - 1; i >= 0; i--){
+    // Couche active (Embellishment.getName) : le nom de son niveau
+    // remplace le nom, ou le complète s'il contient « + » — « broken + »
+    // donne « broken 6-6-7 Esq », « + Dispersed » un suffixe.
+    if(/^emb2;/.test(ts.typ[i])){
+      const v = parseInt((ts.eta[i] || '').replace(/\\+$/, ''), 10);
+      if(!(v > 0)) continue;
+      const noms = (ts.typ[i].split(';')[17] || '').split(/(?<!\\),/).map(x => x.replace(/\\(.)/g, '$1'));
+      const n = noms[v - 1];
+      if(!n) continue;
+      const k = n.indexOf('+');
+      nom = k < 0 ? n : (k === 0 ? nom + n.substring(1) : n.substring(0, k) + nom);
+      continue;
+    }
     if(!/^label;/.test(ts.typ[i])) continue;
     const texte = _texteLabel(ts.eta[i]);
     if(!texte) continue;
@@ -1575,6 +1593,14 @@ function _restaurer(snap){
 
 // Résumé lisible d'un coup, pour la barre de lecture.
 function _resumeCoup(etape){
+  // Le coup porte ses rapports (« * … ») : ils le résument, comme dans le
+  // chat de VASSAL. Sinon, on le décrit d'après ses commandes.
+  const raps = etape.map(sg => sg.replace(/^LOG\t/, '').replace(/\\+$/, ''))
+    .filter(sg => sg.startsWith('CHAT'))
+    .map(sg => _desechappe(sg.substring(4)))
+    .map(t => /^\*\*\* \((.+?)\) ([\d,]+)/.test(t) ? t.replace(/^\*\*\* \((.+?)\) ([\d,]+).*$/, '$1 $2')
+              : t.replace(/^\*\s*/, '').replace(/\s*\*$/, ''));
+  if(raps.length) return raps.join(' · ');
   const parts = [];
   for(let sg of etape){
     sg = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
@@ -1625,6 +1651,7 @@ function avancerLog(){
   signalerCoup(touches);
   document.getElementById('logCoup').textContent = resume;
   majBarreLog();
+  if(_logPos === _etapes.length) chatLog('🏁 Fin du log');
   return true;
 }
 
@@ -1704,6 +1731,8 @@ function deplacer(liste, x, y){
   // Comme la carte de VASL : un pion qui change de place est marqué
   // « moved », puis reçoit la touche de mouvement (Ctrl+Alt+M), qui
   // inscrit notamment le joueur dans sa propriété Owner.
+  for(const a of avant) a.p.ancienLieu = lieu(a.x, a.y);
+  rapportDeplacement(liste, avant[0].x, avant[0].y);
   for(const a of avant){
     if(a.x === a.p.x && a.y === a.p.y) continue;
     marquerDeplace(a.p, true);
@@ -1837,7 +1866,7 @@ function poserDepuisPalette(x, cx, cy){
   const pos = positionDepot(cx, cy);
   const p = poserTraits(def.T, def.S, pos.x, pos.y, null, 0);
   selectionnerPile(cle(p));
-  chatLog(`➕ ${x.n} posé en ${pos.label || cle(p)}`);
+  if(!p.cache) rapport(_remplir(FORMAT_CREATION, {pieceName: nomRapport(p), location: lieu(p.x, p.y), mapName: _carteJeu}));
 }
 
 // Pose une pièce décrite par ses traits. VASL procède en deux temps — la
@@ -1986,6 +2015,35 @@ function commandesDe(type){
       const N = Math.max(1, liste.split(',').length);
       const boucle = ch[18] !== 'false';
       const regle = (S, f) => { const [v, r] = niveau(S, i); const n = f(Math.abs(v)); S[i] = String(v < 0 ? -n : n) + r; };
+      const car = v => (v || '').replace(/\\/g, '');
+      if(car(ch[3]).length > 1 || car(ch[6]).length > 1 || car(ch[9]).length > 1){
+        // Embellishment0 (ancien format, plusieurs touches) : la couche n'est
+        // active que lorsque TOUTES ses touches d'activation sont enclenchées
+        // — « FV » : brisée (Ctrl+F) ET demi-escouade (Ctrl+V). L'état garde
+        // les touches enclenchées : « -1;F », « 1;FV ».
+        const act = car(ch[3]).toUpperCase(), up = car(ch[6]), down = car(ch[9]);
+        const etat = S => {
+          const f = (S[i] || '').replace(/\\+$/, '').split(';');
+          const v = parseInt(f[0], 10) || 1;
+          return {v, statut: f.length > 1 ? f[1] : (v < 0 ? '' : act)};
+        };
+        [...act].forEach((c, j) => ajouter(i, j ? '' : ch[1], toucheAncienne(c, ch[2]), ({S}) => {
+          let {v, statut} = etat(S);
+          statut = statut.includes(c) ? statut.replace(c, '') : statut + c;
+          v = statut.length === act.length ? Math.abs(v) : -Math.abs(v);
+          S[i] = v + ';' + statut;
+        }));
+        const pas = d => ({S}) => {
+          const {v, statut} = etat(S);
+          let n = Math.abs(v) + d;
+          if(n > N) n = boucle ? 1 : N;
+          if(n < 1) n = boucle ? N : 1;
+          S[i] = (v > 0 ? n : -n) + ';' + statut;
+        };
+        [...up].forEach((c, j) => ajouter(i, j ? '' : ch[4], toucheAncienne(c, ch[5]), pas(+1)));
+        [...down].forEach((c, j) => ajouter(i, j ? '' : ch[7], toucheAncienne(c, ch[8]), pas(-1)));
+        return;
+      }
       ajouter(i, ch[1], lireTouche(ch[27]) || toucheAncienne(ch[3], ch[2]), ({S}) => {
         const [v, r] = niveau(S, i); S[i] = String(v === 0 ? 1 : -v) + r;
       });
@@ -2132,13 +2190,15 @@ function executerTouche(p, touche, cmdDirecte, lot){
   const S = decoderTraits(te.etat);
   const avant = S.join('\x00');
   const {cmds} = commandesDe(te.type);
-  const effets = [], file = [];
+  const effets = [], file = [], tirees = [];
   const ctx = {S, p, effets, lot: lot || {}, declencher: k => file.push(k)};
+  const nomAvant = nomRapport(p);
   let agi = false;
-  if(cmdDirecte){ cmdDirecte.faire(ctx); agi = true; }
+  if(cmdDirecte){ cmdDirecte.faire(ctx); agi = true; if(cmdDirecte.touche) tirees.push(cmdDirecte.touche); }
   else file.push(touche);
   for(let n = 0; file.length && n < 40; n++){
     const k = file.shift();
+    tirees.push(k);
     for(const c of cmds) if(c.touche && c.touche === k){ c.faire(ctx); agi = true; }
   }
   if(S.join('\x00') !== avant){
@@ -2148,8 +2208,82 @@ function executerTouche(p, touche, cmdDirecte, lot){
     _logCmd(`D/${p.uid}/${neuf}/${te.etat}`);
     majApparence(p);
   }
+  if(agi) rapportsEtat(p, te.type, tirees, cmds, nomAvant);
   for(const f of effets) f();
   return agi;
+}
+
+// ═══ RAPPORTS AU CHAT — comme VASSAL ═══
+// La carte de VASL rapporte mouvements et créations, les traits Report
+// rapportent les commandes. Chaque rapport est un message « * … » ajouté
+// à la commande de l'action : il fait partie du même coup dans le .vlog,
+// et VASSAL l'affiche en le relisant.
+const FORMAT_DEPLACEMENT = '$pieceName$ moves $previousLocation$ -> $location$ *';
+const FORMAT_CREATION = '$pieceName$ created in $location$ *';
+
+// Nom de lieu, comme ASLMap.locationName : l'hexagone (ou son côté), à
+// défaut « offboard ».
+function lieu(x, y){
+  const a = ancragePlusProche(x, y);
+  return a && Math.hypot(a.x - x, a.y - y) < 4 ? a.label : 'offboard';
+}
+
+// Nom d'un pion dans un rapport : tous les pions sont alors traités comme
+// cachés au joueur (PieceAccess.hideAll) — un pion dissimulé s'appelle « ? ».
+function nomRapport(p){
+  return lirePiece(p.seg).masque ? '?' : p.nom;
+}
+
+function _remplir(format, v){
+  return format.replace(/\$(\w+)\$/g, (m, k) => (k in v ? v[k] : ''));
+}
+
+function rapport(texte){
+  if(!texte || !texte.trim()) return;
+  const msg = '* ' + texte;
+  _logCmd('CHAT' + msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+  afficherChat(msg);
+}
+
+// MovementReporter : un rapport par groupe de pions déplacés ensemble,
+// noms séparés par des virgules ; un pion invisible (HIP) n'y figure pas.
+function rapportDeplacement(liste, ax, ay){
+  const vus = liste.filter(p => !p.cache);
+  if(!vus.length) return;
+  rapport(_remplir(FORMAT_DEPLACEMENT, {pieceName: vus.map(nomRapport).join(', '),
+    pieceCount: vus.length, previousLocation: lieu(ax, ay), location: lieu(vus[0].x, vus[0].y),
+    mapName: _carteJeu, previousMap: _carteJeu}));
+}
+
+// ReportState : chaque trait Report dont une touche est passée pendant la
+// commande — directement ou par une macro — envoie son message, avec le
+// nom du pion avant et après, le lieu, et le nom de la commande.
+function rapportsEtat(p, type, tirees, cmds, nomAvant){
+  if(p.cache) return;
+  const T = decoderTraits(type);
+  for(const t of T){
+    if(!/^report;/.test(t)) continue;
+    const ch = t.split(';');
+    const touches = lireTouches(ch[1]);
+    const k = tirees.find(x => touches.includes(x));
+    if(!k) continue;
+    const cmd = cmds.find(c => c.touche === k && c.nom);
+    const format = (ch[2] || '$location$: $newPieceName$ *').replace(/\\(.)/g, '$1');
+    rapport(_remplir(format, {location: lieu(p.x, p.y), oldLocation: p.ancienLieu || lieu(p.x, p.y),
+      newPieceName: p.deleted ? nomAvant : nomRapport(p), oldPieceName: nomAvant,
+      menuCommand: cmd ? cmd.nom : '', playerName: joueur(), PlayerName: joueur(), playerId: joueur(),
+      mapName: _carteJeu}));
+  }
+}
+
+// Chat des joueurs : « <joueur> - texte », consigné comme dans VASSAL.
+function envoyerChat(texte){
+  texte = (texte || '').trim();
+  if(!texte) return;
+  _avantAction();
+  const msg = `<${joueur()}> - ${texte}`;
+  _logCmd('CHAT' + msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+  afficherChat(msg);
 }
 
 // Pose le pion d'un PieceSlot (désigné par gpid, à défaut par le nom en
@@ -3018,7 +3152,16 @@ function _desechappe(s){
 // du niveau « Full ASL ».
 function afficherChat(msg){
   const m = msg.match(/^\*\*\* \((.+?) (DR|dr)\) ([\d,]+) \*\*\*.*?<([^>]*)>\s*(.*)$/);
-  if(!m){ chatLog('💬 ' + msg); return; }
+  if(!m){
+    // Rapports (« * … ») et messages des joueurs, comme le chat de VASSAL.
+    const l = document.createElement('div');
+    l.className = /^\*/.test(msg) ? 'rap' : 'msg';
+    l.textContent = msg;
+    const j = document.getElementById('journal');
+    j.appendChild(l);
+    j.scrollTop = j.scrollHeight;
+    return;
+  }
   const [, catBrute, type, des, qui, reste] = m;
   const cat = catBrute.replace('ENEMY ', '');
   const v = des.split(',').map(Number);
@@ -3291,6 +3434,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Ce qu'on voit d'une unité dissimulée dépend de qui l'on est.
   document.getElementById('joueur').addEventListener('change', () => vivants().forEach(p => majApparence(p)));
   _brancherDes();
+  const ci = document.getElementById('chatIn');
+  ci.addEventListener('keydown', e => { if(e.key === 'Enter'){ envoyerChat(ci.value); ci.value = ''; } });
   // La carte qui défile ou zoome emporte la pile survolée : on referme.
   const w = document.getElementById('mapWrap');
   w.addEventListener('scroll', cacherSurvol);
