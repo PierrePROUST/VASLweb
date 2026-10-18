@@ -1269,7 +1269,8 @@ async function majApparence(p, d){
   }
   if(gen !== p.gen) return;
   p.el.querySelectorAll('.couche').forEach(e => e.remove());
-  p.el.append(...couches);
+  p.face.before(...couches.filter(o => o.dessous).reverse());
+  p.el.append(...couches.filter(o => !o.dessous));
   for(const e of p.el.querySelectorAll('.etiq')) placerLabel(e, p.sz);
   rendrePile(cle(p));
   // La liste de pile copie le pion affiché : elle suit son image.
@@ -1286,7 +1287,13 @@ async function majApparence(p, d){
 // sniper (18 px dans un pion de 60).
 async function imagesCouches(d, k, cote){
   const out = [];
-  for(const c of d.couches){
+  // Les couches vont de la plus externe à la plus interne. Quand le visage
+  // est lui-même une couche, celles qui la suivent sont DESSOUS : le fond
+  // coloré d'un Wire, d'un Trench ou d'un Tetrahedron (_brownd58.svg…)
+  // est opaque et recouvrait le GIF transparent du dessin.
+  const iFace = d.couches.findIndex(c => c.actif && c.images.length && _imgCouche(c) === d.img);
+  for(let i = 0; i < d.couches.length; i++){
+    const c = d.couches[i];
     if(!c.actif) continue;
     const im = _imgCouche(c);
     if(!im || !im.trim() || im === d.img || /^[a-z]{2}\//.test(im) || /^ovr/i.test(im)) continue;
@@ -1302,6 +1309,7 @@ async function imagesCouches(d, k, cote){
       o.style.left = (cote/2 + c.dx*k - w/2) + 'px';
       o.style.top  = (cote/2 + c.dy*k - h/2) + 'px';
     }
+    o.dessous = iFace >= 0 && i > iFace;
     out.push(o);
   }
   return out;
@@ -1319,7 +1327,10 @@ async function composerVignette(boite, d, cote){
   await face.decode().catch(() => {});
   const k = cote / (face.naturalWidth || 48);
   face.style.cssText = 'left:0;top:0;width:100%;height:100%';
-  boite.replaceChildren(face, ...await imagesCouches(d, k, cote));
+  const couches = await imagesCouches(d, k, cote);
+  // La plus interne d'abord : c'est l'ordre de dessin de VASSAL.
+  boite.replaceChildren(...couches.filter(o => o.dessous).reverse(), face,
+                        ...couches.filter(o => !o.dessous));
 }
 
 // « ? » neutre, pour une pièce dissimulée dont le trait ne nomme pas
