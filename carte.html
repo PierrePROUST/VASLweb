@@ -799,8 +799,31 @@ function _trait(ts, re){
 }
 
 // Tout ce que l'affichage tire d'un segment AddPiece.
+// Un pion tiré de la palette garde ses traits « prototype;Nom » : VASSAL
+// les développe à l'usage, avec l'état par défaut du prototype. Pour
+// l'affichage on fait de même — c'est là que vivent, par exemple, les
+// couches de SAN et de brisement du sniper. L'export, lui, garde le
+// segment tel quel.
+function _developperPrototypes(ts, prof){
+  if(!ts || !_bdd || !_bdd.protos || prof > 6) return ts;
+  const typ = [], eta = [];
+  for(let i = 0; i < ts.typ.length; i++){
+    const m = ts.typ[i].replace(/\\/g, '').match(/^prototype;([^;]*)/);
+    const def = m && _bdd.protos.get(m[1]);
+    const pts = def && _developperPrototypes(_splitTypeState(def), prof + 1);
+    if(pts){
+      // Sans le BasicPiece du prototype, dernier trait de sa définition.
+      typ.push(...pts.typ.slice(0, -1));
+      eta.push(...pts.eta.slice(0, -1));
+    } else {
+      typ.push(ts.typ[i]); eta.push(ts.eta[i]);
+    }
+  }
+  return {typ, eta};
+}
+
 function lirePiece(seg){
-  const ts = _splitTypeState(seg);
+  const ts = _developperPrototypes(_splitTypeState(seg), 0);
   const etatBP = seg.substring(seg.lastIndexOf('\t') + 1);
   const sm = etatBP.match(/^([^;]*);(-?\d+);(-?\d+);/);
   let img = '', nom = '';
@@ -952,6 +975,9 @@ function creerPion(seg, ordre){
 
 // Face, surimpressions et orientation, d'après le segment courant.
 async function majApparence(p, d){
+  // Deux mises à jour peuvent se croiser (création, puis arrivée de la
+  // base) : seule la plus récente pose ses surimpressions.
+  const gen = p.gen = (p.gen || 0) + 1;
   d = d || lirePiece(p.seg);
   p.nom = d.nom;
   p.el.title = d.masque ? 'Pion dissimulé' : d.nom;
@@ -959,7 +985,7 @@ async function majApparence(p, d){
   p.cache = d.hip;
   const imgFace = d.masque || d.img;
   const url = d.masque === '?' ? _pionInconnu() : await chargerImage(imgFace);
-  p.el.querySelectorAll('img.couche').forEach(e => e.remove());
+  if(gen !== p.gen) return;
   if(url){
     p.face.src = url;
     await p.face.decode().catch(() => {});
@@ -973,6 +999,7 @@ async function majApparence(p, d){
   p.face.style.transform = d.rot ? `rotate(${d.rot}deg)` : '';
   // Les couches de marqueur (ML/, MS/…) se superposent au visage ; une
   // image de nationalité est une autre face du pion, pas une surimpression.
+  const couches = [];
   if(!d.masque){
     for(const c of d.couches){
       if(!c.actif) continue;
@@ -980,13 +1007,26 @@ async function majApparence(p, d){
       if(!im || !im.trim() || im === d.img || /^[a-z]{2}\//.test(im) || /^ovr/i.test(im)) continue;
       const u = await chargerImage(im);
       if(!u) continue;
-      const o = document.createElement('img');
+      // Comme Embellishment.draw() : l'image garde sa taille propre, à la
+      // même échelle que le pion, centrée sur lui puis décalée de (dx, dy).
+      // L'étirer à la taille du pion grossissait d'autant le chiffre de
+      // SAN du sniper (18 px dans un pion de 60).
+      const o = new Image();
       o.className = 'couche';
       o.src = u;
-      if(c.dx || c.dy) o.style.transform = `translate(${c.dx*SC}px,${c.dy*SC}px)`;
-      p.el.appendChild(o);
+      await o.decode().catch(() => {});
+      const w = o.naturalWidth * SC, h = o.naturalHeight * SC;
+      if(w && h){
+        o.style.width = w + 'px'; o.style.height = h + 'px';
+        o.style.left = (p.sz/2 + c.dx*SC - w/2) + 'px';
+        o.style.top  = (p.sz/2 + c.dy*SC - h/2) + 'px';
+      }
+      couches.push(o);
     }
   }
+  if(gen !== p.gen) return;
+  p.el.querySelectorAll('img.couche').forEach(e => e.remove());
+  p.el.append(...couches);
   rendrePile(cle(p));
 }
 
@@ -1385,12 +1425,18 @@ async function _chargerBDD(){
       }
     }
   };
+  const protos = new Map();
+  for(const e of doc.getElementsByTagName('*'))
+    if(e.tagName.endsWith('.PrototypeDefinition'))
+      protos.set(e.getAttribute('name'), (e.textContent || '').trim());
   for(const w of mod.children){
     if(w.tagName.split('.').pop() !== 'PieceWindow') continue;
     const nom = w.getAttribute('name');
     if(FENETRES_PALETTE.includes(nom)) parcourir(w, nom === '?' ? ['?'] : []);
   }
-  _bdd = {cats, pions: slots, version: mod.getAttribute('version')};
+  _bdd = {cats, pions: slots, protos, version: mod.getAttribute('version')};
+  // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
+  for(const p of vivants()) majApparence(p);
   chatLog(`📚 Base VASL ${_bdd.version} : ${slots.length} pions, ${cats.length} catégories`);
   return _bdd;
 }
