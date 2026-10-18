@@ -64,6 +64,13 @@ button:disabled{opacity:.4;cursor:default}
 .fantome{position:fixed;z-index:9999;pointer-events:none;opacity:.8}
 .cible{position:absolute;z-index:9000;pointer-events:none;width:24px;height:24px;margin:-12px 0 0 -12px;
   border:3px solid var(--accent);border-radius:50%}
+.survol{position:fixed;z-index:9500;pointer-events:none;background:#f2efe4;color:#1a1a1a;
+  border:1px solid #222;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.55);padding:4px 6px 5px}
+.survol .tt{font-weight:600;font-size:11px;padding:0 1px 4px}
+.survol .rang{display:flex;gap:6px;align-items:flex-end}
+.survol .cel{display:flex;flex-direction:column;align-items:center;gap:2px}
+.survol .cel span{font-size:10px;line-height:1.15;max-width:88px;text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:700px){ #cote{position:absolute;right:0;top:44px;bottom:0;z-index:50;width:min(320px,90vw)} }
 </style>
 </head>
@@ -968,6 +975,9 @@ function creerPion(seg, ordre){
              el, face, sz: Math.round(48 * SC), deleted: false};
   pions.push(p);
   el.addEventListener('pointerdown', e => _pionPointerDown(e, p));
+  el.addEventListener('pointerenter', e => { if(e.pointerType === 'mouse' && !e.buttons) survolEntre(p, e); });
+  el.addEventListener('pointermove', e => { if(e.pointerType === 'mouse' && !e.buttons) survolEntre(p, e); });
+  el.addEventListener('pointerleave', e => { if(e.pointerType === 'mouse') survolSort(); });
   document.getElementById('mapInner').appendChild(el);
   majApparence(p, d);
   return p;
@@ -1287,6 +1297,8 @@ function poserDepuisPalette(x, cx, cy){
 function _pionPointerDown(e, p){
   e.stopPropagation();
   if(e.button > 0) return;
+  cacherSurvol();
+  if(e.pointerType !== 'mouse') _appuiLong(e, p);
   const k = cle(p);
   glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
@@ -1379,6 +1391,117 @@ function afficherPile(){
     }));
     box.appendChild(l);
   }
+}
+
+// ═══ APERÇU DES PILES AU SURVOL ═══
+// Comme le CounterDetailViewer de VASSAL : quand la souris s'arrête sur
+// une pile, une bande montre tous ses pions côte à côte, du fond (à
+// gauche) vers le sommet, en grand et sans le décalage d'empilement,
+// avec la position et l'effectif. L'aperçu ne prend aucun geste.
+const SURVOL_DELAI = 180, SURVOL_ECHELLE = 0.75;
+let _survolTimer = null, _survolCache = null, _survolCle = null;
+
+function survolEntre(p, e){
+  clearTimeout(_survolCache); _survolCache = null;
+  const k = cle(p);
+  const t = document.getElementById('survol');
+  if(t && _survolCle === k){ _placerSurvol(t, e.clientX, e.clientY); return; }
+  clearTimeout(_survolTimer);
+  const x = e.clientX, y = e.clientY;
+  _survolTimer = setTimeout(() => afficherSurvol(k, x, y), SURVOL_DELAI);
+}
+
+// Passer d'un pion à l'autre d'une même pile ne doit pas faire clignoter.
+function survolSort(){
+  clearTimeout(_survolTimer); _survolTimer = null;
+  clearTimeout(_survolCache);
+  _survolCache = setTimeout(cacherSurvol, 120);
+}
+
+function cacherSurvol(){
+  clearTimeout(_survolTimer); _survolTimer = null;
+  clearTimeout(_survolCache); _survolCache = null;
+  const t = document.getElementById('survol');
+  if(t) t.remove();
+  _survolCle = null;
+}
+
+function afficherSurvol(k, cx, cy){
+  const s = pile(k).filter(p => !p.cache);
+  if(!s.length) return;
+  cacherSurvol();
+  const t = document.createElement('div');
+  t.id = 'survol'; t.className = 'survol';
+  const a = ancragePlusProche(s[0].x, s[0].y);
+  // VASL arrondit ses centres autrement que nous : quelques pixels d'écart
+  // désignent encore le même ancrage.
+  const ici = a && Math.hypot(a.x - s[0].x, a.y - s[0].y) < 4 ? a.label : `${s[0].x}, ${s[0].y}`;
+  const tt = document.createElement('div');
+  tt.className = 'tt';
+  tt.textContent = `${ici} — ${s.length} pion${s.length > 1 ? 's' : ''}`;
+  const rang = document.createElement('div');
+  rang.className = 'rang';
+  for(const p of s){
+    // Copie du pion affiché : face, couches et orientation comprises.
+    const c = p.el.cloneNode(true);
+    c.classList.remove('sel');
+    c.style.cssText = `position:absolute;left:0;top:0;width:${p.sz}px;height:${p.sz}px;`
+                    + `transform:scale(${SURVOL_ECHELLE});transform-origin:0 0;`;
+    const boite = document.createElement('div');
+    const cote = Math.round(p.sz * SURVOL_ECHELLE);
+    boite.style.cssText = `position:relative;width:${cote}px;height:${cote}px`;
+    boite.appendChild(c);
+    const n = document.createElement('span');
+    n.textContent = p.el.title || p.nom;
+    const cel = document.createElement('div');
+    cel.className = 'cel';
+    cel.append(boite, n);
+    rang.appendChild(cel);
+  }
+  t.append(tt, rang);
+  document.body.appendChild(t);
+  _placerSurvol(t, cx, cy);
+  _survolCle = k;
+}
+
+// Au-dessus du curseur, sans sortir de la fenêtre.
+function _placerSurvol(t, cx, cy){
+  let x = cx - t.offsetWidth/2, y = cy - t.offsetHeight - 16;
+  x = Math.max(4, Math.min(x, window.innerWidth - t.offsetWidth - 4));
+  if(y < 4) y = cy + 24;
+  t.style.left = x + 'px'; t.style.top = y + 'px';
+}
+
+// Au doigt, pas de survol : un appui maintenu sans bouger affiche
+// l'aperçu, décalé pour ne pas passer sous le doigt, puis il se referme
+// seul peu après le relâché.
+function _appuiLong(e, p){
+  const x0 = e.clientX, y0 = e.clientY;
+  let montre = false;
+  const timer = setTimeout(() => {
+    montre = true;
+    afficherSurvol(cle(p), x0, y0 - 50);
+    if(navigator.vibrate) navigator.vibrate(10);
+  }, 450);
+  const bouge = ev => {
+    if(Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) return;
+    clearTimeout(timer);
+    if(montre) cacherSurvol();
+    fin();
+  };
+  const leve = () => {
+    clearTimeout(timer);
+    if(montre) _survolCache = setTimeout(cacherSurvol, 2500);
+    fin();
+  };
+  const fin = () => {
+    document.removeEventListener('pointermove', bouge);
+    document.removeEventListener('pointerup', leve);
+    document.removeEventListener('pointercancel', leve);
+  };
+  document.addEventListener('pointermove', bouge);
+  document.addEventListener('pointerup', leve);
+  document.addEventListener('pointercancel', leve);
 }
 
 function basculerCote(){ document.getElementById('cote').classList.toggle('ferme'); }
@@ -1667,6 +1790,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const r = document.getElementById('palRech');
   r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
   if(window.innerWidth < 700) basculerCote();
+  // La carte qui défile ou zoome emporte la pile survolée : on referme.
+  const w = document.getElementById('mapWrap');
+  w.addEventListener('scroll', cacherSurvol);
+  w.addEventListener('wheel', cacherSurvol);
   dessinerPalette();
 });
 </script>
