@@ -392,8 +392,22 @@ function _parseBoardSegment(text){
     out.push({
       col, row, name, reversed, crop,
       zoom: zm ? parseFloat(zm[1]) : 1,
-      ssrList: m ? m[1].split('\t').filter(s => s && s !== 'true' && s !== 'false' && s !== 'FH') : []
+      ssrList: m ? m[1].split('\t').filter(s => s && s !== 'true' && s !== 'false' && s !== 'FH') : [],
+      overlays: _parseOverlays(part)
     });
+  }
+  return out;
+}
+
+// Overlays d'hexagones, lus comme ASLBoardPicker : à chaque « OVR », les
+// trois jetons qui suivent sont le nom, hex1 et hex2.
+function _parseOverlays(part){
+  const out = [];
+  let s = part;
+  for(let i = s.indexOf('OVR'); i >= 0; i = s.indexOf('OVR')){
+    s = s.substring(i + 4);
+    const tk = s.split(/[\t ]+/).filter(x => x);
+    if(tk.length >= 3) out.push({nom: tk[0], hex1: tk[1], hex2: tk[2]});
   }
   return out;
 }
@@ -698,7 +712,10 @@ function chargerMotif(nom){
 // transparents ou noirs (HolePunch({0})) laissent voir le board. VASL
 // insère les underlays en tête de liste : le dernier dessiné, donc celui
 // qui l'emporte, est le premier dans l'ordre du fichier (celui de tbl).
-async function poserMotifs(b, cv, regles, tbl = LOS_SSR){
+// base : image où chercher les couleurs, si ce n'est pas le canvas lui-même
+// (l'image d'un overlay avant ses propres images SSR) ; ses pixels
+// transparents ne reçoivent pas de motif.
+async function poserMotifs(b, cv, regles, tbl = LOS_SSR, base = null){
   const motifs = [];
   for(const r of regles){
     try {
@@ -713,12 +730,13 @@ async function poserMotifs(b, cv, regles, tbl = LOS_SSR){
   const g = cv.getContext('2d', {willReadFrequently:true});
   const d = g.getImageData(0, 0, cv.width, cv.height);
   const px = d.data, W = cv.width, H = cv.height;
+  const ref = base ? base.data : px;
   const toutes = new Set(motifs.flatMap(o => [...o.couleurs]));
   let n = 0;
   for(let y = 0, k = 0; y < H; y++){
     for(let x = 0; x < W; x++, k += 4){
-      const rgb = px[k]<<16 | px[k+1]<<8 | px[k+2];
-      if(!toutes.has(rgb)) continue;
+      const rgb = ref[k]<<16 | ref[k+1]<<8 | ref[k+2];
+      if(ref[k+3] < 128 || !toutes.has(rgb)) continue;
       for(const {m, couleurs} of motifs){
         if(!couleurs.has(rgb)) continue;
         const s = m.data, j = ((y % m.height) * m.width + (x % m.width)) * 4;
@@ -796,6 +814,190 @@ async function poserImagesSSR(b, cv, regles, sx, sy){
   return n;
 }
 
+// ═══ OVERLAYS D'HEXAGONES ═══ (Overlay.java)
+// L'image « ovr<nom><orientation>.gif » se trouve dans l'archive
+// boards/bdFiles/overlays/ovr<NOM SANS CHIFFRES>. Son fichier « data » donne,
+// pour chaque orientation a…f, l'hexagone d'origine : l'image se pose à
+// centre(hex1) − centre(origine), dans le repère du board non recadré.
+const VASL_OVERLAYS_URL =
+  'https://raw.githubusercontent.com/vasl-developers/vasl/develop/boards/bdFiles/overlays/';
+const _archivesOvr = new Map();         // nom d'archive → Promise<{files, data, meta}>
+
+function _equivalence(f){
+  if(/^be[23]/.test(f)) return 'be1' + f.substring(3);
+  if(/^be[56]/.test(f)) return 'be4' + f.substring(3);
+  if(f.startsWith('oc2')) return 'oc1' + f.substring(3);
+  if(f.startsWith('oc4')) return 'oc3' + f.substring(3);
+  return f;
+}
+// Retire l'orientation, puis la queue de chiffres si le nom commence
+// par une lettre : « o3a » → « o », « rr10a » → « rr », « 1a » → « 1 ».
+function _trimNom(s){
+  s = s.substring(0, s.length - 1);
+  if(/^[0-9]/.test(s)) return s;
+  return s.replace(/[0-9]+$/, '') || s;
+}
+const archiveOverlay = nom => 'ovr' + _trimNom(_equivalence(nom + 'a')).toUpperCase();
+const imageOverlay   = nom => 'ovr' + _equivalence(nom) + '.gif';
+
+function chargerArchiveOverlay(arch){
+  if(!_archivesOvr.has(arch)){
+    _archivesOvr.set(arch, fetch(VASL_OVERLAYS_URL + arch).then(async r => {
+      if(!r.ok) throw new Error(arch + ' introuvable (HTTP ' + r.status + ')');
+      const files = await _zipRead(await r.arrayBuffer());
+      const data = _fichier(files, 'data');
+      const xml = _fichier(files, 'BoardMetadata.xml');
+      let meta = null;
+      if(xml){
+        const doc = new DOMParser().parseFromString(new TextDecoder().decode(xml), 'application/xml');
+        if(doc.documentElement && doc.documentElement.nodeName === 'boardMetadata')
+          meta = _lireMetaSSR(doc.documentElement);
+      }
+      return {files, data: data ? new TextDecoder().decode(data) : '', meta};
+    }));
+    _archivesOvr.get(arch).catch(() => _archivesOvr.delete(arch));
+  }
+  return _archivesOvr.get(arch);
+}
+
+// Origines par défaut, quand le fichier data n'en donne pas
+// (Overlay.getDefaultOriginList).
+const ORIGINES_OVR = (() => {
+  const t = {}, def = (noms, o) => noms.split(' ').forEach(n => t[n] = o);
+  def('st1', 'b7;g4;g3;d5;h3;i4'); def('st2', 'd6;c5;g2;g4;g6;h4'); def('st3', 'e8;c6;g1;i3;i7;j4');
+  def('1 2 3', 'b2; ; ;l8; ; '); def('4', 'b0; ; ;j10; ; '); def('5', 'c2; ; ;g9; ; ');
+  def('d1', 'b3;c2;e4;f4;e6;c4'); def('d2', 'b3;b2;d1;f3;f4;d5'); def('d3', 'b4;b2;b1;b1;e1;e3');
+  def('d4', 'b2;b1;c1;e2;e3;c4'); def('d5', 'b3;d1;h2;h5;h7;d6'); def('d6', 'b3;d2;f3;h3;f4;d3');
+  def('e1', 'a1; ; ;gg10; ; ');
+  def('h1', 'b4;f1;c7;j6;h9;i4'); def('h2', 'c5;d3;f3;e5;f5;f1'); def('h3', 'b3;b1;e1;f1;f3;c4');
+  def('h4', 'd6;h3;h5;d6;h4;f5'); def('h5', 'c6;e3;f3;e6;i5;f5'); def('h6', 'b4;d2;e2;f4;h3;e5');
+  def('s1', 'b3;d1;e2;d3;f2;c4'); def('s2', 'b2;b1;c1;d1;d2;c3'); def('s3', 'c3;e2;e3;e4;e3;c4');
+  def('s4', 'b3;c2;d1;d2;e2;d2'); def('s5', 'c5;e5;e2;g4;e4;g3'); def('s6', 'b3;b2;b2;d1;d2;d2');
+  def('s7', 'b3;b1;b1;d1;f1;d3'); def('s8', 'b3;b2;d5;f3;f4;d1');
+  def('sd1', 'b4;d2;e3;d3;f4;e4'); def('sd2', 'c2;f1;e4;g5;f4;c5'); def('sd3', 'b3;b2;d1;f2;f3;d4');
+  def('sd4', 'b3;b1;e2;f2;f4;c4'); def('sd5', 'c6;f2;f4;e5;h4;f4'); def('sd6', 'c6;b3;d1;g2;h4;f4');
+  def('sd7', 'b2;b1;e2;f2;f3;c3'); def('sd8', 'b4;c3;g1;f4;g5;e4');
+  def('w1', 'e6;c6;h1;g4;e6;h3'); def('w2', 'h5;g6;d6;f4;i1;f5'); def('w3', 'b7;c4;h1;f4;i6;h4');
+  def('w4', 'b6;d2;h2;h5;j6;f6');
+  def('ef1', 'e3;e3;b4;e3;e3;c4'); def('ef2', 'b3;e2;f2;d4;e4;d3'); def('ef3', 'c5;d3;e2;e4;g3;f5');
+  def('be1 be2 be3 be7', 'g11;e10;b5;b1;k1;n5'); def('be4 be5 be6', 'm7;i12;b9;b1;g1;n3');
+  def('oc1 oc2', 'm13;h15;d9;b1;o1;s7'); def('oc3 oc4', 'm14;h15;c9;b1;o1;t7');
+  def('x20 x21', 'c2;f2;f4;c5;c5;c2'); def('x23 x24', 'b2;d1;c2;e2;d3;d4');
+  def('rr1 rr2 rr8', 'b5;h4;h4;b7;f5;f3'); def('rr3 rr11', 'c5;d4;d2;c2;g3;g4');
+  def('rr4 rr12', 'c4;d4;d2;c3;e3;e4'); def('rr7', 'b7;f4;f3;b5;h3;h4');
+  def('rr13', 'c6;d2;g2;g5;h6;e7'); def('rr14', 'b6;f3;g3;c5;h3;g4');
+  def('re1', 'c3;b1;k1;l5;d9;d7'); def('re2', 'c5;b1;k2;l7;f9;e9'); def('re3', 'h5;h6;c7;d6;e3;d3');
+  def('re4 re5', 'b4;b1;c1;e1;f3;d4');
+  def('hd5 hd6 hd7', 'b4;b2;b1;c1;d1;d2'); def('hd8', 'b3;c2;d1;d2;d2;d2;');
+  def('hd9 hd10', 'b4;b3;b1;c1;f1;f3'); def('hd11', 'd6;b5;b1;c1;g2;h4'); def('ow1', 'c3;c3;d2;e3;d3;d3');
+  return t;
+})();
+function _originesDefaut(nom){
+  if(ORIGINES_OVR[nom]) return ORIGINES_OVR[nom];
+  if(/^(wd|g|m|p|x|b|rp|rr|hd|o)/.test(nom)) return 'b2;b1;c1;d1;d2;c3';
+  return null;
+}
+
+// Fichier data (Overlay.readData) : « nom origines… », « placeAt h1 h2 ».
+function _lireDataOverlay(texte, nom){
+  const r = {origines: _originesDefaut(nom), placeAt: null};
+  for(const l of texte.split(/\r?\n/)){
+    const tk = l.trim().split(/\s+/);
+    if(tk.length < 2) continue;
+    if(tk[0].toLowerCase() === nom.toLowerCase()) r.origines = l.trim().substring(nom.length).trim();
+    else if(tk[0].toLowerCase() === 'placeat') r.placeAt = [tk[1], tk[2] || tk[1]];
+  }
+  return r;
+}
+
+// Orientation a…f d'après la position de hex2 par rapport à hex1.
+function _orientation(g, hex1, hex2){
+  if(hex1 === hex2) return 'a';
+  const p = centreHex(g, hex1), q = centreHex(g, hex2);
+  if(!p || !q) return 'a';
+  if(p.x === q.x) return p.y < q.y ? 'd' : 'a';
+  if(p.x > q.x) return p.y > q.y ? 'f' : 'e';
+  return p.y > q.y ? 'b' : 'c';
+}
+
+// Hexagone d'origine pour une orientation, avec les deux bricolages de
+// VASL (Overlay.offset). La liste Java porte la chaîne unique
+// « 22b, 23b, 24b, 25b, 26b » : ces boards-là ne sont pas décalés.
+const BOARDS_B = new Set(['1b','2b','3b','4b','5b','6b','7b','8b','9b','10b','11b','12b','13b',
+  '14b','15b','16b','17b','18b','19b','20b','21b']);
+function _origine(origines, c, board){
+  let o = (origines || '').split(';')[c.charCodeAt(0) - 97];
+  if(o === undefined) return null;
+  o = o.trim();
+  if(!o) return null;
+  if(BOARDS_B.has(board)) o = String.fromCharCode(o.charCodeAt(0) + 16) + o.substring(1);
+  if(/^BFPDW[1-7]b$/.test(board)){
+    const r = parseInt(o.substring(1), 10);
+    if(!isNaN(r)) o = o.substring(0, 1) + (r + 10);
+  }
+  return o;
+}
+
+// Prépare un overlay : image, position (repère du board non recadré) et
+// métadonnées de son archive. Lève une erreur lisible en cas d'échec.
+async function preparerOverlay(b, o){
+  const g = geoBoard(b);
+  const arch = archiveOverlay(o.nom);
+  const a = await chargerArchiveOverlay(arch);
+  const d = _lireDataOverlay(a.data, o.nom);
+  let hex1 = o.hex1, hex2 = o.hex2;
+  if(d.placeAt) [hex1, hex2] = d.placeAt;
+  const unHex = !!_fichier(a.files, imageOverlay(o.nom + 'a')) && !_fichier(a.files, imageOverlay(o.nom + 'd'));
+  if(unHex && hex1 !== hex2) throw new Error('un seul hexagone attendu');
+  if(!unHex && hex1 === hex2) throw new Error('deux hexagones attendus');
+  const p1 = centreHex(g, hex1), p2 = centreHex(g, hex2);
+  if(!p1 || !p2) throw new Error('hexagone ' + (p1 ? hex2 : hex1) + ' invalide');
+  // Overlay.check : hex2 doit toucher hex1.
+  if(Math.abs(p2.x - p1.x) > 1.1 * g.hw || Math.abs(p2.y - p1.y) > 1.1 * g.hh)
+    throw new Error(hex1 + ' et ' + hex2 + ' ne sont pas voisins');
+  const c = unHex ? 'a' : _orientation(g, hex1, hex2);
+  const fichier = imageOverlay(o.nom + c);
+  const octets = _fichier(a.files, fichier);
+  if(!octets) throw new Error(fichier + ' absent de ' + arch);
+  const nomOrigine = _origine(d.origines, c, b.name);
+  const po = nomOrigine && centreHex(g, nomOrigine);
+  if(!po) throw new Error(`orientation « ${c} » sans origine`);
+  const image = await createImageBitmap(new Blob([octets]));
+  return {nom: o.nom, archive: arch, meta: a.meta, files: a.files, image,
+          x: p1.x - po.x, y: p1.y - po.y, orientation: c};
+}
+
+// Dessin d'un overlay (ASLBoard.BoardOp) : son image, puis, si le board a
+// des SSR et que l'archive de l'overlay a son BoardMetadata.xml
+// (Overlay.getTerrain), les images SSR de cette archive et les motifs du
+// board découpés dans l'image de l'overlay — dans cet ordre.
+async function dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy){
+  let src = ov.image;
+  if(voulues.size && ov.meta){
+    const c = document.createElement('canvas');
+    c.width = ov.image.width; c.height = ov.image.height;
+    const g = c.getContext('2d', {willReadFrequently:true});
+    g.drawImage(ov.image, 0, 0);
+    const base = g.getImageData(0, 0, c.width, c.height);
+    const images = ov.meta.overlays.filter(([r]) => voulues.has(r));
+    for(const [r, imgs] of images) for(const i of imgs){
+      const octets = _fichier(ov.files, i.image);
+      if(!octets){ chatLog(`⚠️ ${ov.archive} : image ${i.image} (${r}) absente`); continue; }
+      const bm = await createImageBitmap(new Blob([octets]));
+      g.drawImage(bm, i.x, i.y);
+      bm.close();
+    }
+    const parImage = new Set(images.map(([r]) => r));
+    const motifs = Object.keys(tbl).filter(r => voulues.has(r) && tbl[r].m && !parImage.has(r));
+    if(motifs.length){
+      const n = await poserMotifs(b, c, motifs, tbl, base);
+      if(n) chatLog(`🧩 overlay ${ov.nom} : ${motifs.join(', ')} — ${n.toLocaleString('fr')} pixels de motif`);
+    }
+    src = c;
+  }
+  cv.getContext('2d').drawImage(src, ov.x - sx, ov.y - sy);
+}
+
 // Image d'un board telle que la compose ASLBoard.BoardOp : la partie
 // visible (recadrée) au format natif, puis les motifs, les images SSR et
 // les overlays, puis le repeint des SSR sur l'ensemble. Le retournement et
@@ -809,33 +1011,53 @@ async function composerBoard(b, img){
   cv.width = sw; cv.height = sh;
   cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
   const voulues = new Set(b.ssrList || []);
-  if(!voulues.size) return cv;
-  try {
-    const tbl = await reglesBoard(b);
-    // Dans l'ordre du fichier de métadonnées, pas dans celui de la sauvegarde.
-    const ordre = Object.keys(tbl).filter(r => voulues.has(r));
-    const images = ((gb.meta && gb.meta.overlays) || []).filter(([r]) => voulues.has(r));
-    // SSRFilter retire de la liste les règles servies par une image :
-    // elles ne passent plus par l'underlay.
-    const parImage = new Set(images.map(([r]) => r));
-    const motifs   = ordre.filter(r => tbl[r].m && !parImage.has(r));
-    const couleurs = ordre.filter(r => tbl[r].c);
-    if(motifs.length){
-      const n = await poserMotifs(b, cv, motifs, tbl);
-      if(n) chatLog(`🧩 bd${b.name} : ${motifs.join(', ')} — ${n.toLocaleString('fr')} pixels de motif`);
-      else  chatLog(`⚠️ bd${b.name} : aucun terrain à couvrir pour ${motifs.join(', ')}`);
+  const overlays = b.overlays || [];
+  if(!voulues.size && !overlays.length) return cv;
+  let tbl = LOS_SSR, couleurs = [];
+  if(voulues.size){
+    try {
+      tbl = await reglesBoard(b);
+      // Dans l'ordre du fichier de métadonnées, pas dans celui de la sauvegarde.
+      const ordre = Object.keys(tbl).filter(r => voulues.has(r));
+      const images = ((gb.meta && gb.meta.overlays) || []).filter(([r]) => voulues.has(r));
+      // SSRFilter retire de la liste les règles servies par une image :
+      // elles ne passent plus par l'underlay.
+      const parImage = new Set(images.map(([r]) => r));
+      const motifs = ordre.filter(r => tbl[r].m && !parImage.has(r));
+      couleurs = ordre.filter(r => tbl[r].c);
+      if(motifs.length){
+        const n = await poserMotifs(b, cv, motifs, tbl);
+        if(n) chatLog(`🧩 bd${b.name} : ${motifs.join(', ')} — ${n.toLocaleString('fr')} pixels de motif`);
+        else  chatLog(`⚠️ bd${b.name} : aucun terrain à couvrir pour ${motifs.join(', ')}`);
+      }
+      if(images.length){
+        const n = await poserImagesSSR(b, cv, images, sx, sy);
+        if(n) chatLog(`🖼️ bd${b.name} : ${[...parImage].join(', ')} — ${n} image(s) du board`);
+      }
+    } catch(e){
+      chatLog(`⚠️ SSR sur bd${b.name} impossible : ${e.message}`);
     }
-    if(images.length){
-      const n = await poserImagesSSR(b, cv, images, sx, sy);
-      if(n) chatLog(`🖼️ bd${b.name} : ${[...parImage].join(', ')} — ${n} image(s) du board`);
+  }
+  // Overlays d'hexagones, dans l'ordre de la sauvegarde, sur les SSR.
+  for(const o of overlays){
+    try {
+      const ov = await preparerOverlay(b, o);
+      await dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy);
+      ov.image.close();
+      chatLog(`🧱 bd${b.name} : overlay ${o.nom} en ${o.hex1}-${o.hex2} (${ov.archive}, orientation ${ov.orientation})`);
+    } catch(e){
+      chatLog(`⚠️ bd${b.name} : overlay ${o.nom} non posé — ${e.message}`);
     }
-    if(couleurs.length){
+  }
+  // Le repeint porte sur toute l'image : board, motifs, images et overlays.
+  if(couleurs.length){
+    try {
       const n = repeindre(cv, tableSSR(couleurs, tbl));
       if(n) chatLog(`🎨 bd${b.name} : ${couleurs.join(', ')} — ${n.toLocaleString('fr')} pixels repeints`);
       else  chatLog(`⚠️ bd${b.name} : aucune couleur à repeindre pour ${couleurs.join(', ')}`);
+    } catch(e){
+      chatLog(`⚠️ SSR sur bd${b.name} impossible : ${e.message}`);
     }
-  } catch(e){
-    chatLog(`⚠️ SSR sur bd${b.name} impossible : ${e.message}`);
   }
   return cv;
 }

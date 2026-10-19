@@ -384,7 +384,7 @@ quand on masque les pions.
 8. Reconstruire la table des couleurs à partir des noms, pour tenir compte
    des surcharges du board.
 
-**Étape 4 — Overlays d'hexagones**
+**Étape 4 — Overlays d'hexagones** — **faite** : `_parseOverlays`, `chargerArchiveOverlay`, `preparerOverlay`, `dessinerOverlay` (images SSR et motifs propres à l'archive de l'overlay compris)
 
 9. `_parseBoardSegment` : ajouter `overlays: [{nom, hex1, hex2}]` (reprendre
    `_parseOverlays`).
