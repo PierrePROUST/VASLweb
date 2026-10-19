@@ -197,6 +197,8 @@ const SC = 1.6;                       // échelle d'affichage, comme l'original
 const BOARD_MARGIN = 400;             // marge de carte VASSAL
 const VASL_BOARDS_URL =
   'https://raw.githubusercontent.com/vasl-developers/vasl/develop/boards/bdFiles/';
+const VASL_BOARDDATA_URL =          // métadonnées et motifs partagés
+  'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/boardData/';
 const BOARD_W = 1800, BOARD_H = 645;  // board géomorphique standard
 const HEX_COLS = 33, HEX_ROWS = 10;
 
@@ -417,18 +419,37 @@ async function chargerGeoBoard(nom){
   let g;
   try {
     const files = await _archive(nom);
-    const xml = files.get('BoardMetadata.xml');
+    const xml = _fichier(files, 'BoardMetadata.xml');
     const att = {};
+    let meta = null;
     if(xml){
-      const t = new TextDecoder().decode(xml);
-      for(const m of t.slice(0, 3000).matchAll(/(\w+)\s*=\s*"([^"]*)"/g)) att[m[1]] = m[2];
+      const doc = new DOMParser().parseFromString(new TextDecoder().decode(xml), 'application/xml');
+      const racine = doc.documentElement;
+      if(racine && racine.nodeName === 'boardMetadata'){
+        for(const a of racine.attributes) att[a.name] = a.value;
+        meta = _lireMetaSSR(racine);
+      }
+    } else {
+      // Board ancien (v5) : fichier « data », une paire « clé valeur » par ligne.
+      const data = _fichier(files, 'data');
+      if(data) for(const l of new TextDecoder().decode(data).split(/\r?\n/)){
+        const m = l.trim().split(/\s+/);
+        if(m.length >= 2) att['data.' + m[0].toLowerCase()] = m[1];
+      }
     }
+    const nb = (v, d) => { const x = parseFloat(v); return isNaN(x) ? d : x; };
     g = {
       cols: parseInt(att.width, 10)  || HEX_COLS,
       rows: parseInt(att.height, 10) || HEX_ROWS,
-      hw: parseFloat(att.hexWidth)   || 56.25,
-      hh: parseFloat(att.hexHeight)  || 64.5,
+      hw: nb(att.hexWidth  ?? att['data.dx'], 56.25),
+      hh: nb(att.hexHeight ?? att['data.dy'], 64.5),
+      meta,
     };
+    // Origine de la grille (centre de A1). VASL la tronque en entier
+    // (ASLBoard.initializeFromArchive : « (int) getA1CenterX() »).
+    g.x0 = Math.trunc(nb(att.A1CenterX ?? att['data.x0'], 0));
+    g.y0 = Math.trunc(nb(att.A1CenterY ?? att['data.y0'], g.hh / 2));
+    g.alt = (att.altHexGrain ?? att['data.alternate']) === 'true';
     // La taille de l'image fait foi : les métadonnées manquent sur les
     // boards les plus anciens.
     const img = _gifDuBoard(files, nom, att.boardImageFileName);
@@ -440,7 +461,8 @@ async function chargerGeoBoard(nom){
       g.h = Math.round(g.rows * g.hh);
     }
   } catch(e){
-    g = {cols:HEX_COLS, rows:HEX_ROWS, hw:56.25, hh:64.5, w:BOARD_W, h:BOARD_H, defaut:true};
+    g = {cols:HEX_COLS, rows:HEX_ROWS, hw:56.25, hh:64.5, x0:0, y0:32, alt:false,
+         w:BOARD_W, h:BOARD_H, defaut:true};
   }
   _geoBoards.set(nom, g);
   return g;
@@ -448,7 +470,80 @@ async function chargerGeoBoard(nom){
 
 function geoBoard(b){
   return _geoBoards.get(b && b.name)
-      || {cols:HEX_COLS, rows:HEX_ROWS, hw:56.25, hh:64.5, w:BOARD_W, h:BOARD_H};
+      || {cols:HEX_COLS, rows:HEX_ROWS, hw:56.25, hh:64.5, x0:0, y0:32, alt:false,
+          w:BOARD_W, h:BOARD_H};
+}
+
+// Fichier d'une archive, sans tenir compte de la casse.
+function _fichier(files, nom){
+  if(files.has(nom)) return files.get(nom);
+  const voulu = nom.toLowerCase();
+  for(const [n, d] of files) if(n.toLowerCase() === voulu) return d;
+  return null;
+}
+
+// ── Grille VASL (ASLHexGrid). Colonnes A…Z, AA…ZZ, AAA… ; les colonnes
+// paires (A, C…) ont leur rangée 1 à y0, les impaires une demi-rangée
+// plus bas (plus haut si la grille est « alternate »).
+function hexrow(i){
+  let s = '';
+  for(let n = i; n >= 0; n -= 26) s += C26[n % 26];
+  return s;
+}
+function centreHex(g, nom){
+  const m = /^([a-z])(\1*)(-?\d+)$/i.exec(nom.trim());
+  if(!m) return null;
+  const col = m[1].toLowerCase().charCodeAt(0) - 97 + 26 * m[2].length;
+  const rang = parseInt(m[3], 10);
+  const y = col % 2 === 0 ? Math.trunc(g.hh * (rang - 1) + .5)
+          : g.alt         ? Math.trunc(g.hh * (rang - 1.5) + .5)
+          :                 Math.trunc(g.hh * (rang - .5) + .5);
+  return {x: Math.trunc(g.hw * col + .5) + g.x0, y: y + g.y0};
+}
+
+// ── Règles SSR d'un fichier de métadonnées (SharedBoardMetadata.xml ou
+// BoardMetadata.xml d'un board), dans l'ordre du fichier :
+//   colors    : [[nom, 0xRRGGBB]]
+//   colorSSR  : [[règle, [[nom de, nom vers], …]]]
+//   overlays  : [[règle, [{image, x, y}, …]]]   (images de l'archive)
+//   underlays : [[règle, {image, couleurs: [nom, …]}]]
+function _lireMetaSSR(racine){
+  const enfant = (el, nom) => [...el.children].find(e => e.nodeName === nom);
+  const sous = (el, nom) => el ? [...el.children].filter(e => e.nodeName === nom) : [];
+  const meta = {colors: [], colorSSR: [], overlays: [], underlays: []};
+  for(const c of sous(enfant(racine, 'colors'), 'color')){
+    const v = ['red', 'green', 'blue'].map(k => parseInt(c.getAttribute(k), 10));
+    if(v.every(x => x >= 0 && x <= 255)) meta.colors.push([c.getAttribute('name'), v[0]<<16 | v[1]<<8 | v[2]]);
+  }
+  for(const r of sous(enfant(racine, 'colorSSRules'), 'colorSSR'))
+    meta.colorSSR.push([r.getAttribute('name'),
+      sous(r, 'colorMap').map(m => [m.getAttribute('fromColor'), m.getAttribute('toColor')])]);
+  const img = e => ({image: e.getAttribute('image'),
+                     x: parseInt(e.getAttribute('x'), 10) || 0, y: parseInt(e.getAttribute('y'), 10) || 0});
+  for(const e of [...(enfant(racine, 'overlaySSRules') || {children: []}).children]){
+    const nom = e.getAttribute('name');
+    if(e.nodeName === 'overlaySSRule') meta.overlays.push([nom, [img(e)]]);
+    else if(e.nodeName === 'overlaySSRuleSet') meta.overlays.push([nom, sous(e, 'overlaySSRuleImage').map(img)]);
+    else if(e.nodeName === 'underlaySSRule')
+      meta.underlays.push([nom, {image: e.getAttribute('image'),
+                                 couleurs: sous(e, 'color').map(c => c.getAttribute('name'))}]);
+  }
+  return meta;
+}
+
+// Métadonnées partagées du module, téléchargées une fois, seulement si un
+// board redéfinit des couleurs ou des règles : sans cela, LOS_SSR suffit.
+let _partagee = null;
+function metaPartagee(){
+  if(!_partagee){
+    _partagee = fetch(VASL_BOARDDATA_URL + 'SharedBoardMetadata.xml').then(async r => {
+      if(!r.ok) throw new Error('SharedBoardMetadata.xml introuvable (HTTP ' + r.status + ')');
+      const doc = new DOMParser().parseFromString(await r.text(), 'application/xml');
+      return _lireMetaSSR(doc.documentElement);
+    });
+    _partagee.catch(() => { _partagee = null; });
+  }
+  return _partagee;
 }
 
 function _gifDuBoard(files, nom, prefere){
@@ -541,10 +636,11 @@ const SSR_LOS_SEULES = {"NoBridge":{"t":"customCode"},"BridgeToFord":{"t":"custo
 // première règle qui remappe une couleur l'emporte, et chaque nouvelle
 // correspondance prolonge celles qui aboutissaient à sa couleur source :
 // Level6ToLevel5 puis Level5ToLevel4… ramène ainsi un niveau 6 jusqu'à 0.
-function tableSSR(regles){
+// tbl : LOS_SSR, ou la table propre au board (reglesBoard).
+function tableSSR(regles, tbl = LOS_SSR){
   const voulues = new Set(regles);
   const table = new Map();
-  for(const [nom, r] of Object.entries(LOS_SSR)){
+  for(const [nom, r] of Object.entries(tbl)){
     if(!voulues.has(nom) || !r.c) continue;
     for(const [de, vers] of r.c){
       if(!de || !vers) continue;
@@ -577,8 +673,6 @@ function repeindre(cv, table){
 }
 
 // ── Motifs (underlaySSRule) : boardData/<motif>.gif du module VASL.
-const VASL_BOARDDATA_URL =
-  'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/boardData/';
 const _motifs = new Map();              // nom → Promise<ImageData>
 
 function chargerMotif(nom){
@@ -603,13 +697,13 @@ function chargerMotif(nom){
 // (non repeint) porte l'une des couleurs de la règle. Ses pixels
 // transparents ou noirs (HolePunch({0})) laissent voir le board. VASL
 // insère les underlays en tête de liste : le dernier dessiné, donc celui
-// qui l'emporte, est le premier dans l'ordre du fichier (celui de LOS_SSR).
-async function poserMotifs(b, cv, regles){
+// qui l'emporte, est le premier dans l'ordre du fichier (celui de tbl).
+async function poserMotifs(b, cv, regles, tbl = LOS_SSR){
   const motifs = [];
   for(const r of regles){
     try {
-      const m = await chargerMotif(LOS_SSR[r].m[0]);
-      motifs.push({m, couleurs: new Set(LOS_SSR[r].m[1].filter(c => c)
+      const m = await chargerMotif(tbl[r].m[0]);
+      motifs.push({m, couleurs: new Set(tbl[r].m[1].filter(c => c)
                                  .map(c => c[0]<<16 | c[1]<<8 | c[2]))});
     } catch(e){
       chatLog(`⚠️ bd${b.name} : motif de ${r} indisponible (${e.message})`);
@@ -639,10 +733,73 @@ async function poserMotifs(b, cv, regles){
   return n;
 }
 
+// ── Règles d'un board. Son BoardMetadata.xml part des métadonnées
+// partagées (BoardMetadata) : ses couleurs remplacent celles du même nom,
+// ses colorSSR s'ajoutent (ou complètent la règle du même nom), ses
+// underlays remplacent la règle du même nom à sa place. Quand le board ne
+// touche à rien de ce que demande la sauvegarde, LOS_SSR, calculée sur les
+// couleurs partagées, donne le même résultat sans téléchargement.
+async function reglesBoard(b){
+  const g = geoBoard(b), meta = g.meta;
+  const voulues = new Set(b.ssrList || []);
+  const touche = meta && (
+       meta.colorSSR.some(([n]) => voulues.has(n))
+    || meta.underlays.some(([n]) => voulues.has(n))
+    || (meta.colors.length && [...voulues].some(r => LOS_SSR[r] && (LOS_SSR[r].c || LOS_SSR[r].m))));
+  if(!touche) return LOS_SSR;
+  if(g.tblSSR) return g.tblSSR;
+  let p;
+  try { p = await metaPartagee(); }
+  catch(e){
+    chatLog(`⚠️ bd${b.name} : couleurs propres au board ignorées (${e.message})`);
+    return LOS_SSR;
+  }
+  const couleurs = new Map(p.colors);
+  for(const [n, c] of meta.colors) couleurs.set(n, c);
+  const colorSSR = new Map();
+  for(const [n, maps] of [...p.colorSSR, ...meta.colorSSR])
+    colorSSR.set(n, (colorSSR.get(n) || []).concat(maps));
+  const underlays = new Map(p.underlays);
+  for(const [n, u] of meta.underlays) underlays.set(n, u);
+  const rgb = n => {
+    const c = couleurs.get(n);
+    return c === undefined ? null : [c >> 16, (c >> 8) & 255, c & 255];
+  };
+  const tbl = {};
+  for(const [n, maps] of colorSSR) tbl[n] = {c: maps.map(([de, vers]) => [rgb(de), rgb(vers)])};
+  for(const [n, u] of underlays) tbl[n] = Object.assign(tbl[n] || {}, {m: [u.image, u.couleurs.map(rgb)]});
+  g.tblSSR = tbl;
+  return tbl;
+}
+
+// ── Images SSR du board (SSROverlay) : posées à x,y, repère du board non
+// recadré. setTerrain les insère une à une en tête de liste : elles se
+// dessinent donc dans l'ordre inverse du fichier, sur les motifs et sous
+// les overlays d'hexagones.
+async function poserImagesSSR(b, cv, regles, sx, sy){
+  const files = await _archive(b.name);
+  const liste = regles.flatMap(([r, imgs]) => imgs.map(i => [r, i])).reverse();
+  const g = cv.getContext('2d');
+  let n = 0;
+  for(const [r, i] of liste){
+    const octets = _fichier(files, i.image);
+    if(!octets){ chatLog(`⚠️ bd${b.name} : image ${i.image} (${r}) absente de l'archive`); continue; }
+    try {
+      const bm = await createImageBitmap(new Blob([octets]));
+      g.drawImage(bm, i.x - sx, i.y - sy);
+      bm.close();
+      n++;
+    } catch(e){
+      chatLog(`⚠️ bd${b.name} : image ${i.image} illisible`);
+    }
+  }
+  return n;
+}
+
 // Image d'un board telle que la compose ASLBoard.BoardOp : la partie
-// visible (recadrée) au format natif, les motifs et overlays par-dessus,
-// puis le repeint des SSR sur l'ensemble. Le retournement et le zoom
-// viennent après, au dessin sur la carte.
+// visible (recadrée) au format natif, puis les motifs, les images SSR et
+// les overlays, puis le repeint des SSR sur l'ensemble. Le retournement et
+// le zoom viennent après, au dessin sur la carte.
 async function composerBoard(b, img){
   const gb = geoBoard(b);
   const sx = b.crop ? b.crop.x : 0, sy = b.crop ? b.crop.y : 0;
@@ -651,21 +808,29 @@ async function composerBoard(b, img){
   const cv = document.createElement('canvas');
   cv.width = sw; cv.height = sh;
   cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-  const regles = (b.ssrList || []).filter(r => LOS_SSR[r]);
-  if(!regles.length) return cv;
-  // Dans l'ordre de LOS_SSR, qui est celui du fichier de métadonnées.
-  const voulues = new Set(regles);
-  const ordre = Object.keys(LOS_SSR).filter(r => voulues.has(r));
-  const motifs   = ordre.filter(r => LOS_SSR[r].m);
-  const couleurs = ordre.filter(r => LOS_SSR[r].c);
+  const voulues = new Set(b.ssrList || []);
+  if(!voulues.size) return cv;
   try {
+    const tbl = await reglesBoard(b);
+    // Dans l'ordre du fichier de métadonnées, pas dans celui de la sauvegarde.
+    const ordre = Object.keys(tbl).filter(r => voulues.has(r));
+    const images = ((gb.meta && gb.meta.overlays) || []).filter(([r]) => voulues.has(r));
+    // SSRFilter retire de la liste les règles servies par une image :
+    // elles ne passent plus par l'underlay.
+    const parImage = new Set(images.map(([r]) => r));
+    const motifs   = ordre.filter(r => tbl[r].m && !parImage.has(r));
+    const couleurs = ordre.filter(r => tbl[r].c);
     if(motifs.length){
-      const n = await poserMotifs(b, cv, motifs);
+      const n = await poserMotifs(b, cv, motifs, tbl);
       if(n) chatLog(`🧩 bd${b.name} : ${motifs.join(', ')} — ${n.toLocaleString('fr')} pixels de motif`);
       else  chatLog(`⚠️ bd${b.name} : aucun terrain à couvrir pour ${motifs.join(', ')}`);
     }
+    if(images.length){
+      const n = await poserImagesSSR(b, cv, images, sx, sy);
+      if(n) chatLog(`🖼️ bd${b.name} : ${[...parImage].join(', ')} — ${n} image(s) du board`);
+    }
     if(couleurs.length){
-      const n = repeindre(cv, tableSSR(couleurs));
+      const n = repeindre(cv, tableSSR(couleurs, tbl));
       if(n) chatLog(`🎨 bd${b.name} : ${couleurs.join(', ')} — ${n.toLocaleString('fr')} pixels repeints`);
       else  chatLog(`⚠️ bd${b.name} : aucune couleur à repeindre pour ${couleurs.join(', ')}`);
     }
@@ -698,8 +863,14 @@ async function _renderBoards(boards){
   const ssrTot = [...new Set(boards.flatMap(b => b.ssrList || []))];
   if(ssrTot.length){
     chatLog(`🌾 Modifications de terrain (SSR) : ${ssrTot.join(', ')}`);
-    const losSeule  = ssrTot.filter(r => !LOS_SSR[r] && SSR_LOS_SEULES[r]);
-    const inconnues = ssrTot.filter(r => !LOS_SSR[r] && !SSR_LOS_SEULES[r]);
+    // Une règle sans effet graphique en général peut avoir une image, une
+    // couleur ou un motif propre à l'un des boards.
+    const propre = new Set(boards.flatMap(b => {
+      const m = geoBoard(b).meta;
+      return m ? [...m.overlays, ...m.colorSSR, ...m.underlays].map(([r]) => r) : [];
+    }));
+    const losSeule  = ssrTot.filter(r => !LOS_SSR[r] && !propre.has(r) && SSR_LOS_SEULES[r]);
+    const inconnues = ssrTot.filter(r => !LOS_SSR[r] && !propre.has(r) && !SSR_LOS_SEULES[r]);
     if(losSeule.length)  chatLog('ℹ️ Sans effet graphique (visée seule) : ' + losSeule.join(', '));
     if(inconnues.length) chatLog('⚠️ SSR non reconnue(s), terrain inchangé : ' + inconnues.join(', '));
   }
@@ -834,6 +1005,9 @@ const COTES = [null, [0,-HEX_HY], [HEX_HX,-HEX_HY/2], [HEX_HX,HEX_HY/2],
 const SNAP_COTE = 0.45;        // le côté ne gagne que tout près de son milieu
 let _hexTable = [];
 
+// Les hexagones retenus sont ceux dont le centre tombe sur l'image du board,
+// demi-hexagones de bord compris (B0, B10…) : la grille VASL les connaît.
+// Les boards « b » (A1CenterX = −901) commencent ainsi à la colonne Q.
 function _buildHexTable(boards){
   _hexTable = [];
   for(const b of boards){
@@ -841,11 +1015,15 @@ function _buildHexTable(boards){
     const cropX = b.crop ? (b.crop.x || 0) : 0;
     const cropY = b.crop ? (b.crop.y || 0) : 0;
     const dispW = b.dispW || g.w, dispH = b.dispH || g.h;
-    for(let i = 0; i < g.cols; i++){
-      const col = i < 26 ? C26[i] : C26[i-26] + C26[i-26];
-      for(let r = 1; r <= g.rows; r++){
-        const lx = i * g.hw - cropX;
-        const ly = (i % 2 ? g.hh : g.hh/2) + (r - 1) * g.hh - cropY;
+    const i0 = Math.max(0, Math.floor((-g.hw/4 - g.x0) / g.hw));
+    const i1 = Math.ceil((g.w + g.hw/4 - g.x0) / g.hw);
+    const r0 = Math.floor((-g.hh/4 - g.y0) / g.hh), r1 = Math.ceil((g.h + g.hh/4 - g.y0) / g.hh) + 1;
+    for(let i = i0; i <= i1; i++){
+      const col = hexrow(i);
+      for(let r = r0; r <= r1; r++){
+        const c = centreHex(g, col + r);
+        if(c.x <= -g.hw/4 || c.x >= g.w + g.hw/4 || c.y <= -g.hh/4 || c.y >= g.h + g.hh/4) continue;
+        const lx = c.x - cropX, ly = c.y - cropY;
         if(ly < -g.hh/2 || ly > dispH + g.hh/2) continue;
         if(lx < -g.hw/2 || lx > dispW + g.hw/2) continue;
         const px = b.reversed ? dispW - lx : lx;

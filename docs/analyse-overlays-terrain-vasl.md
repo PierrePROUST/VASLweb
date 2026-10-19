@@ -373,7 +373,7 @@ quand on masque les pions.
    aujourd'hui sans effet (`WoodsToBrush`, `GrainToVineyard`,
    `SwampToSwampPattern`, `WallsOnly`…).
 
-**Étape 3 — Métadonnées du board**
+**Étape 3 — Métadonnées du board** — **faite** : `_lireMetaSSR`, `metaPartagee`, `reglesBoard`, `poserImagesSSR`, `centreHex`, `hexrow` ; `_buildHexTable` suit la grille VASL (x0/y0 tronqués, demi-hexagones de bord, boards « b » à partir de la colonne Q)
 
 6. Lire dans `BoardMetadata.xml` : `A1CenterX`, `A1CenterY`, `altHexGrain`,
    `<colors>`, `<colorSSRules>`, `<overlaySSRules>` (avec `overlaySSRuleSet`
