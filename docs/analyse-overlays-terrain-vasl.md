@@ -340,6 +340,71 @@ boards « b » (`A1CenterX = −901`), DW, RB, etc.
 
 ---
 
+## 6 bis. « Board XX Special overlays » (menu Terrain SSR)
+
+**Où c'est stocké : dans chaque archive de board, pas dans le module.**
+
+| Fichier de l'archive `bdXX` | Rôle |
+|---|---|
+| `SSRControls` | ajoute au menu Terrain SSR une `<Option name="Board XX Special overlays">` avec des cases à cocher `<entry name="…" rule="SSO_…" text="…"/>`. Ce fichier est lu par `BoardArchive` puis `ASLBoardPicker.readOptions`, après le `boardData/SSRControls` du module. |
+| `BoardMetadata.xml` | `<overlaySSRule name="SSO_…" image="XX_SSO_….gif" x=".." y=".."/>`, ou un `overlaySSRuleSet` pour plusieurs images. |
+| `XX_SSO_….gif` | l'image, posée à `x,y` dans le repère du board non recadré. |
+
+Exemple : board 71, scénario AP101.
+
+```xml
+<!-- bd71/SSRControls -->
+<Option name="Board 71 Special overlays">
+  <Checkbox name=""><entry name="AP101: When I Call Roll (complete SSR1; …)" rule="SSO_AP101" text="scenario AP101 overlay"/></Checkbox>
+  <Checkbox name=""><entry name="300 - Nor Will Deep Hell Receive Them" rule="SSO_300" text="Bd71 Scen 300 SSO"/></Checkbox>
+</Option>
+<!-- bd71/BoardMetadata.xml -->
+<overlaySSRule name="SSO_AP101" image="71_SSO_AP101.gif" x="0" y="0" />
+```
+
+**Ce que fait VASL quand la case est cochée :**
+
+1. La règle (`SSO_AP101`) s'ajoute au champ `SSR` du board dans la
+   sauvegarde. Avec « tous les boards », elle s'ajoute à chacun : un board
+   qui ne la déclare pas l'ignore.
+2. `SSRFilter.loadoverlaySSR` trouve la règle dans les `overlaySSRules` du
+   board et crée une `SSROverlay` pour chaque image (§ 4.3).
+3. Le rendu est celui de toutes les images SSR (§ 3) : sur les motifs et
+   sous les overlays d'hexagones, avant le repeint. Une règle servie par une
+   image ne passe plus par l'underlay.
+4. Les préfixes `SSO`/`BSO` n'ont de sens que pour la visée
+   (`ASLMap.getOverlayTerrainType`, `VASLThread`). Pour le dessin, ce sont
+   des règles comme les autres.
+
+Les archives d'overlays ont aussi leurs SSO. Par exemple, `ovr1` déclare
+`SSO_ovr1_A45` et `SSO_ovr1_G28` dans son propre `BoardMetadata.xml`. Elles
+sont dessinées avec l'overlay (§ 5) quand la sauvegarde les cite. VASL lit
+pourtant le `SSRControls` du **module**, et non celui de l'overlay, pour
+construire le menu (`ASLBoardPicker`, `OVERLAY_SSR_CONTROL_FILE_NAME`). Ces
+cases n'apparaissent donc pas dans son menu.
+
+**Inventaire du dépôt VASL (develop, octobre 2026)** :
+
+- 531 boards au total.
+- 156 boards ont un `SSRControls`, dont 143 avec un menu « Special overlays ».
+- Ces menus comptent 502 entrées et appellent 608 règles.
+- 41 de ces règles n'ont pas d'image dans leur board :
+  - soit ce sont des règles partagées (`LightWoods`, `BridgeToFord`,
+    `SaP_GrainToLightGrain`) ;
+  - soit ce sont des incohérences dans les données de VASL. Par exemple, bd03
+    appelle `3_BSO_TR3-1` alors que l'image est déclarée sous `BSO_TR3-1`.
+    De même, bd12 (`SSO_12_J114`), bd40 (`40_SSO_U36`), LFT6/LFT8
+    (`SSO_FT283/284`), RBv2 (usines « gutted ») et bd80 à 83 et FB
+    (`RogueKorea`) ont une image dans l'archive, ou une entrée de menu, mais
+    pas d'`overlaySSRule`. D'après le code, VASL ne les dessine pas non plus.
+    `carte.html` fait de même.
+
+**Dans `carte.html`** : rien de spécifique n'est nécessaire. `reglesBoard`
+et `poserImagesSSR` (étape 3) appliquent ces règles, et `dessinerOverlay`
+(étape 4) applique celles des overlays. Le journal affiche maintenant le
+libellé du menu du board : « 🖼️ bd71 : SSO_AP101 (scenario AP101 overlay)
+— 1 image(s) du board ».
+
 ## 6. Overlays déplaçables (pions)
 
 L'extension *Overlays* fournit des overlays sous forme de **pions** : leur

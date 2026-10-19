@@ -452,7 +452,19 @@ async function chargerGeoBoard(nom){
       }
     }
     const nb = (v, d) => { const x = parseFloat(v); return isNaN(x) ? d : x; };
+    // Libellés du menu Terrain SSR propres au board (SSRControls de
+    // l'archive : « Board XX Special overlays »…), règle → texte.
+    const libelles = {};
+    const ctl = _fichier(files, 'SSRControls');
+    if(ctl){
+      const doc = new DOMParser().parseFromString(new TextDecoder().decode(ctl), 'application/xml');
+      for(const e of doc.getElementsByTagName('entry')){
+        const regle = e.getAttribute('rule'), texte = e.getAttribute('text') || e.getAttribute('name');
+        if(regle && texte) for(const r of regle.split(',')) if(r.trim()) libelles[r.trim()] = texte;
+      }
+    }
     g = {
+      libelles,
       cols: parseInt(att.width, 10)  || HEX_COLS,
       rows: parseInt(att.height, 10) || HEX_ROWS,
       hw: nb(att.hexWidth  ?? att['data.dx'], 56.25),
@@ -980,13 +992,16 @@ async function dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy){
     g.drawImage(ov.image, 0, 0);
     const base = g.getImageData(0, 0, c.width, c.height);
     const images = ov.meta.overlays.filter(([r]) => voulues.has(r));
+    let nImg = 0;
     for(const [r, imgs] of images) for(const i of imgs){
       const octets = _fichier(ov.files, i.image);
       if(!octets){ chatLog(`⚠️ ${ov.archive} : image ${i.image} (${r}) absente`); continue; }
       const bm = await createImageBitmap(new Blob([octets]));
       g.drawImage(bm, i.x, i.y);
       bm.close();
+      nImg++;
     }
+    if(nImg) chatLog(`🖼️ overlay ${ov.nom} : ${images.map(([r]) => r).join(', ')} — ${nImg} image(s) de l'overlay`);
     const parImage = new Set(images.map(([r]) => r));
     const motifs = Object.keys(tbl).filter(r => voulues.has(r) && tbl[r].m && !parImage.has(r));
     if(motifs.length){
@@ -1032,7 +1047,8 @@ async function composerBoard(b, img){
       }
       if(images.length){
         const n = await poserImagesSSR(b, cv, images, sx, sy);
-        if(n) chatLog(`🖼️ bd${b.name} : ${[...parImage].join(', ')} — ${n} image(s) du board`);
+        const lib = r => gb.libelles && gb.libelles[r] ? `${r} (${gb.libelles[r]})` : r;
+      if(n) chatLog(`🖼️ bd${b.name} : ${[...parImage].map(lib).join(', ')} — ${n} image(s) du board`);
       }
     } catch(e){
       chatLog(`⚠️ SSR sur bd${b.name} impossible : ${e.message}`);
