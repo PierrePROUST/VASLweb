@@ -2416,6 +2416,75 @@ function toucheClavier(e){
   return _touche(code, (e.ctrlKey ? 2 : 0) | (e.shiftKey ? 1 : 0) | (e.altKey ? 8 : 0) | (e.metaKey ? 4 : 0));
 }
 
+// ── Conditions des macros. Deux syntaxes, comme dans VASSAL :
+//   « {HS_Active==false && GetProperty("SL On_Active")} » (BeanShell)
+//   « CurrentPhase_Facing = 1 && Player_Level = 1 » (ancien filtre)
+// Une propriété inconnue vaut "" ; une expression illisible est fausse.
+function proprietesPion(p, T, S){
+  const pr = _proprietes({typ: T, eta: S});
+  pr.BasicName = pr.PieceName = p.nom;
+  pr.CurrentMap = pr.OldMap = p.ailleurs || _carteJeu;
+  pr.PlayerName = pr.PlayerSide = joueur();
+  return pr;
+}
+function _comparer(a, op, b){
+  const na = Number(a), nb = Number(b);
+  const num = String(a).trim() !== '' && String(b).trim() !== '' && !isNaN(na) && !isNaN(nb);
+  switch(op){
+    case '==': case '=': return num ? na === nb : String(a) === String(b);
+    case '!=': return num ? na !== nb : String(a) !== String(b);
+    case '<': return num && na < nb;
+    case '<=': return num && na <= nb;
+    case '>': return num && na > nb;
+    case '>=': return num && na >= nb;
+    case '=~': try { return new RegExp('^(?:' + b + ')$').test(a); } catch(e){ return false; }
+    case '!~': try { return !new RegExp('^(?:' + b + ')$').test(a); } catch(e){ return false; }
+  }
+  return false;
+}
+const _vrai = v => v === true || v === 'true';
+function evaluerCondition(expr, pr){
+  const val = n => (pr[n] !== undefined ? pr[n] : '');
+  const m = /^\{([^]*)\}$/.exec(expr.trim());
+  if(!m){
+    return expr.split('||').some(ou => ou.split('&&').every(c => {
+      const f = /^\s*(.+?)\s*(!=|<=|>=|=~|!~|=|<|>)\s*(.*?)\s*$/.exec(c);
+      return f ? _comparer(val(f[1]), f[2], f[3]) : false;
+    }));
+  }
+  const toks = m[1].match(/"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?|&&|\|\||==|!=|<=|>=|[<>!()]|[A-Za-z_][\w.]*|\S/g) || [];
+  let k = 0;
+  const lit = () => toks[k], suivant = () => toks[k++];
+  const prim = () => {
+    const t = suivant();
+    if(t === undefined) throw 0;
+    if(t === '(') { const v = ou(); if(suivant() !== ')') throw 0; return v; }
+    if(t === '!') return !_vrai(prim());
+    if(t[0] === '"') return t.slice(1, -1).replace(/\\(.)/g, '$1');
+    if(/^-?\d/.test(t)) return t;
+    if(t === 'true' || t === 'false') return t;
+    if(t === 'GetProperty'){
+      if(suivant() !== '(') throw 0;
+      const n = prim();
+      if(suivant() !== ')') throw 0;
+      return val(n);
+    }
+    if(/^[A-Za-z_]/.test(t)) return val(t);
+    throw 0;
+  };
+  const cmp = () => {
+    let a = prim();
+    while(['==', '!=', '<', '<=', '>', '>='].includes(lit())){ const op = suivant(); a = _comparer(a, op, prim()); }
+    return a;
+  };
+  const et = () => { let a = _vrai(cmp()); while(lit() === '&&'){ suivant(); a = _vrai(cmp()) && a; } return a; };
+  const ou = () => { let a = et(); while(lit() === '||'){ suivant(); a = et() || a; } return a; };
+  try {
+    const v = _vrai(ou());
+    return k === toks.length && v;
+  } catch(e){ return false; }
+}
+
 // ── Commandes d'un type de pion, mises en cache par type : toutes les
 // pièces d'un même pion de la palette partagent la même liste.
 //   {nom, touche, i (rang du trait), faire(ctx)}   ctx = {S, p, effets, declencher}
@@ -2521,11 +2590,16 @@ function commandesDe(type){
       }));
     } else if(id === 'macro'){
       // Trigger Action : macro;nom;commande;touche;condition;veille;actions;boucle…
-      // Une condition porte sur des propriétés que la page ne calcule
-      // pas : la macro est alors ignorée plutôt que déclenchée à tort.
-      if(ch[4] || ch[7] === 'true') return;
+      // La condition est évaluée sur les propriétés du pion au moment où
+      // la touche lui parvient, comme TriggerAction.myKeyEvent. Les
+      // boucles (absentes de la base VASL) ne sont pas gérées.
+      if(ch[7] === 'true') return;
       const actions = lireTouches(ch[6]);
-      const faire = ({declencher}) => actions.forEach(declencher);
+      const condition = (ch[4] || '').replace(/\\(.)/g, '$1').trim();
+      const faire = ({S, p, declencher}) => {
+        if(condition && !evaluerCondition(condition, proprietesPion(p, T, S))) return;
+        actions.forEach(declencher);
+      };
       ajouter(i, ch[2], lireTouche(ch[3]), faire);
       for(const k of lireTouches(ch[5])) ajouter(i, '', k, faire);
     } else if(id === 'hide'){
@@ -2618,17 +2692,22 @@ function executerTouche(p, touche, cmdDirecte, lot){
   const S = decoderTraits(te.etat);
   const avant = S.join('\x00');
   const {cmds} = commandesDe(te.type);
-  const effets = [], file = [], tirees = [];
-  const ctx = {S, p, effets, lot: lot || {}, declencher: k => file.push(k)};
-  const nomAvant = nomRapport(p);
-  let agi = false;
-  if(cmdDirecte){ cmdDirecte.faire(ctx); agi = true; if(cmdDirecte.touche) tirees.push(cmdDirecte.touche); }
-  else file.push(touche);
-  for(let n = 0; file.length && n < 40; n++){
-    const k = file.shift();
+  const effets = [], tirees = [];
+  // Comme dans VASSAL, une macro envoie chacune de ses touches au pion
+  // entier aussitôt, avant que la touche en cours ne poursuive sa route
+  // vers les traits intérieurs. Garde-fou contre les macros qui bouclent.
+  let agi = false, n = 0, prof = 0;
+  const transmettre = k => {
+    if(++n > 200 || prof > 20) return;
     tirees.push(k);
+    prof++;
     for(const c of cmds) if(c.touche && c.touche === k){ c.faire(ctx); agi = true; }
-  }
+    prof--;
+  };
+  const ctx = {S, p, effets, lot: lot || {}, declencher: transmettre};
+  const nomAvant = nomRapport(p);
+  if(cmdDirecte){ cmdDirecte.faire(ctx); agi = true; if(cmdDirecte.touche) tirees.push(cmdDirecte.touche); }
+  else transmettre(touche);
   if(S.join('\x00') !== avant){
     _avantAction();
     const neuf = encoderTraits(S);
