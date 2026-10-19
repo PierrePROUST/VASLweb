@@ -49,7 +49,32 @@ button:disabled{opacity:.4;cursor:default}
 #des input,#des select{background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);
   border-radius:4px;padding:2px 4px;font:inherit;font-size:12px}
 #des input[type=number]{width:44px}
-#joueur{width:90px}
+#btUtilisateur.admin{border-color:#c0392b;color:#ff8a7a}
+/* Fenêtres d'identification et de gestion des utilisateurs. */
+.fenetre{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9800;
+  width:min(92vw,380px);max-height:90vh;overflow:auto;background:#f4f2ea;color:#111;
+  border:1px solid #333;border-radius:6px;box-shadow:0 8px 28px rgba(0,0,0,.6);font-size:13px}
+.fenetre .ft{padding:7px 12px;font-weight:700;background:#2f5f9e;color:#fff;border-radius:6px 6px 0 0}
+.fenetre .fc{padding:10px 12px}
+.fenetre p{margin:0 0 8px}
+.fenetre label{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;font-size:12px;color:#333}
+.fenetre label.coche{flex-direction:row;align-items:center;gap:6px}
+.fenetre input:not([type=checkbox]),.fenetre select{padding:6px;font:inherit;font-size:14px;color:#111;
+  background:#fff;border:1px solid #888;border-radius:3px}
+.fenetre .ferr{min-height:16px;color:#b00;font-weight:600;font-size:12px;margin-bottom:4px}
+.fenetre .fb{display:flex;gap:6px;flex-wrap:wrap}
+.fenetre .fb button{flex:1;min-height:32px;background:#e4e1d6;color:#111;border-color:#999}
+.fenetre .fb button.prim{background:#2f5f9e;color:#fff;border-color:#2f5f9e}
+.fenetre .fnote{margin:10px 0 0;font-size:11px;color:#666}
+.fenetre table{width:100%;border-collapse:collapse;margin-bottom:6px}
+.fenetre th{text-align:left;border-bottom:1px solid #999;padding:3px}
+.fenetre td{padding:3px;border-bottom:1px solid #ddd}
+.fenetre td.nb{text-align:right}
+.fenetre td button{padding:1px 8px;font-size:12px;background:#e4e1d6;color:#111;border-color:#999}
+.lig.autrui{opacity:.55}
+.lig .prop{flex:none;font-size:10px;color:var(--doux);max-width:90px;overflow:hidden;text-overflow:ellipsis}
+#ctx .prop{padding:2px 10px 4px;font-size:11px;color:#555;border-bottom:1px solid #bbb;margin-bottom:2px}
+#ctx .prop.ro{color:#b00}
 #journal .jet{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--texte);padding:1px 0}
 #journal .jet img{width:22px;height:22px}
 #journal .jet .cat{font-weight:600}
@@ -130,6 +155,7 @@ button:disabled{opacity:.4;cursor:default}
 <div class="barre">
   <h1>VASL — Carte</h1>
   <button onclick="doOpen()">Ouvrir .vsav / .vlog</button>
+  <button id="btUtilisateur" onclick="demanderUtilisateur()" title="Utilisateur connecté — cliquer pour changer ou gérer les utilisateurs">👤 Observateur</button>
   <span class="sep"></span>
   <button onclick="zoomOut()" title="Zoom arrière">−</button>
   <span id="zoomTxt">100 %</span>
@@ -174,7 +200,6 @@ button:disabled{opacity:.4;cursor:default}
   <button onclick="lancerdr('SA')" title="Sniper Activation dr [Ctrl+Maj+S]">SA</button>
   <button onclick="lancerdr('RS')" title="Random Selection dr [Ctrl+Maj+D]">RS</button>
   <span class="sep"></span>
-  <label>Joueur <input id="joueur" value="web" autocomplete="off"></label>
   <label>SAN Axis <input type="number" id="sanAxis" min="0" max="12" placeholder="?"></label>
   <label>Allied <input type="number" id="sanAllied" min="0" max="12" placeholder="?"></label>
   <label title="Booby Trap (A/B/C)">Piège Axis <select id="bbAxis"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
@@ -331,6 +356,8 @@ async function openGameFile(file){
       + boards.map(b => b.name + (b.reversed ? ' (retourné)' : '')).join(', '));
     await _renderBoards(boards);
     importerPions(texte, label, annexes);
+    // Qui joue ? Ce que l'on voit et ce que l'on peut toucher en dépend.
+    demanderUtilisateur();
   } catch(err){
     chatLog('❌ Lecture impossible : ' + (err && err.message ? err.message : err));
     console.error(err);
@@ -1616,13 +1643,19 @@ function lirePiece(seg){
   const masqueNation = c ? (c.t.split(';')[3] || '').trim() : '';
   // HIP (trait Hideable « hide ») : la pièce n'est pas visible du tout.
   const h = _trait(ts, /^hide;/);
-  const hip = !!(h && h.e.split(';')[0].trim() && h.e.split(';')[0].trim() !== 'null');
+  const hipProprio = h ? h.e.split(';')[0].replace(/\\/g, '').trim() : '';
+  const hip = !!(hipProprio && hipProprio !== 'null');
+  // Propriétaire : la propriété Owner (prototype DBOwner), que VASL
+  // remplit avec le nom du joueur qui pose ou déplace la pièce.
+  const owner = (_proprietes(ts).Owner || '').trim();
   return {
     uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
     img, nom: nom || img.split('/').pop(), couches, faceCouche, rot, masque, hip, masqueNation,
     vt: _pieceVaslTools(ts),
     masqueProprio: masque ? masqueProprio : null,
+    hipProprio: hip ? hipProprio : null,
+    proprietaire: owner && owner !== 'null' && !/\$/.test(owner) ? owner : null,
     etiquettes: _etiquettes(ts), tourelle: _tourelle(ts), deplace: _deplace(ts)
   };
 }
@@ -2111,10 +2144,18 @@ async function majApparence(p, d){
   p.nom = d.nom;
   // Comme Concealable de VASL : l'adversaire ne voit que le « ? », le
   // joueur qui a dissimulé l'unité la voit, marquée d'un petit « ? ».
-  const voile = d.masque && d.masqueProprio !== joueur() ? d.masque : null;
+  // L'administrateur voit tout.
+  const voile = d.masque && !_admin && d.masqueProprio !== idJoueur() ? d.masque : null;
   p.el.title = voile ? 'Pion dissimulé' : d.nom + (d.masque ? ' (?)' : '');
-  p.el.style.display = d.hip ? 'none' : '';
-  p.cache = d.hip;
+  p.proprietaire = d.proprietaire;
+  p.masqueProprio = d.masqueProprio;
+  p.hipProprio = d.hipProprio;
+  // HIP : invisible de l'adversaire ; son joueur et l'administrateur le
+  // voient en transparence, comme Hideable de VASSAL.
+  const voitHip = d.hip && (_admin || d.hipProprio === idJoueur());
+  p.el.style.display = d.hip && !voitHip ? 'none' : '';
+  p.el.style.opacity = voitHip ? '.55' : '';
+  p.cache = d.hip && !voitHip;
   p.couche = coucheDe(d);
   if(d.vt){ await _majPieceVaslTools(p, d, gen); return; }
   const imgFace = voile || d.img;
@@ -2695,6 +2736,7 @@ function positionDepot(x, y){
 }
 
 function deplacer(liste, x, y){
+  liste = filtrerManipulables(liste);
   if(!liste.length) return;
   _avantAction();
   const pos = positionDepot(x, y);
@@ -2811,7 +2853,7 @@ function leverDeplaces(){
 }
 
 function retirer(p, silencieux){
-  if(p.deleted) return;
+  if(p.deleted || refuser(p)) return;
   _avantAction();
   const k = cle(p);
   p.deleted = true; p.el.remove();
@@ -2823,6 +2865,7 @@ function retirer(p, silencieux){
 
 // Monte (+1) ou descend (-1) un pion dans sa pile.
 function changerRang(p, sens){
+  if(refuser(p)) return;
   const s = pile(cle(p));
   const i = s.indexOf(p), j = i + sens;
   if(j < 0 || j >= s.length) return;
@@ -2854,6 +2897,9 @@ function poserDepuisPalette(x, cx, cy){
 // 3 juste en dessous (placements de PlaceMarker).
 function poserTraits(T, S, x, y, ref, placement){
   _avantAction();
+  // Le joueur connecté devient propriétaire de ce qu'il pose.
+  const iOwner = signeSesPions() ? _iOwner(T) : -1;
+  if(iOwner >= 0){ S = S.slice(); S[iOwner] = joueur().replace(/\//g, '\\/'); }
   const uid = nouvelUid();
   const n = S.length - 1;
   const S1 = S.slice(), S0 = S.slice();
@@ -2983,7 +3029,7 @@ function commandesDe(type){
   const basculerJoueur = (S, i) => {
     const f = (S[i] || '').split(';');
     const v = (f[0] || '').replace(/\\/g, '').trim();
-    f[0] = (!v || v === 'null') ? joueur() : 'null';
+    f[0] = (!v || v === 'null') ? idJoueur() : 'null';
     S[i] = f.join(';');
   };
   T.forEach((t, i) => {
@@ -3137,6 +3183,8 @@ function commandesDe(type){
         const [type, ...val] = f[2].split('\u0001');
         const v = val.join(',').replace(/\\(.)/g, '$1');
         if(type === 'P' && !/[{}]/.test(v)) ajouter(i, f[0], touche, ({S}) => {
+          // L'administrateur et l'observateur ne s'approprient rien.
+          if(/\$PlayerName\$/.test(v) && !signeSesPions()) return;
           S[i] = v.replace(/\$PlayerName\$/g, joueur()).replace(/\//g, '\\/');
         });
         else if(type === 'I' && /^-?\d+$/.test(v)) ajouter(i, f[0], touche, ({S}) => {
@@ -3163,7 +3211,7 @@ function commandesDe(type){
 // consignés par un « D/ » ; les effets (poser, retirer, cloner,
 // déplacer) passent après, chacun avec ses propres commandes de log.
 function executerTouche(p, touche, cmdDirecte, lot){
-  if(!p || p.deleted) return false;
+  if(!p || p.deleted || refuser(p)) return false;
   const te = _typeEtEtat(p.seg);
   if(!te) return false;
   const S = decoderTraits(te.etat);
@@ -3343,10 +3391,10 @@ function dissimuler(p){
   const m = infoDissimulation(p);
   if(!m.unite) return;
   if(m.proprio){
-    if(m.proprio === joueur() && fixerMasque(p, null)) chatLog(`👁️ ${p.nom} démasqué`);
+    if((m.proprio === idJoueur() || _admin) && fixerMasque(p, null)) chatLog(`👁️ ${p.nom} démasqué`);
     return;
   }
-  fixerMasque(p, joueur());
+  fixerMasque(p, idJoueur());
   const s = pile(cle(p));
   const dejaLa = s.slice(s.indexOf(p) + 1).some(q => { const c = infoDissimulation(q); return c.compteur && c.nation === m.nation; });
   if(!dejaLa) poserConcealment(p, m);
@@ -3371,7 +3419,7 @@ function poserConcealment(p, m){
   const i = def.T.findIndex(t => /^concealment;/.test(t));
   if(i >= 0){
     const ch = def.T[i].split(';');
-    ch[1] = joueur();
+    ch[1] = idJoueur();
     def.T[i] = ch.join(';');
   }
   return poserTraits(def.T, def.S, p.x, p.y, p, 2);
@@ -3386,16 +3434,16 @@ function ajusterDissimulation(k){
   if(_ajustEnCours) return;
   const s = pile(k);
   const infos = s.map(infoDissimulation);
-  if(!infos.some(m => m.compteur || (m.unite && m.proprio === joueur()))) return;
+  if(!infos.some(m => m.compteur || (m.unite && m.proprio === idJoueur()))) return;
   _ajustEnCours = true;
   try {
     const nations = new Set();
     for(let i = s.length - 1; i >= 0; i--){
       const m = infos[i];
       if(m.compteur){ nations.add(m.nation); continue; }
-      if(!m.unite || (m.proprio && m.proprio !== joueur())) continue;
+      if(!m.unite || (m.proprio && m.proprio !== idJoueur())) continue;
       const doit = nations.has(m.nation);
-      if(doit && !m.proprio) fixerMasque(s[i], joueur());
+      if(doit && !m.proprio) fixerMasque(s[i], idJoueur());
       else if(!doit && m.proprio) fixerMasque(s[i], null);
     }
   } finally { _ajustEnCours = false; }
@@ -3441,6 +3489,13 @@ function ouvrirMenu(p, cx, cy){
   const tt = document.createElement('div');
   tt.className = 'tt'; tt.textContent = p.el.title || p.nom;
   m.appendChild(tt);
+  const pr = proprietaireDe(p);
+  if(pr || _admin){
+    const d = document.createElement('div');
+    d.className = 'prop' + (peutManipuler(p) ? '' : ' ro');
+    d.textContent = 'Propriétaire : ' + (pr || 'aucun') + (peutManipuler(p) ? '' : ' — lecture seule');
+    m.appendChild(d);
+  }
   const remplir = (conteneur, items) => {
     for(const c of items){
       const it = document.createElement('div');
@@ -3479,7 +3534,14 @@ function ouvrirMenu(p, cx, cy){
     }
   };
   remplir(m, racine.items);
-  if(!visibles.length){
+  if(_admin){
+    const it = document.createElement('div');
+    it.className = 'it';
+    it.innerHTML = '<span>Propriétaire…</span><span class="rc">admin</span>';
+    it.addEventListener('click', e => { e.stopPropagation(); fermerMenu(); attribuerPions(p); });
+    m.appendChild(it);
+  }
+  if(!visibles.length && !_admin){
     const v = document.createElement('div');
     v.className = 'vide'; v.textContent = 'Aucune commande';
     m.appendChild(v);
@@ -3518,11 +3580,13 @@ function _brancherCommandes(){
     if(!_pileSel || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if(['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
     const k = toucheClavier(e);
-    const cibles = pile(_pileSel).filter(p => !p.cache && commandesDe((_typeEtEtat(p.seg) || {}).type || '')
-                                                          .cmds.some(c => c.touche === k));
-    if(!cibles.length) return;
+    const tous = pile(_pileSel).filter(p => !p.cache && commandesDe((_typeEtEtat(p.seg) || {}).type || '')
+                                                        .cmds.some(c => c.touche === k));
+    if(!tous.length) return;
     e.preventDefault(); e.stopImmediatePropagation();
     fermerMenu();
+    // Un seul avertissement pour la pile, plutôt qu'un par pion d'autrui.
+    const cibles = filtrerManipulables(tous);
     const lot = {};
     for(const p of cibles) executerTouche(p, k, null, lot);
   }, true);
@@ -3623,6 +3687,13 @@ function afficherPile(){
     const t = document.createElement('span');
     t.textContent = p.el.title || p.nom;
     l.append(im, t);
+    const pr = proprietaireDe(p);
+    if(pr){
+      const o = document.createElement('span');
+      o.className = 'prop'; o.textContent = pr; o.title = 'Propriétaire';
+      l.appendChild(o);
+    }
+    if(!peutManipuler(p)) l.classList.add('autrui');
     l.addEventListener('contextmenu', e => { e.preventDefault(); ouvrirMenu(p, e.clientX, e.clientY); });
     for(const [txt, titre, f] of [['⋮', 'Commandes du pion (clic droit)', e => ouvrirMenu(p, e.clientX, e.clientY)],
                                   ['▲', 'Monter', () => changerRang(p, +1)],
@@ -3991,7 +4062,349 @@ function remplirGrille(liste){
 // ═══════════════════════════════════════════════════════════════
 const DE_COLORE = 'R', DE_BLANC = 'W';     // DC<n>_<couleur>.png du module
 
-const joueur = () => (document.getElementById('joueur').value.trim() || 'web');
+// ═══ UTILISATEURS ET PROPRIÉTÉ DES PIONS ═══
+// Comme dans VASSAL, un joueur a un NOM, qui s'inscrit dans la propriété
+// Owner des pions qu'il pose ou déplace ($PlayerName$), et un MOT DE
+// PASSE, qui est l'identifiant de ses masques : l'état des traits conceal
+// et hide d'un fichier VASL porte ce mot de passe. Le saisir prouve donc
+// qu'on est ce joueur, sans qu'aucune liste de mots de passe ne soit lue.
+//
+// Un joueur ne déplace et ne modifie que ses pions et ceux qui n'ont pas
+// de propriétaire. L'administrateur voit et manipule tout : arbitrage,
+// relecture, partie solitaire. L'observateur ne touche qu'aux pions sans
+// propriétaire.
+//
+// Rien de tout cela ne résiste à quelqu'un qui ouvre la console : tout
+// s'exécute dans son navigateur. Le contrôle évite les erreurs et les
+// regards distraits, pas la triche — il faudrait un serveur pour cela.
+const NOM_ADMIN = 'Administrateur';
+const ADMIN_MDP = 'Glorantha';
+let _utilisateur = null;              // {nom, mdp} ; null = observateur
+let _admin = false;
+
+// Nom du joueur : Owner, chat, dés, rapports et commandes du log.
+const joueur = () => _admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'web');
+// Identifiant des masques (conceal, hide) : le mot de passe.
+const idJoueur = () => _admin ? 'admin' : (_utilisateur ? _utilisateur.mdp : 'web');
+// Seul un joueur identifié signe ses pions : un administrateur qui
+// déplace un pion ne doit pas en devenir propriétaire.
+const signeSesPions = () => !!_utilisateur && !_admin;
+
+const CLE_COMPTES = 'aslweb.comptes';
+const CLE_DERNIER = 'aslweb.dernierUtilisateur';
+const CLE_PROPRIETE = 'aslweb.respecterPropriete';
+const _lireLocal = (k, def) => { try { const v = localStorage.getItem(k); return v === null ? def : v; } catch(e){ return def; } };
+const _ecrireLocal = (k, v) => { try { localStorage.setItem(k, v); return true; } catch(e){ return false; } };
+let _respecterPropriete = _lireLocal(CLE_PROPRIETE, '1') !== '0';
+
+// Comptes créés sur ce poste. Le mot de passe n'y est pas en clair :
+// une empreinte FNV-1a suffit à refuser une faute de frappe, et
+// crypto.subtle manque quand la page est ouverte en file://.
+function _empreinte(t){
+  let h = 0x811c9dc5;
+  for(const c of String(t)){ h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+function comptesLocaux(){
+  try {
+    const l = JSON.parse(_lireLocal(CLE_COMPTES, '[]'));
+    return Array.isArray(l) ? l.filter(c => c && c.nom && c.h) : [];
+  } catch(e){ return []; }
+}
+const _memeNom = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+function enregistrerCompte(nom, mdp){
+  const l = comptesLocaux();
+  const c = l.find(x => _memeNom(x.nom, nom));
+  if(c) c.h = _empreinte(mdp); else l.push({nom, h: _empreinte(mdp)});
+  return _ecrireLocal(CLE_COMPTES, JSON.stringify(l));
+}
+function oublierCompte(nom){
+  return _ecrireLocal(CLE_COMPTES, JSON.stringify(comptesLocaux().filter(x => !_memeNom(x.nom, nom))));
+}
+// Le nom est écrit tel quel dans l'état Owner : « ; », « / », « \ »,
+// « , » et la tabulation sont des séparateurs de VASSAL.
+const nomValide = nom => /^[^;/\\\t,<>&"]{1,24}$/.test(nom) && !_memeNom(nom, NOM_ADMIN) && !_memeNom(nom, 'web');
+
+// Joueurs du fichier : un par identifiant de masque, nommé d'après
+// l'Owner majoritaire des pions qu'il masque.
+function joueursDuFichier(){
+  const par = new Map();
+  for(const p of vivants()){
+    for(const id of [p.masqueProprio, p.hipProprio]){
+      if(!id || id === 'web' || id === 'admin') continue;
+      if(!par.has(id)) par.set(id, {id, n: 0, noms: new Map()});
+      const f = par.get(id);
+      f.n++;
+      if(p.proprietaire) f.noms.set(p.proprietaire, (f.noms.get(p.proprietaire) || 0) + 1);
+    }
+  }
+  return [...par.values()].map((f, i) => {
+    const nom = [...f.noms.entries()].sort((a, b) => b[1] - a[1])[0];
+    return {id: f.id, n: f.n, nom: nom ? nom[0] : null, etiquette: 'Joueur ' + (i + 1)};
+  }).sort((a, b) => b.n - a.n);
+}
+
+// Noms connus : comptes du poste et propriétaires inscrits sur les pions.
+function nomsUtilisateurs(){
+  const s = new Map();
+  const aj = n => { if(n && !s.has(n.toLowerCase())) s.set(n.toLowerCase(), n); };
+  comptesLocaux().forEach(c => aj(c.nom));
+  vivants().forEach(p => aj(p.proprietaire));
+  return [...s.values()];
+}
+
+function seConnecter(u, admin){
+  _utilisateur = admin ? null : u;
+  _admin = !!admin;
+  majUtilisateur();
+  // Ce qu'on voit d'une unité dissimulée ou en HIP dépend de qui l'on est.
+  vivants().forEach(p => majApparence(p));
+  if(_pileSel) afficherPile();
+  chatLog(_admin ? '👁️ Administrateur : tous les pions sont visibles et modifiables'
+    : (_utilisateur ? `👤 ${_utilisateur.nom} — ${vivants().filter(p => estAMoi(p)).length} pion(s) à vous`
+                    : '👤 Observateur : seuls les pions sans propriétaire sont modifiables'));
+}
+
+function majUtilisateur(){
+  const b = document.getElementById('btUtilisateur');
+  if(!b) return;
+  b.textContent = '👤 ' + (_admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'Observateur'));
+  b.classList.toggle('admin', _admin);
+  b.title = 'Utilisateur connecté — cliquer pour changer ou gérer les utilisateurs';
+}
+
+// ── Propriété.
+// Propriétaire lisible d'un pion : son Owner, sinon le joueur qui l'a
+// masqué (sous une étiquette, son identifiant étant un mot de passe).
+function proprietaireDe(p){
+  if(!p) return null;
+  if(p.proprietaire) return p.proprietaire;
+  const id = p.masqueProprio || p.hipProprio;
+  if(!id || id === 'web') return null;
+  const f = joueursDuFichier().find(x => x.id === id);
+  return f ? (f.nom || f.etiquette) : 'un autre joueur';
+}
+function estAMoi(p){
+  if(!_utilisateur || _admin) return false;
+  if(p.masqueProprio === _utilisateur.mdp || p.hipProprio === _utilisateur.mdp) return true;
+  return _memeNom(p.proprietaire, _utilisateur.nom);
+}
+function peutManipuler(p){
+  if(!p || !_respecterPropriete || _admin) return true;
+  const masque = id => id && id !== 'web';
+  if(!p.proprietaire && !masque(p.masqueProprio) && !masque(p.hipProprio)) return true;
+  return estAMoi(p);
+}
+// Vrai si l'action est refusée ; le refus est dit au journal.
+function refuser(p){
+  if(peutManipuler(p)) return false;
+  chatLog(`🚫 ${p.el.title || p.nom} appartient à ${proprietaireDe(p)}`
+    + ` — vous êtes ${_utilisateur ? _utilisateur.nom : 'observateur'}. Changer d'utilisateur en haut de la page.`);
+  return true;
+}
+// Ne garde d'une liste que les pions manipulables, en disant ce qui reste.
+function filtrerManipulables(liste){
+  const ok = liste.filter(peutManipuler);
+  if(ok.length === liste.length) return ok;
+  if(!ok.length){ refuser(liste.find(p => !peutManipuler(p))); return ok; }
+  chatLog(`🚫 ${liste.length - ok.length} pion(s) d'un autre joueur laissé(s) en place`);
+  return ok;
+}
+
+// Indice du trait Owner (DynamicProperty « PROP;Owner ») parmi les traits.
+const _iOwner = T => T.findIndex(t => /^PROP;Owner(;|$)/.test(t));
+
+// Change le propriétaire d'un pion, avec son « D/ » — réservé à
+// l'administrateur.
+function fixerProprietaire(p, nom){
+  const te = _typeEtEtat(p.seg);
+  if(!te) return false;
+  const T = decoderTraits(te.type), S = decoderTraits(te.etat);
+  const i = _iOwner(T);
+  if(i < 0){ chatLog(`⚠️ ${p.nom} n'a pas de propriété Owner : VASL ne lui connaît pas de propriétaire`); return false; }
+  S[i] = (nom || '').replace(/\//g, '\\/');
+  const neuf = encoderTraits(S);
+  if(neuf === te.etat) return false;
+  _avantAction();
+  p.seg = '+/' + p.uid + '/' + te.type + '/' + neuf;
+  _logCmd(`D/${p.uid}/${neuf}/${te.etat}`);
+  majApparence(p);
+  return true;
+}
+
+function attribuerPions(p){
+  if(!_admin){ chatLog('🔒 Seul l\'administrateur attribue les pions'); return; }
+  const noms = nomsUtilisateurs();
+  const v = prompt(`Propriétaire de ${p.nom} et de sa pile`
+    + (noms.length ? ` (connus : ${noms.join(', ')})` : '') + ' — vide pour aucun :', p.proprietaire || '');
+  if(v === null) return;
+  const nom = v.trim();
+  if(nom && !nomValide(nom)){ chatLog('⚠️ Nom invalide : 24 caractères au plus, sans ; / \\ , < > & "'); return; }
+  let n = 0;
+  for(const q of pile(cle(p)).filter(q => !q.cache || _admin)) if(fixerProprietaire(q, nom)) n++;
+  if(n) chatLog(`🏷️ ${n} pion(s) → ${nom || 'sans propriétaire'}`);
+}
+
+// ── Boîte d'identification, ouverte à chaque carte chargée.
+// Choisir une ligne ne donne aucun accès : c'est le mot de passe qui
+// prouve l'identité.
+//   · joueur du fichier : son mot de passe est l'identifiant de ses masques
+//   · compte du poste   : comparé à l'empreinte enregistrée
+//   · propriétaire nommé sur les pions, inconnu ici : le premier mot de
+//     passe saisi devient le sien
+//   · administrateur    : ADMIN_MDP
+const _esc = t => String(t).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+
+function demanderUtilisateur(){
+  fermerFenetres();
+  const fiches = joueursDuFichier();
+  const comptes = comptesLocaux();
+  const compteDe = nom => comptes.find(c => _memeNom(c.nom, nom)) || null;
+  const nbPions = (nom, id) => vivants().filter(p => (id && (p.masqueProprio === id || p.hipProprio === id))
+                                                   || _memeNom(p.proprietaire, nom)).length;
+  const entrees = [{type: 'admin', nom: NOM_ADMIN, info: 'voit et modifie tout'}];
+  const deja = nom => entrees.some(e => _memeNom(e.nom, nom));
+  for(const f of fiches){
+    if(f.nom && deja(f.nom)) continue;
+    entrees.push({type: 'joueur', nom: f.nom || f.etiquette, fiche: f, compte: compteDe(f.nom),
+                  info: `${nbPions(f.nom, f.id)} pion(s), dont ${f.n} masqué(s)`});
+  }
+  for(const c of comptes) if(!deja(c.nom)) entrees.push({type: 'joueur', nom: c.nom, compte: c, info: `${nbPions(c.nom)} pion(s)`});
+  for(const n of nomsUtilisateurs()) if(!deja(n)) entrees.push({type: 'joueur', nom: n, info: `${nbPions(n)} pion(s)`});
+  entrees.push({type: 'nouveau', nom: 'Nouvel utilisateur…', info: ''});
+
+  // Présélection : l'utilisateur de la dernière fois, sinon le premier joueur.
+  const dernier = _lireLocal(CLE_DERNIER, '');
+  let defaut = entrees.findIndex(e => e.type !== 'nouveau' && _memeNom(e.nom, dernier));
+  if(defaut < 0) defaut = entrees.length > 2 ? 1 : entrees.length - 1;
+
+  const w = document.createElement('div');
+  w.id = 'fenUtil'; w.className = 'fenetre';
+  w.innerHTML = `
+    <div class="ft">Identification</div>
+    <div class="fc">
+      <p>Choisir l'utilisateur, puis saisir son mot de passe. Chacun ne déplace
+        et ne modifie que ses pions${fiches.length ? ` ; cette carte contient des pions
+        masqués de ${fiches.length} joueur(s)` : ''}.</p>
+      <label>Utilisateur<select id="utSel">${entrees.map((e, i) =>
+        `<option value="${i}"${i === defaut ? ' selected' : ''}>${_esc(e.nom)}${e.info ? ' — ' + _esc(e.info) : ''}</option>`).join('')}</select></label>
+      <label id="utNomL">Nom du nouvel utilisateur<input id="utNom" maxlength="24" autocomplete="off" placeholder="nom affiché"></label>
+      <label>Mot de passe<input id="utMdp" type="password" autocomplete="off" placeholder="mot de passe"></label>
+      <div class="ferr" id="utErr"></div>
+      <div class="fb">
+        <button id="utOk" class="prim">Se connecter</button>
+        <button id="utObs">Observateur</button>
+        <button id="utGerer">Utilisateurs…</button>
+      </div>
+      <p class="fnote">Pour un joueur VASL, le mot de passe est celui de VASL : il ouvre ses
+        pions dissimulés et en HIP.</p>
+    </div>`;
+  document.body.appendChild(w);
+  const $ = id => document.getElementById(id);
+  const sel = $('utSel'), err = $('utErr');
+  const majNom = () => {
+    const nouveau = entrees[+sel.value].type === 'nouveau';
+    $('utNomL').style.display = nouveau ? '' : 'none';
+    err.textContent = '';
+    (nouveau ? $('utNom') : $('utMdp')).focus();
+  };
+  sel.addEventListener('change', majNom);
+  const connecter = (nom, mdp) => {
+    _ecrireLocal(CLE_DERNIER, nom);
+    w.remove();
+    seConnecter({nom, mdp}, false);
+  };
+  $('utOk').onclick = () => {
+    const e = entrees[+sel.value], mdp = $('utMdp').value;
+    if(e.type === 'admin'){
+      if(mdp !== ADMIN_MDP){ err.textContent = 'Mot de passe administrateur incorrect.'; return; }
+      _ecrireLocal(CLE_DERNIER, NOM_ADMIN);
+      w.remove();
+      seConnecter(null, true);
+      return;
+    }
+    if(!mdp){ err.textContent = 'Saisir le mot de passe.'; return; }
+    if(mdp === ADMIN_MDP || mdp === 'web' || mdp === 'admin'){ err.textContent = 'Ce mot de passe est réservé.'; return; }
+    if(e.type === 'nouveau'){
+      const nom = $('utNom').value.trim();
+      if(!nomValide(nom)){ err.textContent = 'Nom requis : 24 caractères au plus, sans ; / \\ , < > & ".'; return; }
+      if(entrees.some(x => x.type !== 'nouveau' && _memeNom(x.nom, nom))){
+        err.textContent = 'Cet utilisateur existe déjà : le choisir dans la liste.'; return;
+      }
+      enregistrerCompte(nom, mdp);
+      chatLog(`➕ Utilisateur créé : ${nom}`);
+      connecter(nom, mdp);
+      return;
+    }
+    // Le mot de passe doit être celui de l'utilisateur DÉSIGNÉ.
+    const parMasque = e.fiche && mdp === e.fiche.id;
+    const parCompte = e.compte && _empreinte(mdp) === e.compte.h;
+    const premier = !e.fiche && !e.compte;
+    if(!parMasque && !parCompte && !premier){ err.textContent = 'Mot de passe incorrect pour cet utilisateur.'; return; }
+    // Un nom réel encore inconnu du poste y devient un compte : il sera
+    // reconnu la prochaine fois, même sans pion masqué.
+    const nom = e.fiche ? (e.fiche.nom || e.nom) : e.nom;
+    if(!e.compte && nomValide(nom)) enregistrerCompte(nom, mdp);
+    connecter(nom, mdp);
+  };
+  $('utObs').onclick = () => { _ecrireLocal(CLE_DERNIER, ''); w.remove(); seConnecter(null, false); };
+  $('utGerer').onclick = () => { w.remove(); gererUtilisateurs(); };
+  for(const c of [$('utMdp'), $('utNom')])
+    c.addEventListener('keydown', ev => {
+      if(ev.key === 'Enter') $('utOk').click();
+      if(ev.key === 'Escape') w.remove();
+    });
+  majNom();
+}
+
+// ── Gestion des utilisateurs : qui existe, qui possède quoi.
+function gererUtilisateurs(){
+  fermerFenetres();
+  const locaux = comptesLocaux();
+  const n = nom => vivants().filter(p => _memeNom(p.proprietaire, nom)).length;
+  const libres = vivants().filter(p => !p.outil && !proprietaireDe(p)).length;
+  const moi = joueur();
+  const lignes = nomsUtilisateurs().map(nom => `<tr><td>${_esc(nom)}${_memeNom(nom, moi) ? ' <b>(vous)</b>' : ''}</td>
+      <td class="nb">${n(nom)}</td>
+      <td>${locaux.some(c => _memeNom(c.nom, nom)) ? `<button class="oubli" data-nom="${_esc(nom)}">Oublier</button>` : '<i>fichier</i>'}</td></tr>`).join('');
+  const w = document.createElement('div');
+  w.id = 'fenUtil'; w.className = 'fenetre';
+  w.innerHTML = `
+    <div class="ft">Utilisateurs</div>
+    <div class="fc">
+      <p>Connecté : <b>${_esc(_admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'observateur'))}</b>.
+        ${libres} pion(s) sans propriétaire, modifiables par tous.</p>
+      <table><tr><th>Utilisateur</th><th>Pions</th><th></th></tr>
+        ${lignes || '<tr><td colspan="3"><i>Aucun utilisateur</i></td></tr>'}</table>
+      <label class="coche"><input type="checkbox" id="utRespect"${_respecterPropriete ? ' checked' : ''}>
+        Respecter la propriété des pions</label>
+      <div class="fb">
+        <button id="utChanger" class="prim">Changer d'utilisateur…</button>
+        <button id="utFermer">Fermer</button>
+      </div>
+      <p class="fnote">L'administrateur attribue une pile depuis le menu d'un pion
+        (« Propriétaire… »). Les pions posés ou déplacés par un joueur lui appartiennent,
+        comme dans VASL.</p>
+    </div>`;
+  document.body.appendChild(w);
+  w.querySelectorAll('.oubli').forEach(b => b.onclick = () => {
+    oublierCompte(b.dataset.nom);
+    chatLog(`➖ Compte oublié sur ce poste : ${b.dataset.nom}`);
+    gererUtilisateurs();
+  });
+  document.getElementById('utRespect').onchange = e => {
+    _respecterPropriete = e.target.checked;
+    _ecrireLocal(CLE_PROPRIETE, _respecterPropriete ? '1' : '0');
+    chatLog(_respecterPropriete ? '🔒 Propriété des pions respectée' : '🔓 Propriété des pions ignorée : chacun manipule tout');
+  };
+  document.getElementById('utChanger').onclick = () => demanderUtilisateur();
+  document.getElementById('utFermer').onclick = () => w.remove();
+}
+
+function fermerFenetres(){
+  const f = document.getElementById('fenUtil');
+  if(f) f.remove();
+}
 const _d6 = () => {
   // Tirage uniforme sans biais de modulo.
   const t = new Uint8Array(1);
@@ -4417,8 +4830,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(window.innerWidth < 700) basculerCote();
   _brancherCommandes();
   chargerImage('mov.gif').then(u => { if(u) document.getElementById('icUnmoved').src = u; });
-  // Ce qu'on voit d'une unité dissimulée dépend de qui l'on est.
-  document.getElementById('joueur').addEventListener('change', () => vivants().forEach(p => majApparence(p)));
+  majUtilisateur();
   _brancherDes();
   const ci = document.getElementById('chatIn');
   ci.addEventListener('keydown', e => { if(e.key === 'Enter'){ envoyerChat(ci.value); ci.value = ''; } });
