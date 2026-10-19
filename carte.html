@@ -22,7 +22,13 @@ button{background:#333;color:var(--texte);border:1px solid var(--bord);
 button:hover{border-color:var(--accent)}
 button:disabled{opacity:.4;cursor:default}
 #zoomTxt{min-width:52px;text-align:center;color:var(--doux)}
-#mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab}
+#mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
+  user-select:none;-webkit-user-select:none}
+/* Couche de sélection décochée : ses pièces laissent passer le clic vers
+   la carte ou le pion du dessous, comme si elles n'étaient qu'un décor. */
+.pion.verrou{pointer-events:none}
+#couches{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--doux)}
+#couches label{display:flex;align-items:center;gap:3px;cursor:pointer}
 #mapWrap.pan{cursor:grabbing}
 #mapWrap.dropping{outline:3px dashed var(--accent);outline-offset:-6px}
 #mapScaler{position:relative}
@@ -147,6 +153,12 @@ button:disabled{opacity:.4;cursor:default}
   <button id="btUnmoved" onclick="leverDeplaces()" title="Mark unmoved — lève le statut Moved de tous les pions"><img id="icUnmoved" alt="" style="height:16px;vertical-align:-3px"> Unmoved</button>
   <span class="sep"></span>
   <button onclick="basculerCote()">Pions</button>
+  <span class="sep"></span>
+  <span id="couches" title="Couches que le clic peut sélectionner ; les autres laissent passer le clic">Sélection :
+    <label><input type="checkbox" data-couche="unite"> Unités</label>
+    <label><input type="checkbox" data-couche="marqueur"> Marqueurs</label>
+    <label><input type="checkbox" data-couche="carte"> Cartes et panneaux</label>
+  </span>
 </div>
 <div class="barre" id="des">
   <button onclick="lancerDR('Other')" title="DR [F2]">DR</button>
@@ -2103,6 +2115,7 @@ async function majApparence(p, d){
   p.el.title = voile ? 'Pion dissimulé' : d.nom + (d.masque ? ' (?)' : '');
   p.el.style.display = d.hip ? 'none' : '';
   p.cache = d.hip;
+  p.couche = coucheDe(d);
   if(d.vt){ await _majPieceVaslTools(p, d, gen); return; }
   const imgFace = voile || d.img;
   const url = voile === '?' ? _pionInconnu() : await chargerImage(imgFace);
@@ -2291,6 +2304,37 @@ function rendrePile(k){
     p.el.style.top  = (p.y * SC - h/2 + (p.decY || 0) * SC + i*STACK_DY) + 'px';
     p.el.style.zIndex = (p.fond ? 2 : 10) + i;
     p.el.classList.toggle('sel', k === _pileSel);
+    p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
+  });
+}
+
+// ── Couches de sélection.
+// La carte de scénario et les panneaux de VASL Tools couvrent de grandes
+// zones du terrain : un clic destiné à la carte les prenait, ou un pion
+// voisin. Chaque famille peut donc être retirée de la sélection ; ses
+// pièces restent affichées mais ne répondent plus au clic.
+const COUCHES_SEL = {unite: true, marqueur: true, carte: false};
+try {
+  const m = JSON.parse(localStorage.getItem('couchesSel') || 'null');
+  if(m) for(const k in COUCHES_SEL) if(typeof m[k] === 'boolean') COUCHES_SEL[k] = m[k];
+} catch(e){}
+
+function coucheDe(d){
+  if(d.vt) return 'carte';
+  // Le « ? » de dissimulation voyage avec les unités qu'il couvre.
+  if(d.masque || /qmark/i.test(d.img)) return 'unite';
+  const dir = d.img.includes('/') ? d.img.split('/')[0] : '';
+  return !dir || /^(MS|ML|MC|sh|DO|tables|CIDs)$/.test(dir) ? 'marqueur' : 'unite';
+}
+
+function _brancherCouches(){
+  document.querySelectorAll('#couches input').forEach(c => {
+    c.checked = COUCHES_SEL[c.dataset.couche];
+    c.addEventListener('change', () => {
+      COUCHES_SEL[c.dataset.couche] = c.checked;
+      try { localStorage.setItem('couchesSel', JSON.stringify(COUCHES_SEL)); } catch(e){}
+      for(const k of new Set(vivants().map(cle))) rendrePile(k);
+    });
   });
 }
 
@@ -4361,6 +4405,13 @@ function _zipWrite(files){
 document.addEventListener('DOMContentLoaded', () => {
   _setupDropZone();
   _setupPanZoom();
+  _brancherCouches();
+  // Ni sélection de texte ni glisser natif d'image sur la carte : le clic
+  // y sert au panoramique et aux pions, jamais à surligner le terrain.
+  const mw = document.getElementById('mapWrap');
+  const saisie = t => t && t.closest && t.closest('input,textarea,select,[contenteditable="true"]');
+  mw.addEventListener('selectstart', e => { if(!saisie(e.target)) e.preventDefault(); });
+  mw.addEventListener('dragstart',   e => { if(!saisie(e.target)) e.preventDefault(); });
   const r = document.getElementById('palRech');
   r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
   if(window.innerWidth < 700) basculerCote();
