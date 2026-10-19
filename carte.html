@@ -2541,7 +2541,9 @@ function commandesDe(type){
         [...down].forEach((c, j) => ajouter(i, j ? '' : ch[7], toucheAncienne(c, ch[8]), pas(-1)));
         return;
       }
-      ajouter(i, ch[1], lireTouche(ch[27]) || toucheAncienne(ch[3], ch[2]), ({S}) => {
+      // Couche « toujours active » (alwaysActive, champ 26) : pas de
+      // commande d'activation, comme Embellishment de VASSAL.
+      if(ch[26] !== 'true') ajouter(i, ch[1], lireTouche(ch[27]) || toucheAncienne(ch[3], ch[2]), ({S}) => {
         const [v, r] = niveau(S, i); S[i] = String(v === 0 ? 1 : -v) + r;
       });
       ajouter(i, ch[4], lireTouche(ch[28]) || toucheAncienne(ch[6], ch[5]),
