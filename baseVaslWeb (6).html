@@ -95,6 +95,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);
 .ditem.sep{height:1px;background:var(--sh);margin:2px 4px;padding:0;cursor:default}
 .ditem .dicon{width:16px;height:16px;margin-left:-18px;flex-shrink:0}
 .ditem .dicon img{width:16px;height:16px}
+.ditem.chk::before{content:'✓';position:absolute;left:8px;font-size:11px}
 .ditem .dshortcut{margin-left:auto;padding-left:16px;color:#333;font-size:10px}
 .ditem:hover .dshortcut{color:white}
 
@@ -271,7 +272,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg);
   color:#000;
 }
 .wbtn:active{border-color:var(--sh) var(--hi) var(--hi) var(--sh)}
-.map-wrap{flex:1;overflow:auto;position:relative;background:#333;cursor:crosshair}
+.map-wrap{flex:1;overflow:auto;position:relative;background:#333;cursor:crosshair;
+  -webkit-user-select:none;user-select:none}
+/* La carte n'est pas du texte : sans cela, un glisser ou un Maj+clic y
+   ouvrait la sélection native du navigateur et surlignait l'image du
+   terrain en bleu. Les champs de saisie des panneaux restent éditables. */
+.map-wrap input,.map-wrap textarea,.map-wrap [contenteditable="true"]{
+  -webkit-user-select:text;user-select:text}
 .map-wrap.panning{cursor:move}
 .map-inner{position:relative;display:inline-block}
 #mapScaler{display:inline-block;line-height:0}  /* pour éviter les gaps verticaux */
@@ -870,6 +877,19 @@ canvas.grd.on{opacity:1}
 
       <div class="ditem sep"></div>
       <div class="ditem" onclick="doReset()">Réinitialiser plateau</div>
+    </div>
+  </div>
+  <div class="mitem" id="mSel" onclick="toggleMenu('mSel')">
+    <span class="ul">S</span>élection
+    <div class="dropdown" id="mSelCouches">
+      <div class="ditem" style="color:#666;cursor:default">Couches prises par le lasso :</div>
+      <div class="ditem" data-couche="unit" onclick="basculerCoucheSel(event,'unit')">Unités (et « ? »)</div>
+      <div class="ditem" data-couche="marker" onclick="basculerCoucheSel(event,'marker')">Marqueurs</div>
+      <div class="ditem" data-couche="aid" onclick="basculerCoucheSel(event,'aid')">Aides de jeu et panneaux</div>
+      <div class="ditem" data-couche="autre" onclick="basculerCoucheSel(event,'autre')">Identifiants, phases, dessins</div>
+      <div class="ditem sep"></div>
+      <div class="ditem" onclick="basculerCoucheSel(event,'*')">Toutes les couches</div>
+      <div class="ditem" onclick="basculerCoucheSel(event,'unit!')">Unités seulement</div>
     </div>
   </div>
   <div class="mitem" id="mHelp" onclick="toggleMenu('mHelp')">
@@ -1539,7 +1559,7 @@ function _init(){
   ring.style.width=Math.round(HW*.88)+'px'; ring.style.height=Math.round(HH*.88)+'px';
   const cvs=document.getElementById('grdCvs'); cvs.width=MW; cvs.height=MH; drawGrid(cvs);
   buildOB(); buildMkrList(); setupTableTabs();
-  setupInput(); setupKeys(); setupMenuClose();
+  setupInput(); setupKeys(); setupMenuClose(); majMenuCouches();
   chatLog('VASL 6.7.3 \u2014 VASSAL 3.7.20','sys');
   chatLog('Camps : Allied \u00b7 Axis \u2014 ouvrir un .vsav ou un .vlog pour charger un scénario','sys');
   document.getElementById('mapWrap').scrollLeft=Math.max(0,MW*0.12-document.getElementById('mapWrap').clientWidth/2);
@@ -2311,12 +2331,51 @@ function fenetrePileOuverte(){
 // Pions déplaçables dont le centre tombe dans un rectangle. Les
 // panneaux et les pions dissimulés d'autrui en sont exclus : on ne
 // sélectionne pas ce qu'on ne peut pas déplacer.
+// ── Couches de sélection.
+// Le lasso ne prend que les familles de pions cochées dans le menu
+// Sélection : sans ce filtre, un rectangle tiré au-dessus d'une aide de
+// jeu posée sur la carte l'emportait avec les unités. Un clic direct sur
+// un pion reste toujours possible, quelle que soit sa couche.
+const COUCHES_SEL = {unit:true, marker:true, aid:false, autre:false};
+try {
+  const m = JSON.parse(localStorage.getItem('couchesSel') || 'null');
+  if(m) for(const k in COUCHES_SEL) if(typeof m[k] === 'boolean') COUCHES_SEL[k] = m[k];
+} catch(e) {}
+
+function coucheDe(p){
+  // Le « ? » de dissimulation voyage avec les unités qu'il couvre.
+  if(typeof _isQmark === 'function' && _isQmark(p)) return 'unit';
+  if(!p.kind || p.kind === 'unit') return 'unit';
+  if(p.kind === 'marker') return 'marker';
+  if(p.kind === 'aid' || (p.el && p.el.classList.contains('panneau-carte'))) return 'aid';
+  return 'autre';
+}
+
+function majMenuCouches(){
+  document.querySelectorAll('#mSelCouches [data-couche]').forEach(d =>
+    d.classList.toggle('chk', !!COUCHES_SEL[d.dataset.couche]));
+}
+
+function basculerCoucheSel(e, c){
+  // Le menu reste ouvert : on coche souvent plusieurs couches d'affilée.
+  if(e) e.stopPropagation();
+  if(c === '*') for(const k in COUCHES_SEL) COUCHES_SEL[k] = true;
+  else if(c === 'unit!') for(const k in COUCHES_SEL) COUCHES_SEL[k] = (k === 'unit');
+  else COUCHES_SEL[c] = !COUCHES_SEL[c];
+  try { localStorage.setItem('couchesSel', JSON.stringify(COUCHES_SEL)); } catch(err) {}
+  majMenuCouches();
+  const on = Object.keys(COUCHES_SEL).filter(k => COUCHES_SEL[k]);
+  const sp = document.getElementById('sp_act');
+  if(sp) sp.textContent = on.length ? 'Lasso : ' + on.join(', ') : 'Lasso : aucune couche';
+}
+
 function pionsDansRect(x, y, w, h){
   const out = [];
   for(const p of pions){
     if(p.deleted || p.html) continue;
     if(p.el && p.el.style.display === 'none') continue;
     if(!estDeplacable(p)) continue;
+    if(!COUCHES_SEL[coucheDe(p)]) continue;
     if(p.x < x || p.x > x + w) continue;
     if(p.y < y || p.y > y + h) continue;
     out.push(p);
@@ -3956,6 +4015,12 @@ function setupInput(){
   wrap.addEventListener('mousedown',e=>{if(e.button===2){touchPan=true;panSX=e.clientX+wrap.scrollLeft;panSY=e.clientY+wrap.scrollTop;}});
   wrap.addEventListener('mousemove',e=>{if(touchPan){wrap.scrollLeft=panSX-e.clientX;wrap.scrollTop=panSY-e.clientY;}});
   wrap.addEventListener('contextmenu',e=>e.preventDefault());
+  // Ni sélection de texte ni glisser natif d'image sur la carte : seuls
+  // le lasso et les pions décident de ce qui est sélectionné. Le CSS
+  // user-select ne suffit pas partout (Safari, Maj+clic), d'où ce garde.
+  const saisie = t => t && t.closest && t.closest('input,textarea,select,[contenteditable="true"]');
+  wrap.addEventListener('selectstart', e => { if(!saisie(e.target)) e.preventDefault(); });
+  wrap.addEventListener('dragstart',   e => { if(!saisie(e.target)) e.preventDefault(); });
   // Clic ou tap sur la carte : soit on désigne l'hexagone cible d'un
   // déplacement groupé, soit on vide la sélection si l'on a cliqué
   // hors de tout pion.
