@@ -379,9 +379,11 @@ function _parseBoardSegment(text){
     const col = parseInt(t[0], 10), row = parseInt(t[1], 10);
     if(isNaN(col) || isNaN(row)) continue;
     const raw = t[2];
-    // 'r' seul ou 'rdx' sont de vrais noms ; sinon 'rXX' = XX retourné
+    // 'r' seul ou 'rdx' sont de vrais noms ; sinon 'rXX' = XX retourné.
+    // Le « r » est minuscule (ASLBoardPicker.buildBoard) : RBv3, RR, RO…
+    // sont des noms de boards, pas des boards retournés.
     let reversed = false, name = raw;
-    if(/^r/i.test(raw) && !/^r(dx)?$/i.test(raw)){ reversed = true; name = raw.substring(1); }
+    if(raw.startsWith('r') && !/^r(dx)?$/i.test(raw)){ reversed = true; name = raw.substring(1); }
     let crop = null;
     const n = [t[3], t[4], t[5], t[6]].map(v => parseInt(v, 10));
     if(n.every(v => !isNaN(v))) crop = {x:n[0], y:n[1], w:n[2], h:n[3]};
