@@ -2663,6 +2663,10 @@ function annuler(){
   signalerCoup(photo);
   chatLog(`↶ Coup annulé (${e.inv.length} commande(s))`);
   majUndo();
+  // Plus aucun coup joué pendant la relecture : on peut de nouveau reculer.
+  if(_logPlancher && !_histo.some(x => !x.etape && x.annulable && !x.annule && x.inv.length)){
+    _logPlancher = 0; majBarreLog();
+  }
   return true;
 }
 
@@ -2823,12 +2827,13 @@ function _empiler(p, dessous){
 // un M/ par pion déplacé, du fond vers le sommet, chacun désignant la
 // pièce qui doit se trouver dessous.
 function _avantAction(){
-  // Jouer au milieu d'une relecture : la partie repart de cette position,
-  // les coups suivants du fichier sont abandonnés.
-  if(!_relecture && _logPos < _etapes.length){
-    chatLog(`✂️ Relecture interrompue au coup ${_logPos} : ${_etapes.length - _logPos} coup(s) suivant(s) abandonné(s)`);
-    _etapes.length = _logPos;
-    _instantanes.length = _logPos;
+  // Jouer au milieu d'une relecture : comme BasicLogger, les coups
+  // restants du fichier sont gardés et ▶ les applique ensuite sur la
+  // position jouée. Reculer au-delà effacerait ce coup sans le dire :
+  // le recul s'arrête ici (Undo l'annule).
+  if(!_relecture && _logPos < _etapes.length && _logPlancher < _logPos){
+    chatLog(`⏸️ Coup joué pendant la relecture, au coup ${_logPos} : ${_etapes.length - _logPos} coup(s) restant(s) gardé(s) — ▶ pour continuer`);
+    _logPlancher = _logPos;
     majBarreLog();
   }
 }
@@ -2844,9 +2849,10 @@ let _etapes = [];          // coups : listes de segments
 let _logPos = 0;           // coups déjà joués
 let _instantanes = [];     // état avant chaque coup joué
 let _relecture = false;    // vrai pendant qu'un coup est rejoué
+let _logPlancher = 0;      // pas de recul avant un coup joué en cours de relecture
 
 function preparerRelecture(segs){
-  _etapes = []; _logPos = 0; _instantanes = [];
+  _etapes = []; _logPos = 0; _instantanes = []; _logPlancher = 0;
   for(const tok of _decoupeSeq(segs.join('\x1b'), '\x1b')){
     // Les entrées vides (« LOG\t » seul) ne sont pas des coups.
     const cmds = _commandesLog(tok).filter(c => c.trim());
@@ -2936,7 +2942,7 @@ function avancerLog(muet){
 }
 
 function reculerLog(muet){
-  if(_logPos <= 0) return false;
+  if(_logPos <= _logPlancher) return false;
   _logPos--;
   const photo = _photo();
   const snap = _instantanes[_logPos];
@@ -3022,7 +3028,9 @@ function majBarreLog(){
   const b = document.getElementById('barreLog');
   b.style.display = _etapes.length ? '' : 'none';
   document.getElementById('logPos').textContent = `${_logPos} / ${_etapes.length}`;
-  document.getElementById('lgDebut').disabled = document.getElementById('lgArr').disabled = _logPos <= 0;
+  document.getElementById('lgDebut').disabled = document.getElementById('lgArr').disabled = _logPos <= _logPlancher;
+  document.getElementById('lgArr').title = _logPlancher > 0 && _logPos <= _logPlancher
+    ? 'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler' : 'Coup précédent [Page précédente]';
   document.getElementById('lgFin').disabled = document.getElementById('lgAv').disabled = _logPos >= _etapes.length;
 }
 
