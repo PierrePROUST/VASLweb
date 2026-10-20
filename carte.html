@@ -2562,7 +2562,10 @@ function importerPions(texte, label, annexes){
   let n = 0;
   for(const c of candidats){
     if(c.d.carte !== _carteJeu) continue;     // autres fenêtres : réécrites telles quelles
-    creerPion(c.seg, rangs.has(c.d.uid) ? rangs.get(c.d.uid) : 1000 + c.i);
+    // Hors de toute pile : une pièce qui ne s'empile pas est dessinée
+    // sous les piles (DefaultPieceCollection, couche 0), les autres dessus.
+    const q = creerPion(c.seg, rangs.has(c.d.uid) ? rangs.get(c.d.uid) : 1000 + c.i);
+    if(!rangs.has(c.d.uid) && neSEmpilePas(q)) q.ordre = -1000 + c.i;
     n++;
   }
   const caches = vivants().filter(p => p.cache && !p.outil).length;
@@ -2617,9 +2620,10 @@ function _remise(p, sous){
 
 // Pièce encore en jeu juste sous p, d'après les rangs d'avant le retrait.
 function _dessousRetire(p){
+  if(neSEmpilePas(p)) return null;
   let best = null;
   for(const q of vivants())
-    if(q !== p && q.x === p.x && q.y === p.y && q.ordre < p.ordre && (!best || q.ordre > best.ordre)) best = q;
+    if(q !== p && q.x === p.x && q.y === p.y && q.ordre < p.ordre && !neSEmpilePas(q) && (!best || q.ordre > best.ordre)) best = q;
   return best ? best.uid : null;
 }
 
@@ -2772,7 +2776,10 @@ function rejouerLog(segs){
         if(t[1]) _pilesVassal.set(t[0], _idsPile(t[1]));
         continue;
       }
-      const p = parUid(_nul(t[0]));
+      // Une pièce tenue sur une autre fenêtre (Casualties…) change d'état
+      // elle aussi : elle le garde en revenant, et dans la sauvegarde.
+      const id = _nul(t[0]);
+      const p = pions.find(q => q.uid === id && (!q.deleted || q.ailleurs));
       const te = p && _typeEtEtat(p.seg);
       if(te && t[1]){
         p.seg = '+/' + p.uid + '/' + te.type + '/' + t[1];
@@ -3037,10 +3044,30 @@ function majBarreLog(){
   document.getElementById('lgFin').disabled = document.getElementById('lgAv').disabled = _logPos >= _etapes.length;
 }
 
+// Trait Immobilized sans « L » en tête des options d'empilement : la
+// pièce ne s'empile pas (Properties.NO_STACK) — clocher, tunnel, marqueur
+// de la piste des tours. VASSAL ne la met dans aucune pile.
+const _nonEmpilable = new Map();      // type → booléen
+function neSEmpilePas(p){
+  const te = _typeEtEtat(p.seg);
+  if(!te) return false;
+  if(!_nonEmpilable.has(te.type) || !_bdd){
+    const ts = _developperPrototypes(_splitTypeState(p.seg), 0);
+    const im = ts && ts.typ.map(t => _seq(t.replace(/\\+$/, ''), ';')).find(f => f[0] === 'immob');
+    const v = !!im && (im[3] === undefined ? 'R' : im[3].replace(/\\/g, '')).charAt(0) !== 'L';
+    if(!_bdd) return v;
+    _nonEmpilable.set(te.type, v);
+  }
+  return _nonEmpilable.get(te.type);
+}
+
+// La pièce sur laquelle p est posée, pour un M/ : la plus proche en
+// dessous qui s'empile, ou rien si p elle-même ne s'empile pas.
 function _dessous(p){
+  if(neSEmpilePas(p)) return 'null';
   const s = pile(cle(p));
-  const i = s.indexOf(p);
-  return i > 0 ? s[i-1].uid : 'null';
+  for(let i = s.indexOf(p) - 1; i >= 0; i--) if(!neSEmpilePas(s[i])) return s[i].uid;
+  return 'null';
 }
 
 // Position finale d'un lâcher : l'ancrage d'hexagone, ou une pile déjà
@@ -6001,7 +6028,8 @@ function _segmentsPiles(){
   const out = [];
   let n = 0;
   for(const k of new Set(vivants().map(cle))){
-    const s = pile(k);
+    const s = pile(k).filter(p => !neSEmpilePas(p));
+    if(!s.length) continue;
     let couche = -1;
     for(const p of s) if(_coucheParUid.has(p.uid)){ couche = _coucheParUid.get(p.uid); break; }
     out.push(`+/w${Date.now()}${++n}/stack/${_carteJeu};${s[0].x};${s[0].y};`
