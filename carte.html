@@ -66,6 +66,8 @@ button:disabled{opacity:.4;cursor:default}
 .fenetre .fb button{flex:1;min-height:32px;background:#e4e1d6;color:#111;border-color:#999}
 .fenetre .fb button.prim{background:#2f5f9e;color:#fff;border-color:#2f5f9e}
 #btNet.actif{border-color:#3c8f4a;color:#9fe0a8}
+#btLog.actif{border-color:#c03a3a;color:#ff8a8a}
+#fenLog{z-index:9900}
 .fenetre .fnote{margin:10px 0 0;font-size:11px;color:#666}
 .fenetre table{width:100%;border-collapse:collapse;margin-bottom:6px}
 .fenetre th{text-align:left;border-bottom:1px solid #999;padding:3px}
@@ -165,8 +167,7 @@ button:disabled{opacity:.4;cursor:default}
   <button onclick="setZoom(1)">100 %</button>
   <span class="sep"></span>
   <button id="btVsav" onclick="ecrireVsav()" disabled>Exporter .vsav</button>
-  <button id="btEnrLog" onclick="basculerEnregistrementLog()" disabled>⏺ Enregistrer le log</button>
-  <button id="btVlog" onclick="ecrireVlog()" disabled title="Écrit le .vlog sans arrêter l'enregistrement">Exporter .vlog</button>
+  <button id="btLog" onclick="basculerLog()" disabled>Log</button>
   <span id="logTxt"></span>
   <span class="sep"></span>
   <span id="barreLog" style="display:none">
@@ -360,6 +361,8 @@ async function openGameFile(file){
     netPartieChargee();
     // Qui joue ? Ce que l'on voit et ce que l'on peut toucher en dépend.
     demanderUtilisateur();
+    // GameState.loadGame : « Replay commencing. Begin new log file? »
+    proposerLog(true);
   } catch(err){
     chatLog('❌ Lecture impossible : ' + (err && err.message ? err.message : err));
     console.error(err);
@@ -371,6 +374,7 @@ async function openGameFile(file){
 async function chargerPartie(texte, label, annexes){
   const boards = _parseBoardSegment(texte);
   if(!boards.length){ chatLog(`⚠️ Aucun board dans ${label}`); return false; }
+  fermerLog();
   document.title = 'VASL — ' + label;
   chatLog(`🗺️ ${label} — boards : `
     + boards.map(b => b.name + (b.reversed ? ' (retourné)' : '')).join(', '));
@@ -2557,9 +2561,6 @@ function importerPions(texte, label, annexes){
   _etendreCarte();
   new Set(vivants().map(cle)).forEach(rendrePile);
 
-  // Enregistrement armé d'emblée, comme VASSAL qui propose un fichier de
-  // log dès l'ouverture d'une partie.
-  demarrerEnregistrementLog();
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
 }
 
@@ -2702,7 +2703,6 @@ function _avantAction(){
     _instantanes.length = _logPos;
     majBarreLog();
   }
-  if(_logEnr && !_logDepart) _logDepart = etatPartie();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2754,16 +2754,29 @@ function avancerLog(muet){
   if(_logPos >= _etapes.length) return false;
   const etape = _etapes[_logPos];
   _instantanes[_logPos] = _instantane();
+  _instantanes[_logPos].log = _logEnr ? {enr: _logEnr, n: _logEnr.length} : null;
   const photo = _photo();
   _relecture = true;
   try { rejouerLog(etape); } finally { _relecture = false; }
+  // BasicLogger.step : le coup relu passe par sendAndLog, il entre donc
+  // dans le log en cours et part chez les autres joueurs.
+  _actionOuverte = false;
+  for(const sg of etape){
+    const c = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
+    if(c && !c.startsWith('UNDO')) _logCmd(c);
+  }
+  _actionOuverte = false;
   _logPos++;
   new Set(pions.map(cle)).forEach(rendrePile);
   if(_pileSel) afficherPile();
   // Les pions touchés par le coup sont signalés, et la vue les rejoint.
   if(!muet) signalerCoup(photo);
   majBarreLog();
-  if(_logPos === _etapes.length) chatLog('🏁 Fin du log');
+  if(_logPos === _etapes.length){
+    chatLog('🏁 Fin du log');
+    // « Replay completed. Begin new log file? »
+    proposerLog(false);
+  }
   return true;
 }
 
@@ -2771,7 +2784,20 @@ function reculerLog(muet){
   if(_logPos <= 0) return false;
   _logPos--;
   const photo = _photo();
-  _restaurer(_instantanes[_logPos]);
+  const snap = _instantanes[_logPos];
+  _restaurer(snap);
+  // VASSAL ne recule pas dans une relecture : ici, le coup relu sort du
+  // log en cours. Revenir avant le début du log le fait repartir de là.
+  if(_logEnr){
+    if(snap.log && snap.log.enr === _logEnr){
+      _logEnr.length = _logGroupes.length = Math.min(snap.log.n, _logEnr.length);
+    } else {
+      _logEnr.length = _logGroupes.length = 0;
+      _logDepart = etatPartie();
+      chatLog(`⏺️ Log : il repart désormais du coup ${_logPos}`);
+    }
+    majBoutons();
+  }
   new Set(pions.map(cle)).forEach(rendrePile);
   if(_pileSel) afficherPile();
   if(!muet) signalerCoup(photo);
@@ -3965,6 +3991,12 @@ function _brancherCommandes(){
   document.getElementById('mapWrap').addEventListener('scroll', fermerMenu);
   document.addEventListener('keydown', e => {
     if(e.key === 'Escape'){ fermerMenu(); return; }
+    // Begin Logfile [Alt+W], End Logfile [Alt+Maj+W], comme VASSAL.
+    if(e.altKey && !e.ctrlKey && e.code === 'KeyW'){
+      e.preventDefault();
+      if(e.shiftKey) terminerLog(); else commencerLog();
+      return;
+    }
     if((e.key === 'PageDown' || e.key === 'PageUp') && _etapes.length
        && !/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)){
       e.preventDefault();
@@ -5606,8 +5638,13 @@ function ouvrirReseau(){
 // posés depuis la palette. Tout le reste — boards, autres fenêtres,
 // options — est réécrit mot pour mot.
 // ═══════════════════════════════════════════════════════════════
-let _logEnr = null;       // commandes jouées depuis l'ouverture
-let _logDepart = null;    // état de la partie avant le premier coup
+// Enregistrement du log, comme BasicLogger de VASSAL : « Begin Logfile »
+// fige l'état de la partie et choisit le fichier ; chaque coup joué, reçu
+// d'un autre joueur ou relu d'un .vlog s'y ajoute ; « End Logfile »
+// écrit l'état de départ suivi des coups.
+let _logEnr = null;       // commandes du log en cours ; null : pas de log
+let _logDepart = null;    // état de la partie au début du log
+let _logNom = null;       // fichier choisi au début du log
 
 // Toutes les commandes nées d'une même action du joueur — le même tour de
 // boucle d'événements — forment un coup, écrit en une seule entrée LOG
@@ -5625,44 +5662,101 @@ function _logCmd(c){
   majBoutons();
 }
 const _nbActions = () => new Set(_logGroupes).size;
-let _logEcrit = 0;        // commandes déjà écrites dans un .vlog
 
-// Begin Logfile / End Logfile de VASSAL. L'état de départ n'est pas figé
-// au démarrage mais au premier coup joué : on peut armer, relire le log
-// reçu jusqu'où l'on veut, puis jouer — le fichier repart alors de la
-// position atteinte.
-function demarrerEnregistrementLog(){
-  if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le log doit partir d\'un état que VASL sache relire.'); return false; }
-  if(_logEnr && _logEnr.length > _logEcrit)
-    chatLog(`⚠️ ${_nbActions()} coup(s) enregistré(s) abandonné(s) sans avoir été écrits`);
-  _logEnr = []; _logDepart = null; _logGroupes = []; _logEcrit = 0;
-  chatLog('⏺️ Enregistrement du log armé — il partira de la position du premier coup joué');
+const enregistreLog = () => _logEnr !== null;
+function basculerLog(){ return enregistreLog() ? terminerLog() : commencerLog(); }
+
+// beginOutput : le nom du fichier d'abord (getSaveFile), puis l'état de
+// la partie, figé à cet instant.
+function commencerLog(){
+  if(enregistreLog()) return false;
+  if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le log part d\'un état que VASL sache relire.'); return false; }
+  _fenetreLog('Commencer un fichier de log', `
+      <label>Nom du fichier<input id="lgNom" autocomplete="off" value="${_esc(_nomExport('vlog'))}"></label>
+      <div class="fb"><button id="lgOk" class="prim">Commencer</button><button id="lgAnnul">Annuler</button></div>
+      <p class="fnote">Les coups joués, reçus ou relus à partir de cette position y seront
+        enregistrés ; « Log » à nouveau termine le fichier et l'écrit.</p>`, w => {
+    const inp = w.querySelector('#lgNom');
+    const ok = () => {
+      let nom = inp.value.trim().replace(/[\\/:*?"<>|]/g, '_');
+      if(!nom) return;
+      if(!/\.vlog$/i.test(nom)) nom += '.vlog';
+      w.remove();
+      _logNom = nom;
+      _logEnr = []; _logGroupes = [];
+      _logDepart = etatPartie();
+      chatLog(`⏺️ Enregistrement du log commencé : ${nom}`);
+      majBoutons();
+    };
+    w.querySelector('#lgOk').onclick = ok;
+    w.querySelector('#lgAnnul').onclick = () => w.remove();
+    inp.addEventListener('keydown', e => { if(e.key === 'Enter') ok(); if(e.key === 'Escape') w.remove(); });
+    inp.focus(); inp.select();
+  });
+  return true;
+}
+
+// endLogAction : write() n'écrit rien si aucun coup n'a été enregistré.
+function terminerLog(){
+  if(!enregistreLog()) return false;
+  if(_logEnr.length) ecrireVlog();
+  else chatLog('⏹️ Log terminé : aucun coup enregistré, aucun fichier écrit');
+  _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = [];
   majBoutons();
   return true;
 }
 
-function arreterEnregistrementLog(){
-  if(!_logEnr) return false;
-  const n = _logEnr.length ? _nbActions() : 0;
-  if(n && _logEnr.length > _logEcrit) ecrireVlog();
-  _logEnr = null; _logDepart = null; _logGroupes = []; _logEcrit = 0;
-  chatLog(`⏹️ Enregistrement du log arrêté — ${n} coup(s)`);
+// BasicLogger.setup(false) : la partie se ferme, un log en cours peut
+// encore être écrit.
+function fermerLog(){
+  if(!enregistreLog()) return;
+  if(_logEnr.length && confirm(`Le log « ${_logNom} » n'est pas écrit (${_nbActions()} coup(s)). L'écrire maintenant ?`))
+    ecrireVlog();
+  _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = [];
+  const f = document.getElementById('fenLog');
+  if(f) f.remove();
   majBoutons();
-  return true;
 }
 
-function basculerEnregistrementLog(){
-  return _logEnr ? arreterEnregistrementLog() : demarrerEnregistrementLog();
+// queryNewLogFile : à l'ouverture d'une partie et à la fin d'une
+// relecture, VASSAL propose un nouveau log, sauf si l'on a choisi de
+// ne plus être interrogé (préférences PromptNewLogAtStart et
+// PromptNewLogEnd).
+const CLE_LOG_DEBUT = 'aslweb.PromptNewLogAtStart', CLE_LOG_FIN = 'aslweb.PromptNewLogEnd';
+function proposerLog(auDebut){
+  if(enregistreLog() || !_source) return;
+  const cle = auDebut ? CLE_LOG_DEBUT : CLE_LOG_FIN;
+  if(_lireLocal(cle, '1') !== '1') return;
+  const quoi = auDebut ? (_etapes.length ? 'La relecture commence.' : 'Partie ouverte.') : 'Relecture terminée.';
+  _fenetreLog('Fichier de log', `
+      <p>${quoi} Commencer un nouveau fichier de log ?</p>
+      <div class="fb"><button id="lgOui" class="prim">Oui</button><button id="lgNon">Non</button>
+        <button id="lgJamais">Ne plus demander</button></div>`, w => {
+    w.querySelector('#lgOui').onclick = () => { w.remove(); commencerLog(); };
+    w.querySelector('#lgNon').onclick = () => w.remove();
+    w.querySelector('#lgJamais').onclick = () => { _ecrireLocal(cle, '0'); w.remove(); };
+    w.querySelector('#lgOui').focus();
+  });
+}
+
+function _fenetreLog(titre, corps, brancher){
+  const ancien = document.getElementById('fenLog');
+  if(ancien) ancien.remove();
+  const w = document.createElement('div');
+  w.id = 'fenLog'; w.className = 'fenetre';
+  w.innerHTML = `<div class="ft">${_esc(titre)}</div><div class="fc">${corps}</div>`;
+  document.body.appendChild(w);
+  brancher(w);
 }
 
 function majBoutons(){
   document.getElementById('btVsav').disabled = !_source;
-  document.getElementById('btVlog').disabled = !(_logEnr && _logEnr.length);
-  const b = document.getElementById('btEnrLog');
-  b.disabled = !_source;
-  b.textContent = _logEnr ? '⏹ Arrêter le log' : '⏺ Enregistrer le log';
-  b.title = _logEnr ? 'Arrête l\'enregistrement et écrit le .vlog' : 'Enregistre les coups joués à partir de maintenant';
-  document.getElementById('logTxt').textContent = _logEnr ? '⏺ ' + (_logEnr.length ? _nbActions() : 0) : '';
+  const b = document.getElementById('btLog');
+  b.disabled = !_source && !enregistreLog();
+  b.classList.toggle('actif', enregistreLog());
+  b.textContent = enregistreLog() ? '⏹ Log' : 'Log';
+  b.title = enregistreLog() ? `Terminer le log « ${_logNom} » et l'écrire [Alt+Maj+W]` : 'Commencer un fichier de log [Alt+W]';
+  document.getElementById('logTxt').textContent = enregistreLog() ? '⏺ ' + _nbActions() : '';
 }
 
 // Piles de la carte de jeu, d'après l'état courant. VASL écrit aussi les
@@ -5732,10 +5826,7 @@ function ecrireVsav(){
 
 // BasicLogger : état de départ, puis « LOG\t<commande> » par action.
 function ecrireVlog(){
-  if(!_logEnr || !_logEnr.length || !_logDepart){
-    chatLog('⚠️ Aucune action jouée depuis l\'ouverture : rien à rejouer dans VASL.');
-    return false;
-  }
+  if(!_logEnr || !_logEnr.length || !_logDepart) return false;
   // GameModule.encode : un coup composé est la suite de ses commandes
   // séparées par ESC ; dans le fichier, ces ESC sont précédés d'une
   // contre-oblique (SequenceEncoder de BasicLogger).
@@ -5745,9 +5836,8 @@ function ecrireVlog(){
     else entrees.push([c]);
   });
   const lignes = entrees.map(l => 'LOG\t' + (l.length > 1 ? l.map(c => '\x1b' + c).join('') : l[0]).replace(/\x1b/g, '\\\x1b'));
-  _telecharger([..._logDepart, ...lignes].join('\x1b'), _nomExport('vlog'));
-  _logEcrit = _logEnr.length;
-  chatLog(`📼 .vlog écrit : ${entrees.length} coup(s), ${_logEnr.length} commande(s)`);
+  _telecharger([..._logDepart, ...lignes].join('\x1b'), _logNom || _nomExport('vlog'));
+  chatLog(`📼 Log écrit : ${_logNom} — ${entrees.length} coup(s), ${_logEnr.length} commande(s)`);
   return true;
 }
 
@@ -5839,7 +5929,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Comme VASSAL à la fermeture : des coups enregistrés et pas encore
   // écrits ne partent pas sans avertissement.
   window.addEventListener('beforeunload', e => {
-    if(_logEnr && _logEnr.length > _logEcrit){ e.preventDefault(); e.returnValue = ''; }
+    if(_logEnr && _logEnr.length){ e.preventDefault(); e.returnValue = ''; }
   });
 });
 </script>
