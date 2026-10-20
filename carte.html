@@ -1530,6 +1530,9 @@ function _proprietes(ts){
   const pr = {};
   if(!ts) return pr;
   const net = v => (v || '').replace(/\\+$/, '').replace(/\\(.)/g, '$1');
+  // Comme getProperty, le trait le plus externe répond le premier : un
+  // nom porté deux fois (DBCounterType) garde la valeur de l'extérieur.
+  const def = (k, v) => { if(!(k in pr)) pr[k] = v; };
   for(let i = 0; i < ts.typ.length; i++){
     const ch = ts.typ[i].split(';');
     if(ch[0] === 'emb2'){
@@ -1540,17 +1543,17 @@ function _proprietes(ts){
       const premier = parseInt(ch[24], 10);
       const noms = (ch[17] || '').split(/(?<!\\),/).map(net);
       const ims = net(ch[16]).split(',');
-      pr[nom + '_Level'] = String(niv - 1 + (isNaN(premier) ? 1 : premier));
-      pr[nom + '_Name'] = (noms[niv - 1] || '').replace(/^\+\s*|\s*\+$/g, '').trim();
-      pr[nom + '_Image'] = ims[niv - 1] || '';
-      pr[nom + '_Active'] = String(v > 0);
+      def(nom + '_Level', String(niv - 1 + (isNaN(premier) ? 1 : premier)));
+      def(nom + '_Name', (noms[niv - 1] || '').replace(/^\+\s*|\s*\+$/g, '').trim());
+      def(nom + '_Image', ims[niv - 1] || '');
+      def(nom + '_Active', String(v > 0));
     } else if(ch[0] === 'rotate' && net(ch[8])){
       // FreeRotator : <nom>_Facing, de 1 au nombre de faces.
-      pr[net(ch[8]) + '_Facing'] = String((parseInt(net(ts.eta[i]), 10) || 0) + 1);
+      def(net(ch[8]) + '_Facing', String((parseInt(net(ts.eta[i]), 10) || 0) + 1));
     } else if(ch[0] === 'PROP' && ch[1]){
-      pr[net(ch[1])] = net(ts.eta[i]);
+      def(net(ch[1]), net(ts.eta[i]));
     } else if(ch[0] === 'mark' && ch[1]){
-      pr[net(ch[1])] = net(ts.eta[i]);
+      def(net(ch[1]), net(ts.eta[i]));
     }
   }
   return pr;
@@ -3911,15 +3914,19 @@ function rapportDeplacement(liste, ax, ay){
 function rapportsEtat(p, type, tirees, cmds, nomAvant){
   if(p.cache) return;
   const T = decoderTraits(type);
+  let pr = null;
   for(const t of T){
     if(!/^report;/.test(t)) continue;
-    const ch = t.split(';');
+    // Le format peut contenir des « ; » échappés.
+    const ch = _seq(t, ';');
     const touches = lireTouches(ch[1]);
     const k = tirees.find(x => touches.includes(x));
     if(!k) continue;
     const cmd = cmds.find(c => c.touche === k && c.nom);
     const format = (ch[2] || '$location$: $newPieceName$ *').replace(/\\(.)/g, '$1');
-    rapport(_remplir(format, {location: lieu(p.x, p.y), oldLocation: p.ancienLieu || lieu(p.x, p.y),
+    // FormattedString : toute propriété du pion peut figurer dans le texte.
+    if(!pr){ const te = _typeEtEtat(p.seg); pr = te ? proprietesPion(p, T, decoderTraits(te.etat)) : {}; }
+    rapport(_remplir(format, {...pr, location: lieu(p.x, p.y), oldLocation: p.ancienLieu || lieu(p.x, p.y),
       newPieceName: p.deleted ? nomAvant : nomRapport(p), oldPieceName: nomAvant,
       menuCommand: cmd ? cmd.nom : '', playerName: joueur(), PlayerName: joueur(), playerId: joueur(),
       mapName: _carteJeu}));
