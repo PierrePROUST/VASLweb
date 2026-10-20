@@ -160,7 +160,8 @@ button:disabled{opacity:.4;cursor:default}
   <button onclick="setZoom(1)">100 %</button>
   <span class="sep"></span>
   <button id="btVsav" onclick="ecrireVsav()" disabled>Exporter .vsav</button>
-  <button id="btVlog" onclick="ecrireVlog()" disabled>Exporter .vlog</button>
+  <button id="btEnrLog" onclick="basculerEnregistrementLog()" disabled>⏺ Enregistrer le log</button>
+  <button id="btVlog" onclick="ecrireVlog()" disabled title="Écrit le .vlog sans arrêter l'enregistrement">Exporter .vlog</button>
   <span id="logTxt"></span>
   <span class="sep"></span>
   <span id="barreLog" style="display:none">
@@ -2458,10 +2459,9 @@ function importerPions(texte, label, annexes){
   _etendreCarte();
   new Set(vivants().map(cle)).forEach(rendrePile);
 
-  // Enregistrement armé d'emblée : l'état de départ du .vlog est figé au
-  // premier coup joué.
-  _logEnr = []; _logDepart = null; _logGroupes = [];
-  majBoutons();
+  // Enregistrement armé d'emblée, comme VASSAL qui propose un fichier de
+  // log dès l'ouverture d'une partie.
+  demarrerEnregistrementLog();
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
 }
 
@@ -4570,11 +4570,44 @@ function _logCmd(c){
   majBoutons();
 }
 const _nbActions = () => new Set(_logGroupes).size;
+let _logEcrit = 0;        // commandes déjà écrites dans un .vlog
+
+// Begin Logfile / End Logfile de VASSAL. L'état de départ n'est pas figé
+// au démarrage mais au premier coup joué : on peut armer, relire le log
+// reçu jusqu'où l'on veut, puis jouer — le fichier repart alors de la
+// position atteinte.
+function demarrerEnregistrementLog(){
+  if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le log doit partir d\'un état que VASL sache relire.'); return false; }
+  if(_logEnr && _logEnr.length > _logEcrit)
+    chatLog(`⚠️ ${_nbActions()} coup(s) enregistré(s) abandonné(s) sans avoir été écrits`);
+  _logEnr = []; _logDepart = null; _logGroupes = []; _logEcrit = 0;
+  chatLog('⏺️ Enregistrement du log armé — il partira de la position du premier coup joué');
+  majBoutons();
+  return true;
+}
+
+function arreterEnregistrementLog(){
+  if(!_logEnr) return false;
+  const n = _logEnr.length ? _nbActions() : 0;
+  if(n && _logEnr.length > _logEcrit) ecrireVlog();
+  _logEnr = null; _logDepart = null; _logGroupes = []; _logEcrit = 0;
+  chatLog(`⏹️ Enregistrement du log arrêté — ${n} coup(s)`);
+  majBoutons();
+  return true;
+}
+
+function basculerEnregistrementLog(){
+  return _logEnr ? arreterEnregistrementLog() : demarrerEnregistrementLog();
+}
 
 function majBoutons(){
   document.getElementById('btVsav').disabled = !_source;
   document.getElementById('btVlog').disabled = !(_logEnr && _logEnr.length);
-  document.getElementById('logTxt').textContent = _logEnr && _logEnr.length ? '⏺ ' + _nbActions() : '';
+  const b = document.getElementById('btEnrLog');
+  b.disabled = !_source;
+  b.textContent = _logEnr ? '⏹ Arrêter le log' : '⏺ Enregistrer le log';
+  b.title = _logEnr ? 'Arrête l\'enregistrement et écrit le .vlog' : 'Enregistre les coups joués à partir de maintenant';
+  document.getElementById('logTxt').textContent = _logEnr ? '⏺ ' + (_logEnr.length ? _nbActions() : 0) : '';
 }
 
 // Piles de la carte de jeu, d'après l'état courant. VASL écrit aussi les
@@ -4658,6 +4691,7 @@ function ecrireVlog(){
   });
   const lignes = entrees.map(l => 'LOG\t' + (l.length > 1 ? l.map(c => '\x1b' + c).join('') : l[0]).replace(/\x1b/g, '\\\x1b'));
   _telecharger([..._logDepart, ...lignes].join('\x1b'), _nomExport('vlog'));
+  _logEcrit = _logEnr.length;
   chatLog(`📼 .vlog écrit : ${entrees.length} coup(s), ${_logEnr.length} commande(s)`);
   return true;
 }
@@ -4741,6 +4775,11 @@ document.addEventListener('DOMContentLoaded', () => {
   w.addEventListener('scroll', cacherSurvol);
   w.addEventListener('wheel', cacherSurvol);
   dessinerPalette();
+  // Comme VASSAL à la fermeture : des coups enregistrés et pas encore
+  // écrits ne partent pas sans avertissement.
+  window.addEventListener('beforeunload', e => {
+    if(_logEnr && _logEnr.length > _logEcrit){ e.preventDefault(); e.returnValue = ''; }
+  });
 });
 </script>
 </body>
