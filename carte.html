@@ -65,6 +65,7 @@ button:disabled{opacity:.4;cursor:default}
 .fenetre .fb{display:flex;gap:6px;flex-wrap:wrap}
 .fenetre .fb button{flex:1;min-height:32px;background:#e4e1d6;color:#111;border-color:#999}
 .fenetre .fb button.prim{background:#2f5f9e;color:#fff;border-color:#2f5f9e}
+#btNet.actif{border-color:#3c8f4a;color:#9fe0a8}
 .fenetre .fnote{margin:10px 0 0;font-size:11px;color:#666}
 .fenetre table{width:100%;border-collapse:collapse;margin-bottom:6px}
 .fenetre th{text-align:left;border-bottom:1px solid #999;padding:3px}
@@ -152,6 +153,7 @@ button:disabled{opacity:.4;cursor:default}
   <h1>VASL — Carte</h1>
   <button onclick="doOpen()">Ouvrir .vsav / .vlog</button>
   <button id="btUtilisateur" onclick="demanderUtilisateur()" title="Utilisateur connecté — cliquer pour changer ou gérer les utilisateurs">👤 Observateur</button>
+  <button id="btNet" onclick="ouvrirReseau()" title="Partie à distance : héberger ou rejoindre une salle, comme le serveur de VASSAL">🌐 Hors ligne</button>
   <span class="sep"></span>
   <button onclick="zoomOut()" title="Zoom arrière">−</button>
   <span id="zoomTxt">100 %</span>
@@ -324,6 +326,11 @@ function _sniffFileType(b, name){
 async function openGameFile(file){
   if(!file) return;
   const label = file.name || 'fichier';
+  // isNewGameAllowed : dans une salle, seul le propriétaire ouvre une partie.
+  if(!netProprietaire()){
+    chatLog('🔒 Dans une salle, seul son propriétaire ouvre une partie : utiliser Synchroniser');
+    return;
+  }
   try {
     const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
     const kind = _sniffFileType(head, file.name);
@@ -345,19 +352,27 @@ async function openGameFile(file){
       chatLog(`❌ Format non reconnu : ${label}`);
       return;
     }
-    const boards = _parseBoardSegment(texte);
-    if(!boards.length){ chatLog(`⚠️ Aucun board dans ${label}`); return; }
-    document.title = 'VASL — ' + label;
-    chatLog(`🗺️ ${label} — boards : `
-      + boards.map(b => b.name + (b.reversed ? ' (retourné)' : '')).join(', '));
-    await _renderBoards(boards);
-    importerPions(texte, label, annexes);
+    if(!await chargerPartie(texte, label, annexes)) return;
+    netPartieChargee();
     // Qui joue ? Ce que l'on voit et ce que l'on peut toucher en dépend.
     demanderUtilisateur();
   } catch(err){
     chatLog('❌ Lecture impossible : ' + (err && err.message ? err.message : err));
     console.error(err);
   }
+}
+
+// Texte d'une sauvegarde : boards, puis pions. Sert aussi à la
+// synchronisation d'une partie à distance.
+async function chargerPartie(texte, label, annexes){
+  const boards = _parseBoardSegment(texte);
+  if(!boards.length){ chatLog(`⚠️ Aucun board dans ${label}`); return false; }
+  document.title = 'VASL — ' + label;
+  chatLog(`🗺️ ${label} — boards : `
+    + boards.map(b => b.name + (b.reversed ? ' (retourné)' : '')).join(', '));
+  await _renderBoards(boards);
+  importerPions(texte, label, annexes);
+  return true;
 }
 
 const EXT_ACCEPTEES = ['.vsav', '.vlog'];
@@ -4123,6 +4138,7 @@ function seConnecter(u, admin){
   _utilisateur = admin ? null : u;
   _admin = !!admin;
   majUtilisateur();
+  _netMajInfo();
   // Ce qu'on voit d'une unité dissimulée ou en HIP dépend de qui l'on est.
   vivants().forEach(p => majApparence(p));
   if(_pileSel) afficherPile();
@@ -4546,6 +4562,579 @@ function _brancherDes(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PARTIE À DISTANCE — d'après VASSAL.chat.node (NodeClient, ServerNode,
+// Protocol) et VASSAL.chat (SynchAction, SynchCommand, CommandDecoder)
+// VASSAL relie les joueurs par un serveur de salles. Le dialogue se
+// fait ligne à ligne :
+//   REG\tid\tchemin\tinfo   s'inscrire, d'abord dans « VASL/Main Room »
+//   JOIN\tVASL/salle        changer de salle
+//   STATS\tinfo             nouveau nom du joueur
+//   FWD\tchemin\tmessage    faire suivre : « VASL/salle/~id » toute la
+//                           salle sauf soi, « VASL/*/id » un seul joueur
+//   LIST\tchemin=info\t…    (serveur) les joueurs, salle par salle
+//   ROOM_INFO\t…            (serveur) le propriétaire de chaque salle,
+//                           son premier occupant
+// Un message de plus de 1000 caractères part en « !ZIP! » suivi du
+// base64 d'un zip à une entrée (Compressor).
+// Entrer dans une salle occupée (NodeClient.setRoom) : JOIN, puis, à la
+// LIST qui confirme l'arrivée, une demande « SYNC » au propriétaire.
+// Celui-ci répond (SynchCommand) par l'état complet de la partie,
+// begin_save … end_save, envoyé au seul demandeur. Ensuite chaque coup
+// est exécuté, consigné et envoyé aux autres (sendAndLog) ; à réception
+// il est décodé, exécuté et consigné (CommandDecoder).
+// Un navigateur n'ouvre pas de socket TCP : la page qui héberge tient le
+// rôle du serveur, et les lignes passent par WebRTC (PeerJS) entre
+// postes, ou par BroadcastChannel entre onglets d'un même navigateur.
+// ═══════════════════════════════════════════════════════════════
+const NET_MODULE = 'VASL';
+const NET_SALLE_DEFAUT = 'Main Room';       // DEFAULT_ROOM_NAME
+const NET_ZIP = '!ZIP!', NET_ZIP_SEUIL = 1000;
+const NET_SYNC_TROP_TOT = 15000;            // SynchAction.TOO_SOON
+const NET_PREFIXE = 'aslweb-';
+const PEERJS_URL = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+
+let _net = null;            // connexion en cours
+let _netReception = false;  // vrai pendant l'exécution d'un coup reçu
+
+// Propriétés d'un joueur ou d'une salle : « clé=valeur&… », sans
+// tabulation ni « / » qui séparent les champs du protocole.
+const _propsEnc = o => Object.entries(o).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+function _propsDec(s){
+  const o = {};
+  for(const e of (s || '').split('&')){
+    const i = e.indexOf('=');
+    if(i > 0) try { o[decodeURIComponent(e.substring(0, i))] = decodeURIComponent(e.substring(i + 1)); } catch(err){}
+  }
+  return o;
+}
+const _nomSalle = t => String(t || '').replace(/[\/\t=&\\]/g, ' ').trim().substring(0, 40);
+const _netInfo = n => _propsEnc({id: n.moi, name: joueur(), client: 'ASLweb', looking: 'false', away: 'false'});
+
+// ── !ZIP! : un zip à une entrée « Dummy », comme Compressor.
+function _b64(u8){
+  let s = '';
+  for(let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+async function _netZip(texte){
+  const brut = new TextEncoder().encode(texte);
+  let f = brut;
+  if(typeof CompressionStream !== 'undefined'){
+    const st = new Blob([brut]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    f = {brut, comp: new Uint8Array(await new Response(st).arrayBuffer())};
+  }
+  return _b64(new Uint8Array(await _zipWrite(new Map([['Dummy', f]])).arrayBuffer()));
+}
+async function _netDezip(b64){
+  const s = atob(b64), u = new Uint8Array(s.length);
+  for(let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  const [d] = (await _zipRead(u.buffer)).values();
+  return new TextDecoder().decode(d || new Uint8Array(0));
+}
+
+// ── Le serveur (ServerNode), tenu par la page qui héberge. Chaque joueur
+// est une feuille « VASL/salle/id » ; un lien est sa connexion.
+function creerServeur(){
+  const joueurs = new Map();      // id → {id, chemin, info, lien}, par ordre d'arrivée
+  let minuterie = null;
+  const chemin = c => {
+    const t = String(c || '').split('/');
+    return NET_MODULE + '/' + (_nomSalle(t[1]) || NET_SALLE_DEFAUT);
+  };
+  const srv = {
+    recevoir(lien, ligne){
+      if(typeof ligne !== 'string') return;
+      if(ligne.startsWith('REG\t')){
+        const [id, ch, info] = ligne.substring(4).split('\t');
+        if(!id) return;
+        lien.id = id;
+        joueurs.delete(id);
+        joueurs.set(id, {id, chemin: chemin(ch), info: info || '', lien});
+        srv.changer();
+      } else if(!joueurs.has(lien.id)){
+        lien.envoyer('REG_REQUEST\t');             // inconnu : prié de s'inscrire
+      } else if(ligne.startsWith('JOIN\t')){
+        // Changer de salle place le joueur après ses occupants.
+        const j = joueurs.get(lien.id);
+        joueurs.delete(j.id);
+        j.chemin = chemin(ligne.substring(5).split('\t')[0]);
+        joueurs.set(j.id, j);
+        srv.changer();
+      } else if(ligne.startsWith('STATS\t')){
+        joueurs.get(lien.id).info = ligne.substring(6);
+        srv.changer();
+      } else if(ligne.startsWith('FWD\t')){
+        const r = ligne.substring(4), i = r.indexOf('\t');
+        if(i > 0) for(const j of srv.cibles(r.substring(0, i))) j.lien.envoyer(r.substring(i + 1));
+      }
+    },
+    quitter(lien){
+      if(lien.id && joueurs.get(lien.id) && joueurs.get(lien.id).lien === lien){
+        joueurs.delete(lien.id);
+        srv.changer();
+      }
+    },
+    // getMsgSender : un segment désigne un nœud, « * » tous, « ~id » tous
+    // sauf id ; le message va à toutes les feuilles désignées.
+    cibles(ch){
+      const parts = ch.split('/');
+      return [...joueurs.values()].filter(j => {
+        const p = [...j.chemin.split('/'), j.id];
+        return parts.every((s, k) => s === '*' || (s.startsWith('~') ? p[k] !== s.substring(1) : p[k] === s));
+      });
+    },
+    // ReportContentsThread : LIST puis ROOM_INFO à chacun, après un
+    // changement.
+    changer(){
+      if(minuterie) return;
+      minuterie = setTimeout(() => {
+        minuterie = null;
+        const tous = [...joueurs.values()];
+        const liste = 'LIST\t' + tous.map(j => `${j.chemin}/${j.id}=${j.info}`).join('\t');
+        const salles = {};
+        for(const j of tous){
+          const s = j.chemin.split('/')[1];
+          if(s !== NET_SALLE_DEFAUT && !salles[s]) salles[s] = _propsEnc({owner: j.id});
+        }
+        const info = 'ROOM_INFO\t' + _propsEnc(salles);
+        for(const j of tous){ j.lien.envoyer(liste); j.lien.envoyer(info); }
+      }, 50);
+    },
+    nb: () => joueurs.size
+  };
+  return srv;
+}
+
+// ── Transports : un message est une ligne de texte.
+async function _chargerPeerJS(){
+  if(window.Peer) return window.Peer;
+  await new Promise((ok, ko) => {
+    const s = document.createElement('script');
+    s.src = PEERJS_URL; s.onload = ok;
+    s.onerror = () => ko(new Error('bibliothèque PeerJS injoignable'));
+    document.head.appendChild(s);
+  });
+  return window.Peer;
+}
+const _attendre = (sur, ms, quoi) => new Promise((ok, ko) => {
+  const t = setTimeout(() => ko(new Error(quoi)), ms);
+  sur((v) => { clearTimeout(t); ok(v); }, e => { clearTimeout(t); ko(e); });
+});
+const _errPeer = e => new Error(e && e.type === 'peer-unavailable' ? 'salle introuvable — vérifier le code'
+  : e && e.type === 'unavailable-id' ? 'ce code de salle est déjà pris'
+  : (e && (e.message || e.type)) || 'erreur WebRTC');
+
+async function _hebergerPeer(n, srv){
+  const Peer = await _chargerPeerJS();
+  const peer = new Peer(NET_PREFIXE + n.code);
+  n.fermerTransport = () => peer.destroy();
+  await _attendre((ok, ko) => { peer.on('open', ok); peer.on('error', e => ko(_errPeer(e))); },
+                  15000, 'serveur de rendez-vous PeerJS injoignable');
+  // Coupé du serveur de rendez-vous, l'hôte s'y réinscrit : les joueurs
+  // déjà là restent reliés, les nouveaux pourront entrer.
+  peer.on('disconnected', () => { if(_net === n && !peer.destroyed) peer.reconnect(); });
+  peer.on('connection', conn => {
+    const lien = {envoyer: l => { if(conn.open) conn.send(l); }};
+    conn.on('data', l => srv.recevoir(lien, l));
+    conn.on('close', () => srv.quitter(lien));
+    conn.on('error', () => srv.quitter(lien));
+  });
+}
+
+async function _rejoindrePeer(n){
+  const Peer = await _chargerPeerJS();
+  const peer = new Peer();
+  n.fermerTransport = () => peer.destroy();
+  await _attendre((ok, ko) => { peer.on('open', ok); peer.on('error', e => ko(_errPeer(e))); },
+                  15000, 'serveur de rendez-vous PeerJS injoignable');
+  const conn = peer.connect(NET_PREFIXE + n.code, {reliable: true});
+  await _attendre((ok, ko) => { conn.on('open', ok); conn.on('error', ko); peer.on('error', e => ko(_errPeer(e))); },
+                  20000, 'salle injoignable');
+  conn.on('data', l => _netRecevoir(n, l));
+  conn.on('close', () => _netPerdu(n));
+  n.envoyer = l => { if(conn.open) conn.send(l); };
+}
+
+function _hebergerOnglets(n, srv){
+  const bc = new BroadcastChannel(NET_PREFIXE + n.code);
+  const liens = new Map();
+  bc.onmessage = e => {
+    const {de, a, ligne, fin} = e.data || {};
+    if(a !== 'serveur' || !de) return;
+    let lien = liens.get(de);
+    if(!lien){ lien = {envoyer: l => bc.postMessage({a: de, ligne: l})}; liens.set(de, lien); }
+    if(fin){ srv.quitter(lien); liens.delete(de); }
+    else srv.recevoir(lien, ligne);
+  };
+  n.fermerTransport = () => { bc.postMessage({a: '*', fin: true}); bc.close(); };
+}
+
+function _rejoindreOnglets(n){
+  const bc = new BroadcastChannel(NET_PREFIXE + n.code);
+  bc.onmessage = e => {
+    const {a, ligne, fin} = e.data || {};
+    if(a === '*' && fin) _netPerdu(n);
+    else if(a === n.moi) _netRecevoir(n, ligne);
+  };
+  n.envoyer = l => bc.postMessage({de: n.moi, a: 'serveur', ligne: l});
+  n.fermerTransport = () => { bc.postMessage({de: n.moi, a: 'serveur', fin: true}); bc.close(); };
+}
+
+// ── Le client (NodeClient).
+function _nouvelleConnexion(hote, moyen, code, salle){
+  return {hote, moyen, code, salleVoulue: salle, moi: 'p' + Math.random().toString(36).substring(2, 10),
+          salle: null, joueurs: [], proprios: {}, attente: null, dernierSync: 0,
+          envoi: Promise.resolve(), reception: Promise.resolve(), tampon: null,
+          envoyer: () => {}, fermerTransport: () => {}};
+}
+
+function _codeSalle(){
+  const a = 'abcdefghjkmnpqrstuvwxyz23456789', t = new Uint8Array(6);
+  crypto.getRandomValues(t);
+  return [...t].map(x => a[x % a.length]).join('');
+}
+
+async function heberger(moyen, salle){
+  if(_net) netQuitter();
+  const n = _nouvelleConnexion(true, moyen, _codeSalle(), _nomSalle(salle) || 'Partie de ' + joueur());
+  const srv = creerServeur();
+  n.serveur = srv;
+  _net = n;
+  try {
+    if(moyen === 'onglets') _hebergerOnglets(n, srv); else await _hebergerPeer(n, srv);
+  } catch(e){ _netEchec(n, e); throw e; }
+  // Le client de l'hôte parle à son serveur sans réseau, mais pas dans le
+  // même tour, comme à travers une socket.
+  const lien = {envoyer: l => setTimeout(() => _netRecevoir(n, l))};
+  n.envoyer = l => setTimeout(() => srv.recevoir(lien, l));
+  _netInscrire(n);
+  _netRejoindreSalle(n, n.salleVoulue);
+  chatLog(`🌐 Salle « ${n.salleVoulue} » ouverte — code ${n.code} (${moyen === 'onglets' ? 'onglets de ce navigateur' : 'Internet'})`);
+  majNet();
+  return n.code;
+}
+
+async function rejoindre(moyen, code){
+  code = String(code || '').trim().toLowerCase().replace(/^aslweb-/, '');
+  if(!/^[a-z0-9]{4,16}$/.test(code)) throw new Error('code de salle invalide');
+  if(_net) netQuitter();
+  const n = _nouvelleConnexion(false, moyen, code, null);
+  _net = n;
+  try {
+    if(moyen === 'onglets') _rejoindreOnglets(n); else await _rejoindrePeer(n);
+  } catch(e){ _netEchec(n, e); throw e; }
+  _netInscrire(n);
+  chatLog(`🌐 Connexion à la salle ${code}…`);
+  // Sans LIST du serveur, personne n'héberge ce code.
+  setTimeout(() => {
+    if(_net === n && !n.joueurs.length){ chatLog('❌ Aucune réponse : salle fermée ou code erroné'); netQuitter(); }
+  }, 8000);
+  majNet();
+}
+
+function _netEchec(n, e){
+  if(_net === n) _net = null;
+  try { n.fermerTransport(); } catch(err){}
+  chatLog('❌ Réseau : ' + (e && e.message ? e.message : e));
+  majNet();
+}
+
+function netQuitter(){
+  const n = _net;
+  if(!n) return;
+  _net = null;
+  try { n.fermerTransport(); } catch(e){}
+  chatLog(n.hote ? '🔌 Salle fermée' : '🔌 Déconnecté de la salle');
+  majNet();
+}
+
+function _netPerdu(n){
+  if(_net !== n) return;
+  _net = null;
+  try { n.fermerTransport(); } catch(e){}
+  chatLog('🔌 Connexion perdue : l\'hôte a fermé la salle');
+  majNet();
+}
+
+// Les lignes partent dans l'ordre, même quand une compression les retarde.
+function _netLigne(n, ligne){
+  n.envoi = n.envoi.then(async () => {
+    if(typeof ligne === 'function') ligne = await ligne();
+    if(_net === n) n.envoyer(ligne);
+  }).catch(e => console.error(e));
+}
+function _netForward(n, chemin, msg){
+  _netLigne(n, async () => 'FWD\t' + chemin + '\t'
+    + (msg.length > NET_ZIP_SEUIL ? NET_ZIP + await _netZip(msg) : msg));
+}
+const _netSalleCourante = n => n && n.salle && n.salle !== NET_SALLE_DEFAUT ? n.salle : null;
+// sendToOthers : toute la salle, sauf soi.
+function _netAuxAutres(n, msg){
+  const s = _netSalleCourante(n);
+  if(s) _netForward(n, `${NET_MODULE}/${s}/~${n.moi}`, msg);
+}
+// sendTo : un joueur, où qu'il soit.
+const _netA = (n, id, msg) => _netForward(n, `${NET_MODULE}/*/${id}`, msg);
+
+function _netInscrire(n){
+  _netLigne(n, `REG\t${n.moi}\t${NET_MODULE}/${NET_SALLE_DEFAUT}\t${_netInfo(n)}`);
+}
+// setRoom : JOIN ; si l'on n'y est pas le premier, la synchronisation
+// attend la LIST qui confirme l'arrivée.
+function _netRejoindreSalle(n, salle){
+  _netLigne(n, `JOIN\t${NET_MODULE}/${salle}`);
+  const occupee = n.joueurs.some(j => j.salle === salle && j.id !== n.moi);
+  if(occupee){ n.attente = salle; chatLog('🔄 Synchronisation en attente…'); }
+}
+// Nouveau nom (seConnecter) : STATS, comme setUserInfo.
+function _netMajInfo(){
+  if(_net) _netLigne(_net, 'STATS\t' + _netInfo(_net));
+}
+
+function _netRecevoir(n, ligne){
+  if(typeof ligne !== 'string') return;
+  n.reception = n.reception.then(() => _netTraiter(n, ligne)).catch(e => {
+    console.error(e); chatLog('❌ Réseau : ' + (e && e.message ? e.message : e));
+  });
+}
+
+async function _netTraiter(n, ligne){
+  if(_net !== n) return;
+  if(ligne.startsWith('LIST\t')){ _netListe(n, ligne.substring(5)); return; }
+  if(ligne.startsWith('ROOM_INFO\t')){
+    const s = _propsDec(ligne.substring(10));
+    n.proprios = {};
+    for(const k in s) n.proprios[k] = _propsDec(s[k]).owner;
+    majNet();
+    return;
+  }
+  if(ligne.startsWith('REG_REQUEST')){ _netInscrire(n); return; }
+  if(ligne.startsWith(NET_ZIP)) ligne = await _netDezip(ligne.substring(NET_ZIP.length));
+  // Commandes du module (CommandDecoder).
+  if(ligne.startsWith('SYNC')) _netRepondreSync(n, _propsDec(ligne.substring(4)));
+  else if(ligne.startsWith('begin_save')) await _netRestaurer(n, ligne);
+  else _netAppliquer(ligne);
+}
+
+function _netListe(n, corps){
+  const avant = new Map(n.joueurs.map(j => [j.id, j]));
+  n.joueurs = [];
+  for(const e of corps ? corps.split('\t') : []){
+    const i = e.indexOf('=');
+    const ch = (i < 0 ? e : e.substring(0, i)).split('/');
+    if(ch[0] !== NET_MODULE || ch.length < 3) continue;
+    n.joueurs.push({..._propsDec(i < 0 ? '' : e.substring(i + 1)), salle: ch[1], id: ch[2]});
+  }
+  const moi = n.joueurs.find(j => j.id === n.moi);
+  n.salle = moi ? moi.salle : null;
+  // Arrivées et départs dans ma salle.
+  const s = _netSalleCourante(n);
+  if(s){
+    for(const j of n.joueurs)
+      if(j.id !== n.moi && j.salle === s && (!avant.has(j.id) || avant.get(j.id).salle !== s)) chatLog(`🔌 ${j.name || j.id} est dans la salle`);
+    for(const [id, j] of avant)
+      if(id !== n.moi && j.salle === s && !n.joueurs.some(x => x.id === id && x.salle === s)) chatLog(`🔌 ${j.name || id} a quitté la salle`);
+  }
+  if(n.attente && n.salle === n.attente){
+    // Arrivé : SYNC au propriétaire, le premier occupant.
+    const salle = n.attente;
+    n.attente = null;
+    const proprio = n.joueurs.find(j => j.salle === salle);
+    if(proprio && proprio.id !== n.moi){
+      netSynchroniser(proprio);
+      const msg = `* ${joueur()} rejoint la salle « ${salle} »`;
+      afficherChat(msg);
+      _netAuxAutres(n, 'CHAT' + msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+    }
+  } else if(!n.hote && !n.attente && n.salle === NET_SALLE_DEFAUT){
+    // Invité : il entre dans la salle de l'hôte.
+    const cible = n.joueurs.find(j => j.salle !== NET_SALLE_DEFAUT);
+    if(cible) _netRejoindreSalle(n, cible.salle);
+  }
+  majNet();
+}
+
+const _netProprio = n => {
+  const s = _netSalleCourante(n);
+  return s ? (n.proprios[s] || (n.joueurs.find(j => j.salle === s) || {}).id) : null;
+};
+const netProprietaire = () => !_net || !_netSalleCourante(_net) || _netProprio(_net) === _net.moi;
+
+// SynchAction : pas deux demandes à la même salle en moins de 15 s.
+function netSynchroniser(cible){
+  const n = _net;
+  if(!n) return false;
+  cible = cible || n.joueurs.find(j => j.id === _netProprio(n));
+  if(!cible || cible.id === n.moi) return false;
+  const t = Date.now();
+  if(t - n.dernierSync < NET_SYNC_TROP_TOT){ chatLog('⏳ Synchronisation demandée il y a moins de 15 s'); return false; }
+  n.dernierSync = t;
+  _netA(n, cible.id, 'SYNC' + _netInfo(n));
+  chatLog(`🔄 Synchronisation demandée à ${cible.name || cible.id}`);
+  return true;
+}
+
+// SynchCommand : l'état complet de la partie, au seul demandeur.
+function _netRepondreSync(n, dem){
+  if(!dem.id) return;
+  if(!_source){ chatLog(`⚠️ ${dem.name || dem.id} demande la partie : aucune n'est ouverte ici`); return; }
+  chatLog(`📤 Envoi de la partie à ${dem.name || dem.id}`);
+  _netA(n, dem.id, etatPartie().join('\x1b'));
+}
+
+// Le propriétaire qui ouvre une partie l'envoie aux occupants de la salle.
+function netPartieChargee(){
+  const n = _net;
+  if(!n || !_source || !_netSalleCourante(n) || !netProprietaire()) return;
+  const autres = n.joueurs.filter(j => j.salle === n.salle && j.id !== n.moi);
+  if(!autres.length) return;
+  chatLog(`📤 Partie envoyée à ${autres.map(j => j.name || j.id).join(', ')}`);
+  _netAuxAutres(n, etatPartie().join('\x1b'));
+}
+
+async function _netRestaurer(n, texte){
+  chatLog('📥 Partie reçue de la salle');
+  if(!await chargerPartie(texte, n.salle || 'salle', new Map())) return;
+  n.synchro = true;
+  chatLog('✅ Synchronisation terminée');
+  majNet();
+  // Un joueur du fichier se fait reconnaître pour voir ses pions masqués.
+  if(!_utilisateur && !_admin) demanderUtilisateur();
+}
+
+// Coup reçu : exécuté, consigné, puis montré comme une relecture.
+function _netAppliquer(texte){
+  const segs = texte.split('\x1b').filter(s => s);
+  if(!segs.length) return;
+  _avantAction();
+  const avant = new Map(pions.map(p => [p, p.x + ',' + p.y + p.seg]));
+  _netReception = true;
+  try {
+    rejouerLog(segs);
+    segs.forEach(_logCmd);
+  } finally { _netReception = false; }
+  new Set(pions.map(cle)).forEach(rendrePile);
+  if(_pileSel) afficherPile();
+  signalerCoup(vivants().filter(p => avant.get(p) !== p.x + ',' + p.y + p.seg));
+}
+
+// Coup joué ici : ses commandes, nées d'une même action, partent en une
+// commande composée, comme GameModule.encode.
+function _netCoup(c){
+  const n = _net;
+  if(!n || _netReception || !_netSalleCourante(n)) return;
+  if(!n.tampon){
+    n.tampon = [];
+    setTimeout(() => {
+      const l = n.tampon;
+      n.tampon = null;
+      if(_net === n && l.length) _netAuxAutres(n, l.length > 1 ? l.map(x => '\x1b' + x).join('') : l[0]);
+    }, 0);
+  }
+  n.tampon.push(c);
+}
+
+function majNet(){
+  const b = document.getElementById('btNet');
+  if(b){
+    const n = _net, s = _netSalleCourante(n);
+    const nb = s ? n.joueurs.filter(j => j.salle === s).length : 0;
+    b.textContent = !n ? '🌐 Hors ligne' : s ? `🌐 ${s} (${nb})` : '🌐 Connexion…';
+    b.classList.toggle('actif', !!n);
+  }
+  const f = document.getElementById('fenUtil');
+  if(f && f.dataset.net) ouvrirReseau();
+}
+
+// ── Fenêtre « Partie à distance ».
+function ouvrirReseau(){
+  const ancien = document.getElementById('fenUtil');
+  const garde = ancien && ancien.dataset.net ? {moyen: (ancien.querySelector('#nwMoyen') || {}).value,
+    salle: (ancien.querySelector('#nwSalle') || {}).value, code: (ancien.querySelector('#nwCode') || {}).value} : {};
+  fermerFenetres();
+  const n = _net;
+  const w = document.createElement('div');
+  w.id = 'fenUtil'; w.className = 'fenetre'; w.dataset.net = '1';
+  const qui = _esc(joueur() === 'web' ? 'Observateur' : joueur());
+  if(!n){
+    w.innerHTML = `
+      <div class="ft">Partie à distance</div>
+      <div class="fc">
+        <p>Comme le serveur de VASSAL : l'hôte ouvre une salle et donne son code ; qui la
+          rejoint reçoit la partie du propriétaire, puis chaque coup joué part chez les autres.</p>
+        <p>Vous jouez sous le nom <b>${qui}</b>.</p>
+        <label>Liaison<select id="nwMoyen">
+          <option value="internet">Internet (WebRTC, d'un poste à l'autre)</option>
+          <option value="onglets">Onglets de ce navigateur</option></select></label>
+        <label>Nom de la salle (pour héberger)<input id="nwSalle" maxlength="40" autocomplete="off"
+          value="${_esc(garde.salle || (_source ? _nomFichier : 'Partie de ' + joueur()))}"></label>
+        <label>Code de la salle (pour rejoindre)<input id="nwCode" maxlength="16" autocomplete="off"
+          placeholder="ex. k7m2qa" value="${_esc(garde.code || '')}"></label>
+        <div class="ferr" id="nwErr"></div>
+        <div class="fb">
+          <button id="nwHeberger" class="prim">Héberger</button>
+          <button id="nwRejoindre">Rejoindre</button>
+          <button id="nwIdent">Identification…</button>
+          <button id="nwFermer">Fermer</button>
+        </div>
+        <p class="fnote">Internet : la mise en relation passe par le serveur public de PeerJS, puis
+          les postes échangent directement. L'hôte doit garder sa page ouverte : elle tient lieu
+          de serveur.</p>
+      </div>`;
+  } else {
+    const s = _netSalleCourante(n), proprio = _netProprio(n);
+    const lignes = n.joueurs.filter(j => !s || j.salle === s);
+    w.innerHTML = `
+      <div class="ft">Partie à distance</div>
+      <div class="fc">
+        <p>${s ? `Salle <b>${_esc(s)}</b>` : 'Connexion en cours…'} — code
+          <b id="nwCodeAff" style="font-family:monospace;font-size:15px">${_esc(n.code)}</b>
+          <button id="nwCopier" style="padding:1px 8px;font-size:12px;background:#e4e1d6;color:#111;border-color:#999">Copier</button>
+          <br>${n.moyen === 'onglets' ? 'Onglets de ce navigateur' : 'Internet (WebRTC)'}${n.hote ? ', vous hébergez' : ''}.</p>
+        <table><tr><th>Joueur</th><th></th></tr>
+          ${lignes.map(j => `<tr><td>${_esc(j.name || j.id)}${j.id === n.moi ? ' <b>(vous)</b>' : ''}</td>
+            <td>${j.id === proprio ? 'propriétaire' : ''}</td></tr>`).join('')
+            || '<tr><td colspan="2"><i>En attente du serveur…</i></td></tr>'}</table>
+        <div class="ferr" id="nwErr"></div>
+        <div class="fb">
+          ${s && proprio !== n.moi ? '<button id="nwSync" class="prim">Synchroniser</button>' : ''}
+          <button id="nwQuitter">${n.hote ? 'Fermer la salle' : 'Quitter la salle'}</button>
+          <button id="nwFermer">Fermer</button>
+        </div>
+        <p class="fnote">${n.hote ? 'Donner le code à l\'adversaire. Fermer cette page ferme la salle.'
+          : 'Synchroniser redemande l\'état de la partie au propriétaire de la salle.'}</p>
+      </div>`;
+  }
+  document.body.appendChild(w);
+  const $ = id => document.getElementById(id);
+  $('nwFermer').onclick = () => w.remove();
+  const err = $('nwErr');
+  const tenter = async f => {
+    err.textContent = '';
+    w.querySelectorAll('button').forEach(b => b.disabled = true);
+    try { await f(); } catch(e){ err.textContent = e && e.message ? e.message : String(e); }
+    if(w.isConnected) w.querySelectorAll('button').forEach(b => b.disabled = false);
+  };
+  if(!n){
+    if(garde.moyen) $('nwMoyen').value = garde.moyen;
+    $('nwHeberger').onclick = () => tenter(() => heberger($('nwMoyen').value, $('nwSalle').value));
+    $('nwRejoindre').onclick = () => tenter(() => {
+      if(!$('nwCode').value.trim()){ $('nwCode').focus(); throw new Error('Saisir le code donné par l\'hôte.'); }
+      return rejoindre($('nwMoyen').value, $('nwCode').value);
+    });
+    $('nwIdent').onclick = () => demanderUtilisateur();
+    $('nwCode').addEventListener('keydown', e => { if(e.key === 'Enter') $('nwRejoindre').click(); });
+  } else {
+    $('nwQuitter').onclick = () => { netQuitter(); w.remove(); };
+    $('nwCopier').onclick = () => {
+      try { navigator.clipboard.writeText(n.code).then(() => { err.textContent = ''; $('nwCopier').textContent = 'Copié'; }); }
+      catch(e){ err.textContent = 'Copie impossible : noter le code.'; }
+    };
+    if($('nwSync')) $('nwSync').onclick = () => { if(!netSynchroniser()) err.textContent = 'Synchronisation impossible pour l\'instant.'; };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORT .vsav ET .vlog
 // On repart des segments du fichier chargé : seules changent les
 // positions, les piles de la carte de jeu, les pions retirés et ceux
@@ -4560,6 +5149,7 @@ let _logDepart = null;    // état de la partie avant le premier coup
 // composée, comme le fait VASSAL.
 let _logGroupes = [], _actionNo = 0, _actionOuverte = false;
 function _logCmd(c){
+  if(_net) _netCoup(c);
   if(!_logEnr) return;
   if(!_actionOuverte){
     _actionNo++; _actionOuverte = true;
@@ -4692,17 +5282,20 @@ function _zipWrite(files){
   const enc = new TextEncoder();
   const locals = [], centrals = [];
   let offset = 0;
-  for(const [name, data] of files){
-    const nb = enc.encode(name), crc = _crc32(data), size = data.length;
+  for(const [name, f] of files){
+    // Une entrée {brut, comp} est déjà comprimée (deflate) : méthode 8.
+    const data = f.comp || f, brut = f.brut || f, methode = f.comp ? 8 : 0;
+    const nb = enc.encode(name), crc = _crc32(brut), size = data.length, usize = brut.length;
     const lh = new Uint8Array(30 + nb.length), lv = new DataView(lh.buffer);
-    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true);
-    lv.setUint32(14, crc, true); lv.setUint32(18, size, true); lv.setUint32(22, size, true);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(8, methode, true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, size, true); lv.setUint32(22, usize, true);
     lv.setUint16(26, nb.length, true);
     lh.set(nb, 30);
     locals.push(lh, data);
     const cd = new Uint8Array(46 + nb.length), cv = new DataView(cd.buffer);
     cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
-    cv.setUint32(16, crc, true); cv.setUint32(20, size, true); cv.setUint32(24, size, true);
+    cv.setUint16(10, methode, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, size, true); cv.setUint32(24, usize, true);
     cv.setUint16(28, nb.length, true); cv.setUint32(42, offset, true);
     cd.set(nb, 46);
     centrals.push(cd);
@@ -4741,6 +5334,8 @@ document.addEventListener('DOMContentLoaded', () => {
   w.addEventListener('scroll', cacherSurvol);
   w.addEventListener('wheel', cacherSurvol);
   dessinerPalette();
+  majNet();
+  window.addEventListener('pagehide', () => { if(_net) netQuitter(); });
 });
 </script>
 </body>
