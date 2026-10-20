@@ -16,6 +16,7 @@ Sources lues (branche `develop` de `vasl-developers/vasl`) :
 | Assemblage multi-boards, recadrage, retournement, demi-hexagones de raccord | `construireCarteLOS` |
 | SSR de terrain (terrainMap, elevationMap, …, customCode) | `_ssrGrilles`, `_ssrHexagones` |
 | Pentes, remblais RB, vergers partiels (`BoardMetadata.xml`) | `_cotesSpeciaux` |
+| Overlays d'hexagones (`ASLMap.adjustLOSForOverlays`) : terrain et niveau tirés des couleurs de l'overlay, puis terrain inhérent étendu à l'hexagone, côtés et niveau du point central | `LosOverlay` (`passeGrilles`, `passeHexagones`), `lireCouleursLOS` |
 | `VASLThread` : fil, couleurs, étiquettes, niveaux ↑/↓, Ctrl, rapport, `VASLLOSCommand` | bouton **LOS**, F10, `commencerFil`, `dessinerFil`, `filDistant` |
 
 ## Validation
@@ -28,14 +29,23 @@ de blocage, raison, gênes) et l'état de chaque hexagone sont identiques.
 L'assemblage (boards côte à côte et superposés, retournés, recadrés) donne
 les mêmes lignes de vue que le board seul.
 
+Pour les overlays, le code d'`ASLMap` (lignes 916 à 2063) est compilé tel
+quel dans l'oracle, avec les mêmes pixels d'overlay que la page : sur
+6 boards et 25 overlays (o, wd, g, b, x, m, p, rp, sh, h, st, d, s, sd, w,
+hd, ow, rr, sr, wr, be, oc, v, ef, 1), 2 000 lignes de vue chacun, grilles,
+hexagones et résultats sont identiques.
+
 ## Différences et limites
 
 - **Pions** : fumée, véhicules, OBA, terrains de pion et éclairage de nuit
   ne sont pas lus (`VASLGameInterface` vide, jamais de nuit).
-- **Overlays d'hexagones** : leur terrain n'est pas lu
-  (`ASLMap.adjustLOSForOverlays` non porté). Comme VASL pour un overlay qu'il
-  ne sait pas lire, un fil qui en traverse un affiche « LOS Check Disabled -
-  Overlay nearby » et l'encadre. Idem pour les overlays déplaçables.
+- **Overlays** : comme dans VASL, un overlay hors de la liste que
+  `VASLThread` sait lire, ou un overlay déplaçable (pion « overlay »), arrête
+  la vérification : « LOS Check Disabled - Overlay nearby », overlay encadré.
+  L'option « Preserve Levels » (`persistelevation`) n'est pas reprise : VASL
+  ne l'enregistre pas dans la sauvegarde.
+- Sur un board retourné ou recadré, la position des overlays est la vraie ;
+  VASL, lui, ne la corrige pas toujours (cas laissés en `ToDo`).
 - **Boards sans `LOSData`** : fil sans vérification, portée seule.
 - Les SSR s'appliquent au seul board qui les porte (VASL les applique à toute
   la carte à chaque board).

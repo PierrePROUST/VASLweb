@@ -1091,20 +1091,17 @@ async function dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy){
     src = c;
   }
   cv.getContext('2d').drawImage(src, ov.x - sx, ov.y - sy);
+  return src;
 }
 
-// Rectangle des pixels non transparents d'une image (VASLThread : zone
-// d'un overlay où la vérification de la LOS s'arrête).
-function _boiteOpaque(image){
+// Pixels d'un overlay posé (repère du board non recadré), lus par la LOS
+// pour en tirer terrain et niveaux (ASLMap.adjustLOSForOverlays).
+function _pixelsOverlay(nom, image, x, y){
   const c = document.createElement('canvas');
   c.width = image.width; c.height = image.height;
   const g = c.getContext('2d', {willReadFrequently:true});
   g.drawImage(image, 0, 0);
-  const d = g.getImageData(0, 0, c.width, c.height).data;
-  let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
-  for(let y = 0; y < c.height; y++) for(let x = 0; x < c.width; x++)
-    if(d[(y * c.width + x) * 4 + 3]){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
-  return x1 < 0 ? null : {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
+  return {nom, x, y, w: c.width, h: c.height, data: g.getImageData(0, 0, c.width, c.height).data};
 }
 
 // Image d'un board telle que la compose ASLBoard.BoardOp : la partie
@@ -1153,9 +1150,8 @@ async function composerBoard(b, img){
   for(const o of overlays){
     try {
       const ov = await preparerOverlay(b, o);
-      await dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy);
-      const bo = _boiteOpaque(ov.image);
-      if(bo) b.ovrLOS.push({x: ov.x - sx + bo.x, y: ov.y - sy + bo.y, w: bo.w, h: bo.h});
+      const img = await dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy);
+      b.ovrLOS.push(Object.assign(_pixelsOverlay(o.nom, img, ov.x, ov.y), {archive: ov.archive}));
       ov.image.close();
       chatLog(`🧱 bd${b.name} : overlay ${o.nom} en ${o.hex1}-${o.hex2} (${ov.archive}, orientation ${ov.orientation})`);
     } catch(e){
@@ -2204,6 +2200,22 @@ class LosMap {
   hexOnMap(col, row){ return col >= 0 && col < this.hexGrid.length && row >= 0 && row < this.hexGrid[col].length; }
   getMapConfiguration(){ return this.cropconfiguration; }
   onMap(c, r){ return !(r < 0 || c < 0 || c >= this.gridWidth || r >= this.gridHeight); }
+
+  // gridToHex mis en cache pixel par pixel (passes des overlays).
+  hexAuPixel(x, y){
+    if(!this._hexPx){
+      this._hexListe = this.hexGrid.flat();
+      this._hexId = new Map(this._hexListe.map((h, i) => [h, i]));
+      this._hexPx = new Int16Array(this.gridWidth * this.gridHeight).fill(-1);
+    }
+    const k = x + y * this.gridWidth;
+    let v = this._hexPx[k];
+    if(v === -1){
+      const h = this.gridToHex(x, y);
+      v = this._hexPx[k] = h ? this._hexId.get(h) : -2;
+    }
+    return v >= 0 ? this._hexListe[v] : null;
+  }
 
   getAdjacentHex(h, hexside){
     if(hexside > 5) return null;
@@ -4095,6 +4107,311 @@ function _hexAuCentre(m, x, y){
   return Math.abs(c.x - x) <= 3 && Math.abs(c.y - y) <= 3 ? h : null;
 }
 
+// ── Overlays d'hexagones dans la LOS (ASLMap.adjustLOSForOverlays)
+// Chaque pixel opaque de l'overlay donne son terrain et son niveau par sa
+// couleur (couleurs VASL partagées, remplacées par celles du board). La
+// première passe réécrit les grilles terrain et niveau ; la seconde, sur
+// la grille d'hexagones encore vierge, étend le terrain inhérent à tout
+// l'hexagone, pose les côtés et le niveau du point central.
+
+// Couleurs VASL : nom → {rgb, terrain, niveau} et rgb → nom.
+function lireCouleursLOS(texteCommun, texteBoard){
+  const parNom = new Map(), parRgb = new Map();
+  const lire = (texte, remplace) => {
+    const bloc = (texte.replace(/<!--[\s\S]*?-->/g, '').match(/<colors>([\s\S]*?)<\/colors>/) || [])[1];
+    if(!bloc) return;
+    for(const a of _elementsXML(bloc, 'color')){
+      if(!a.name || a.red === undefined) continue;
+      const rgb = (+a.red << 16) | (+a.green << 8) | +a.blue;
+      parNom.set(a.name, {rgb, terrain: a.terrain, niveau: a.elevation});
+      if(remplace || !parRgb.has(rgb)) parRgb.set(rgb, a.name);
+    }
+  };
+  lire(texteCommun, false);
+  if(texteBoard) lire(texteBoard, true);
+  return {parNom, parRgb};
+}
+
+const _NOIR = 0, _BLANC = 0xFFFFFF;
+// Couleurs à sauter en cherchant une couleur voisine : SnowHexDots2,
+// points centraux, numéros de colline jaunes, bouches d'égout.
+const _COUL_IGNOREES = new Set([-5261152, -262915, -259, -246, -16776960].map(v => v & 0xFFFFFF));
+const _NUMEROS_BOARD = new Set(['WhiteHexNumbers', 'WinterBlackHexNumbers', 'MudBoardNum', 'DTO_BoardNum', 'AD_WinterBlackHexNumbers']);
+
+// Type de terrain d'un overlay d'après son nom (getOverlayTerrainType).
+function _typeOverlayLOS(n){
+  const regles = [['Steppe', 'Steppe'], ['SSO', 'SSO'], ['Bocage', 'Bocage'], ['BrokenTerrain', 'Broken'],
+    ['PalmTrees', 'Palm Trees'], ['Bamboo', 'Bamboo'], ['elrr', 'Elevated Railroad'], ['surr', 'Sunken Railroad'],
+    ['rr', 'Railroad'], ['NoRoads', 'NoRoads'], ['rv', 'River'], ['sw', 'Swamp'], ['be', 'Beach'], ['b', 'Brush'],
+    ['hd', 'Hedges'], ['sh', 'Shellholes']];
+  for(const [k, t] of regles) if(n.includes(k)) return t;
+  if(n.includes('og') || n === 'dx1' || n === 'dx5') return 'Open Ground';
+  const suite = [['m', 'Marsh'], ['g', 'Grain'], ['p', 'Water'], ['ow', 'Woods'], ['oc', 'Ocean']];
+  for(const [k, t] of suite) if(n.includes(k)) return t;
+  if(n.includes('o') || n === 'dx3' || n === 'dx7') return 'Orchard';
+  if(n.includes('wd') || n === 'dx2' || n === 'dx4') return 'Woods';
+  if(n.includes('x') && !n.includes('dx')) return 'Building';
+  const fin = [['hi', 'Hill'], ['st', 'Stream'], ['sr', 'Stone Rubble'], ['wr', 'Wooden Rubble'], ['wt', 'Water'],
+    ['v', 'Vineyard'], ['w', ' '], ['rp', 'Rice Paddy'], ['ef', 'Effluent'], ['LightGrain', 'Light Grain']];
+  for(const [k, t] of fin) if(n.includes(k)) return t;
+  return '';
+}
+
+// Bâtiments des overlays « x » : le type vient du numéro de l'overlay.
+function _batimentOverlay(nom, terr){
+  const n = /^\d+$/.test(nom.substring(1)) ? parseInt(nom.substring(1), 10) : 0;
+  const types = {'Stone Building': [1, 2, 4, 5, 6, 7, 11], 'Wooden Building': [3, 9, 26, 28, 29],
+    'Stone Building, 1 Level': [12, 17, 19, 20, 21, 22, 23, 24, 25, 27, 30, 39],
+    'Wooden Building, 1 Level': [13, 41], 'Stone Building, 2 Level': [8, 16, 38, 40], 'Wooden Building, 2 Level': [10]};
+  for(const [t, l] of Object.entries(types)) if(l.includes(n)) return t;
+  return terr.getName();   // « Multiple Types » : VASL demande le type au joueur
+}
+
+// État d'un overlay en cours d'application (LOSonOverlays).
+class LosOverlay {
+  constructor(m, couleurs, ov, R, b){
+    this.m = m; this.c = couleurs; this.ov = ov; this.R = R; this.b = b;
+    this.cropX = b.crop ? (b.crop.x || 0) : 0; this.cropY = b.crop ? (b.crop.y || 0) : 0;
+    this.bamboo = (b.ssrList || []).includes('Bamboo');
+    const type = _typeOverlayLOS(ov.nom);
+    this.type = type === 'Brush' && this.bamboo ? 'Bamboo' : type;
+    this.cx = 0; this.cy = 0; this.px = 0; this.py = 0;
+  }
+  // Point de l'overlay → pixel de la carte LOS (board recadré, retourné).
+  versCarte(cx, cy){
+    const lx = this.ov.x + cx - this.cropX, ly = this.ov.y + cy - this.cropY;
+    if(lx < 0 || ly < 0 || lx >= this.R.w || ly >= this.R.h) return null;
+    return {x: this.R.x + (this.b.reversed ? this.R.w - 1 - lx : lx), y: this.R.y + (this.b.reversed ? this.R.h - 1 - ly : ly)};
+  }
+  surOverlay(x, y){ return x >= 0 && x < this.ov.w && y >= 0 && y < this.ov.h; }
+  argb(x, y){ const i = (y * this.ov.w + x) * 4, d = this.ov.data; return {a: d[i + 3], rgb: (d[i] << 16) | (d[i + 1] << 8) | d[i + 2]}; }
+  nomCouleur(rgb){ return rgb == null ? null : this.c.parRgb.get(rgb) || null; }
+  terrainNom(nom){
+    const e = this.c.parNom.get(nom);
+    if(!e || e.terrain === 'UNKNOWN') return -1;
+    const t = this.m.getTerrain(e.terrain);
+    return t ? t.type : -1;
+  }
+  terrainCouleur(rgb){ const n = this.nomCouleur(rgb); return n ? this.terrainNom(n) : -1; }
+  niveauCouleur(rgb){
+    const n = this.nomCouleur(rgb), e = n && this.c.parNom.get(n);
+    if(!e || e.niveau === 'UNKNOWN') return -99;
+    const v = parseInt(e.niveau, 10);
+    return isNaN(v) ? -99 : v;
+  }
+
+  // getOverlayNearestColor : couleur d'un pixel voisin, en diagonale,
+  // jusqu'à six pixels.
+  couleurProche(nx, ny){
+    let c = 0, a = 2, coul = _NOIR;
+    const lisible = (dx, dy, ox, oy) => this.m.onMap(nx + dx, ny + dy) && this.surOverlay(this.cx + ox, this.cy + oy);
+    while(coul === _NOIR || _NUMEROS_BOARD.has(this.nomCouleur(coul)) || _COUL_IGNOREES.has(coul)){
+      let p = null;
+      if(lisible(a, a, a - 1, a)) p = [a - 1, a];
+      else if(lisible(a, -a, a - 1, -a)) p = [a - 1, -a];
+      else if(lisible(-a, a, -(a - 1), a)) p = [-(a - 1), a];
+      else if(lisible(-a, -a, -(a - 1), -a)) p = [-(a - 1), -a];
+      if(p){ const q = this.argb(this.cx + p[0], this.cy + p[1]); if(q.a) c = q.rgb | 0x1000000; }
+      if(c !== 0) coul = c & 0xFFFFFF;
+      if(++a > 6) break;
+    }
+    return coul;
+  }
+
+  // getOverlayTerrainfromColor
+  terrainDeCouleur(rgb){
+    const t = this.terrainCouleur(rgb);
+    if(t >= 0) return this.m.getTerrainParCode(t);
+    let terr = null;
+    while(terr == null){
+      const coul = this.couleurProche(this.px, this.py);
+      if(coul === _BLANC) terr = this.m.getTerrainParCode(this.terrainNom('L0Winter'));
+      else if(coul === _NOIR) terr = this.m.getGridTerrain(this.px, this.py);
+      else {
+        let k = this.terrainCouleur(coul);
+        if(k === -1) k = 0;
+        terr = this.m.getTerrainParCode(k);
+      }
+      if(terr == null) terr = this.m.getTerrain('Open Ground');
+    }
+    return terr;
+  }
+
+  // getOverlayElevationfromColor
+  niveauDeCouleur(rgb){
+    let e = rgb == null ? -99 : this.niveauCouleur(rgb);
+    if(e === -99){
+      const coul = this.couleurProche(this.px, this.py);
+      if(coul === _BLANC) e = 0;
+      else if(coul !== _NOIR) e = this.niveauCouleur(coul);
+    }
+    return e;
+  }
+
+  // pixelOnTransparentOverlayBorder
+  bordTransparent(){
+    const {cx, cy, px, py, ov} = this;
+    let a = 3;
+    if(cx === 0 || cx === ov.w - 1){
+      if(this.m.onMap(px, py + a)){ if(cy + a > ov.h - 1) a = -3; return !this.argb(cx, cy + a).a; }
+      if(this.m.onMap(px, py - a)){ if(cy - a < 0) a = -3; return !this.argb(cx, cy - a).a; }
+      return true;
+    }
+    if(cy === 0 || cy === ov.h - 1){
+      if(this.m.onMap(px + a, py)){ if(cx + a > ov.w - 1) a = -3; return !this.argb(cx + a, cy).a; }
+      if(this.m.onMap(px - a, py)){ if(cx - a < 0) a = -3; return !this.argb(cx - a, cy).a; }
+      return true;
+    }
+    return false;
+  }
+
+  // setTerrainForTransparentPixel : point central ou numéro d'hexagone.
+  terrainPixelTransparent(){
+    if(this.bordTransparent()) return null;
+    const {cx, cy, px, py} = this, m = this.m;
+    for(let r = 1; r <= 2; r++){
+      for(const [dx, dy] of [[r, 0], [0, r]]){
+        if(m.onMap(px - dx, py - dy) && this.surOverlay(cx - dx, cy - dy) && m.onMap(px + dx, py + dy) && this.surOverlay(cx + dx, cy + dy)){
+          const c1 = this.argb(cx - dx, cy - dy), c2 = this.argb(cx + dx, cy + dy);
+          const coul = c1.a ? c1.rgb : c2.a ? c2.rgb : null;
+          if(coul !== null){
+            const t = this.terrainDeCouleur(coul);
+            if(t != null) return t;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // updateTerrainElevationGridsforOverlays (sans « Preserve Levels »)
+  passeGrilles(){
+    const m = this.m, ov = this.ov;
+    for(this.cx = 0; this.cx < ov.w; this.cx++)
+      for(this.cy = 0; this.cy < ov.h; this.cy++){
+        const p = this.versCarte(this.cx, this.cy);
+        if(!p || !m.onMap(p.x, p.y) || !m.gridToHex(p.x, p.y)) continue;
+        this.px = p.x; this.py = p.y;
+        const q = this.argb(this.cx, this.cy);
+        let terr, rgb = null;
+        if(q.a){ rgb = q.rgb; terr = this.terrainDeCouleur(rgb); }
+        else {
+          terr = this.terrainPixelTransparent();
+          if(terr == null) continue;
+        }
+        if(this.bamboo && terr.getName() === 'Brush') terr = m.getTerrain('Bamboo') || terr;
+        if(terr.isBuildingTerrain() && !terr.isHexsideTerrain()){
+          const t = m.getTerrain(_batimentOverlay(ov.nom, terr)) || terr;
+          m.setGridTerrainCode(t.type, p.x, p.y);
+        } else m.setGridTerrainCode(terr.type, p.x, p.y);
+        let e = this.niveauDeCouleur(rgb);
+        if(e === -99) e = m.getGridElevation(p.x, p.y);
+        if(terr.isDepression()) e = -1;
+        m.setGridElevation(e, p.x, p.y);
+      }
+  }
+
+  // updateHexGridforOverlayTerrain, sur une grille d'hexagones vierge :
+  // VASL parcourt la carte depuis le coin de l'overlay jusqu'aux bords.
+  passeHexagones(){
+    const m = this.m, type = this.type, inh = new Map(), elev = new Set(), R = this.R;
+    const lx = this.ov.x - this.cropX, ly = this.ov.y - this.cropY;
+    const ox = R.x + (this.b.reversed ? R.w - (lx + this.ov.w) : lx), oy = R.y + (this.b.reversed ? R.h - (ly + this.ov.h) : ly);
+    for(let x = Math.max(0, ox); x < Math.min(m.gridWidth, ox + m.gridWidth); x++)
+      for(let y = Math.max(0, oy); y < Math.min(m.gridHeight, oy + m.gridHeight); y++){
+        const hex = m.hexAuPixel(x, y);
+        if(!hex) continue;
+        let terr = m.getGridTerrain(x, y) || m.getTerrain('Open Ground');
+        if(this.bamboo && terr.getName() === 'Brush') terr = m.getTerrain('Bamboo') || terr;
+        const n = terr.getName();
+        if(terr.isInherentTerrain() || (type === 'Steppe' && (n === 'Brush' || n === 'Woods'))
+           || (type === 'Broken' && n === 'Brush') || (type === 'Bamboo' && n === 'Brush')){
+          if(!inh.has(hex)){
+            const c = hex.getHexCenter();
+            if(Math.hypot(c.x - x, c.y - y) < 15){
+              inh.set(hex, terr);
+              // doNonInherentToInherentFix : VASL déplace au passage les
+              // points des côtés haut et bas de l'hexagone.
+              for(let z = 0; z < 6; z++){
+                const pt = hex.getHexsideLocation(z).getEdgeCenterPoint();
+                if(z === 0) pt.y -= 1;
+                if(z === 3) pt.y += 1;
+                if(m.onMap(pt.x, pt.y)) m.setGridTerrainCode(terr.type, pt.x, pt.y);
+              }
+            }
+          }
+        }
+        elev.add(hex);
+        this.terrainDuLieu(hex, terr, x, y);
+      }
+    for(const [hex, terr] of inh){
+      const r = hex.getHexBorder().getBounds();
+      for(let i = r.x; i < r.x + r.width; i++)
+        for(let j = r.y; j < r.y + r.height; j++)
+          if(m.onMap(i, j) && hex.contains(i, j) && !m.getGridTerrain(i, j).isHexsideTerrain()) m.setGridTerrainCode(terr.type, i, j);
+      hex.getCenterLocation().setTerrain(terr);
+      hex.resetHexsideTerrain();
+    }
+    for(const hex of elev){
+      const e = this.niveauDansHex(hex), p = hex.getCenterLocation().getLOSPoint();
+      if(m.onMap(p.x, p.y)) m.setGridElevation(e, p.x, p.y);
+    }
+  }
+
+  // setOverlayTerrainType : dépression au centre, terrain de côté.
+  terrainDuLieu(hex, terr, x, y){
+    const near = hex.getNearestLocation(x, y);
+    if(near.isCenterLocation() && !this.type.includes('NoRoads') && !terr.isCliff() && !terr.isHexsideTerrain()){
+      if(terr.isDepression()) hex.getCenterLocation().setDepressionTerrain(terr);
+      return;
+    }
+    const side = hex.getLocationHexside(near);
+    if(side === -1) return;
+    const e = hex.getHexsideLocation(side).getEdgeCenterPoint();
+    if(Math.abs(x - e.x) >= 10 || Math.abs(y - e.y) >= 10) return;
+    if(terr.isHexsideTerrain()){
+      hex.setHexsideTerrain(side, terr);
+      hex.setHexsideLocationTerrain(side, terr);
+    } else if(hex.getHexsideTerrain(side) != null){
+      hex.setHexsideTerrain(side, null);
+      hex.setHexsideLocationTerrain(side, null);
+      const a = this.m.getAdjacentHex(hex, side);
+      if(a != null){
+        a.setHexsideTerrain(LosHex.getOppositeHexside(side), terr);
+        a.setHexsideLocationTerrain(LosHex.getOppositeHexside(side), terr);
+      }
+    }
+  }
+
+  // findElevInHex : niveau le plus haut de l'hexagone, -1 s'il contient
+  // une vraie zone de dépression.
+  niveauDansHex(hex){
+    const m = this.m, r = hex.getHexBorder().getBounds();
+    let max = -4;
+    for(let i = r.x; i < r.x + r.width; i++)
+      for(let j = r.y; j < r.y + r.height; j++){
+        if(!m.onMap(i, j) || !hex.contains(i, j)) continue;
+        if(m.getGridTerrain(i, j).isDepression() && this.depressionPleine(i, j)) return -1;
+        max = Math.max(max, m.getGridElevation(i, j));
+      }
+    return max;
+  }
+  depressionPleine(i, j){
+    const m = this.m;
+    for(let x = i - 1; x < i + 2; x++)
+      for(let y = j - 1; y < j + 2; y++){
+        if(!m.onMap(x, y)) return false;
+        const h = m.hexAuPixel(i, j);
+        if(!h || !h.contains(x, y)) return false;
+        if(!m.getGridTerrain(x, y).isDepression()) return false;
+      }
+    return true;
+  }
+}
+
+// Overlays d'un board pris par la LOS (VASL saute ceux que ses SSR gèrent).
+const _overlaysLOS = b => (b.ovrLOS || []).filter(o => o.data && !/NoCliffs|LightWoods|RB_Gutted/.test(o.nom));
+
 // Construit la carte LOS d'une disposition de boards (sortie de
 // _parseBoardSegment après _layoutBoards). Lève une erreur lisible si
 // la carte ne s'y prête pas.
@@ -4177,6 +4494,10 @@ async function construireCarteLOS(boards, terrainsXML, archiveDe, opts = {}){
       }
     }
     _ssrGrilles(m, R, b.ssrList || [], regles);
+    for(const ov of _overlaysLOS(b)){
+      if(!b._couleurs) b._couleurs = lireCouleursLOS(terrainsXML, donnees.get(b.name).meta);
+      new LosOverlay(m, b._couleurs, ov, R, b).passeGrilles();
+    }
   }
 
   // Noms, escaliers et côtés spéciaux, board par board (le dernier posé
@@ -4212,6 +4533,9 @@ async function construireCarteLOS(boards, terrainsXML, archiveDe, opts = {}){
   }
   if(rates > total / 10) throw new Error('grille d\'hexagones non alignée sur les boards');
   for(const c of m.hexGrid) for(const h of c) h.resetHexsideLocationNames();
+  for(const b of reels)
+    for(const ov of _overlaysLOS(b))
+      if(b._couleurs) new LosOverlay(m, b._couleurs, ov, b._los, b).passeHexagones();
   m.resetHexTerrain();
 
   const avecHex = reels.filter(b => (b.ssrList || []).some(s => _SSR_GRILLE_HEX.has(s) || (regles.get(s) || {}).type === 'elevationToTerrainMap'));
@@ -4509,16 +4833,33 @@ function _faireLOS(f){
   }
 }
 
-// Overlays : le moteur n'en lit pas le terrain. Comme VASL pour un
-// overlay qu'il ne sait pas lire, la vérification s'arrête si le fil le
-// traverse (overlays de board et overlays déplaçables).
+// Overlays que VASL ne sait pas lire (VASLThread.initializeMap) : la
+// vérification s'arrête si le fil traverse leurs pixels opaques. Les
+// overlays déplaçables (pions « overlay ») sont toujours dans ce cas.
+const _OVR_LUS = new Set(['og', 'b', 'p', 'm', 'wd', 'g', 'o', 'hi', 'x', 'hd', 'ow', 'sh', 'st', 'be', 'oc', 'v',
+  'wt', 'wr', 'sr', 'br', 'dj', 'elrr', 'rv', 'sw', 'rr', 'surr', 'rp', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+  '10', 'dx', 'ef', 'h', 'd', 'w', 'sd']);
+const _ovrLuParVASL = o => _OVR_LUS.has((o.archive || '').replace(/^ovr/i, '').toLowerCase())
+  || /BSO|SSO|Bocage/.test(o.nom);
+function _boiteOpaque(o){
+  if(o.boite !== undefined) return o.boite;
+  let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+  for(let y = 0; y < o.h; y++) for(let x = 0; x < o.w; x++)
+    if(o.data[(y * o.w + x) * 4 + 3]){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+  return o.boite = x1 < 0 ? null : {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
+}
 function _zonesOverlay(){
   const z = [];
   for(const b of _losBoards || []){
     const R = b._los;
     if(!R) continue;
-    for(const o of b.ovrLOS || [])
-      z.push({x: R.x + (b.reversed ? R.w - o.x - o.w : o.x), y: R.y + (b.reversed ? R.h - o.y - o.h : o.y), w: o.w, h: o.h});
+    const cx = b.crop ? (b.crop.x || 0) : 0, cy = b.crop ? (b.crop.y || 0) : 0;
+    for(const o of b.ovrLOS || []){
+      const bo = !_ovrLuParVASL(o) && _boiteOpaque(o);
+      if(!bo) continue;
+      const x = o.x - cx + bo.x, y = o.y - cy + bo.y;
+      z.push({x: R.x + (b.reversed ? R.w - x - bo.w : x), y: R.y + (b.reversed ? R.h - y - bo.h : y), w: bo.w, h: bo.h});
+    }
   }
   for(const p of vivants()){
     if(p.cache) continue;
