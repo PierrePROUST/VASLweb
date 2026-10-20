@@ -2647,26 +2647,52 @@ function rejouerLog(segs){
       }
     } else if(s.startsWith('M/')){
       const t = _decoupeCmd(s.substring(2));
-      const p = pions.find(q => q.uid === _nul(t[0]) && (!q.deleted || q.ailleurs));
-      if(!p || t.length < 5) continue;
-      _changerDePile(p.uid, _nul(t[4]));
-      // Retour sur la carte de jeu d'une pièce tenue à l'écart.
-      if(p.ailleurs && t[1] === _carteJeu){
-        p.deleted = false; p.ailleurs = null;
-        document.getElementById('mapInner').appendChild(p.el);
+      if(t.length < 5) continue;
+      const id = _nul(t[0]), dessous = _nul(t[4]);
+      const pos = [t[1], parseInt(t[2], 10) || 0, parseInt(t[3], 10) || 0];
+      if(_pilesVassal.has(id)){
+        // VASSAL déplace une pile entière d'un seul M/ portant son
+        // identifiant : ses pions la suivent, du fond vers le sommet.
+        const ids = _pilesVassal.get(id);
+        let sous = dessous;
+        for(const u of ids){
+          if(_deplacerPiece(u, pos, sous)){ n++; sous = u; }
+        }
+        // Posée sur une autre pile, elle s'y fond.
+        if(dessous){
+          _pilesVassal.delete(id);
+          for(const u of ids) _changerDePile(u, null);
+          let prec = dessous;
+          for(const u of ids){ _changerDePile(u, prec); prec = u; }
+        }
+        continue;
       }
-      if(t[1] !== _carteJeu){
-        const te = _typeEtEtat(p.seg);
-        if(te) p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, t[1], parseInt(t[2], 10) || 0, parseInt(t[3], 10) || 0);
-        p.deleted = true; p.ailleurs = t[1]; p.el.remove(); n++; continue;
-      }
-      p.x = parseInt(t[2], 10); p.y = parseInt(t[3], 10);
-      _empiler(p, parUid(_nul(t[4])));
-      _majSeg(p);
-      n++;
+      _changerDePile(id, dessous);
+      if(_deplacerPiece(id, pos, dessous)) n++;
     }
   }
   return n;
+}
+
+// Place la pièce uid en pos [carte, x, y], au-dessus de « dessous ».
+function _deplacerPiece(uid, [carte, x, y], dessous){
+  const p = pions.find(q => q.uid === uid && (!q.deleted || q.ailleurs));
+  if(!p) return false;
+  // Retour sur la carte de jeu d'une pièce tenue à l'écart.
+  if(p.ailleurs && carte === _carteJeu){
+    p.deleted = false; p.ailleurs = null;
+    document.getElementById('mapInner').appendChild(p.el);
+  }
+  if(carte !== _carteJeu){
+    const te = _typeEtEtat(p.seg);
+    if(te) p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, carte, x, y);
+    p.deleted = true; p.ailleurs = carte; p.el.remove();
+    return true;
+  }
+  p.x = x; p.y = y;
+  _empiler(p, parUid(dessous));
+  _majSeg(p);
+  return true;
 }
 
 // Une pièce déplacée quitte sa pile VASSAL et rejoint celle de la pièce
