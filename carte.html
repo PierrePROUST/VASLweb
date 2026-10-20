@@ -3065,11 +3065,13 @@ function neSEmpilePas(p){
 }
 
 // La pièce sur laquelle p est posée, pour un M/ : la plus proche en
-// dessous qui s'empile, ou rien si p elle-même ne s'empile pas.
+// dessous qui s'empile, ou rien si p elle-même ne s'empile pas. Une pièce
+// invisible pour moi (HIP adverse) n'est jamais dans ma pile chez VASSAL
+// (canPiecesMerge) : elle ne sert pas de dessous.
 function _dessous(p){
   if(neSEmpilePas(p)) return 'null';
   const s = pile(cle(p));
-  for(let i = s.indexOf(p) - 1; i >= 0; i--) if(!neSEmpilePas(s[i])) return s[i].uid;
+  for(let i = s.indexOf(p) - 1; i >= 0; i--) if(!neSEmpilePas(s[i]) && (!s[i].cache || p.cache)) return s[i].uid;
   return 'null';
 }
 
@@ -3259,11 +3261,16 @@ function retirer(p, silencieux){
 // Monte (+1) ou descend (-1) un pion dans sa pile.
 function changerRang(p, sens){
   const s = pile(cle(p));
-  const i = s.indexOf(p), j = i + sens;
+  const i = s.indexOf(p);
+  // Le voisin visible : un pion HIP adverse ne compte pas.
+  let j = i + sens;
+  while(j >= 0 && j < s.length && s[j].cache && !p.cache) j += sens;
   if(j < 0 || j >= s.length) return;
   _avantAction();
   const avant = _dessous(p);
-  [s[i], s[j]] = [s[j], s[i]];
+  // p passe de l'autre côté de ce voisin ; les pions sautés ne bougent pas.
+  s.splice(i, 1);
+  s.splice(j, 0, p);
   s.forEach((q, k) => { q.ordre = k; });
   _logCmd(`M/${p.uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/${_carteJeu}/${p.x}/${p.y}/${avant}/${joueur()}`);
   ajusterDissimulation(cle(p));
@@ -4361,7 +4368,8 @@ function _pionPointerDown(e, p){
   const k = cle(p);
   glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
-    if(c) deplacer(pile(k), c.x, c.y);
+    // Les pions HIP de l'adversaire, invisibles, restent où ils sont.
+    if(c) deplacer(pile(k).filter(q => !q.cache), c.x, c.y);
   }, () => selectionnerPile(k));
 }
 
