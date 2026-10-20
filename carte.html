@@ -106,6 +106,8 @@ button:disabled{opacity:.4;cursor:default}
   -webkit-user-drag:none;user-select:none}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
 .pion.coup{animation:coup 1.6s ease-out}
+.pion.retire{pointer-events:none;animation:retire 1.6s ease-out forwards}
+@keyframes retire{0%,40%{opacity:.9;box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{opacity:0;box-shadow:none}}
 @keyframes coup{0%,40%{box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{box-shadow:none}}
 .fantome{position:fixed;z-index:9999;pointer-events:none;opacity:.8}
 .cible{position:absolute;z-index:9000;pointer-events:none;width:24px;height:24px;margin:-12px 0 0 -12px;
@@ -2057,6 +2059,7 @@ let _carteJeu = 'Main Map';           // nom VASSAL de la carte de jeu
 let _annexes = new Map();
 let _nomFichier = 'partie';
 let _coucheParUid = new Map();        // uid → couche (@@n) de sa pile d'origine
+let _pilesVassal = new Map();         // id de pile VASSAL → uids, du fond au sommet
 let _uidSeq = 0;
 
 const cle = p => p.x + ',' + p.y;
@@ -2396,10 +2399,12 @@ function _etendreCarte(){
 function _parseStacks(segs){
   const rangs = new Map();
   _coucheParUid = new Map();
+  _pilesVassal = new Map();
   for(const seg of segs){
     if(!/^\+\/[^/]+\/stack\//.test(seg)) continue;
     const ch = seg.substring(seg.indexOf('/stack/') + 7).replace(/\\/g, '').split(';');
     const ids = ch.slice(3).filter(c => c && !c.startsWith('@@'));
+    _pilesVassal.set(seg.split('/')[1], ids);
     const at = ch.slice(3).find(c => c.startsWith('@@'));
     const couche = at ? parseInt(at.substring(2), 10) : -1;
     ids.forEach((u, i) => { rangs.set(u, i); _coucheParUid.set(u, Number.isFinite(couche) ? couche : -1); });
@@ -2485,6 +2490,25 @@ function _decoupeCmd(s){
 }
 const _nul = v => (v === 'null' || v === '' ? null : v);
 const parUid = uid => pions.find(p => p.uid === uid && !p.deleted);
+// Contenu d'une pile VASSAL d'après son état « carte;x;y;id0;…;@@couche ».
+const _idsPile = etat => etat.replace(/\\/g, '').split(';').slice(3).filter(c => c && !c.startsWith('@@'));
+
+// Retrait d'une pièce, ou de toute une pile : VASSAL retire une pile
+// entière (« Delete » sur la pile, commande globale « remove all ») par
+// un seul -/ portant l'identifiant de la pile.
+function _retirer(id){
+  const p = pions.find(q => q.uid === id && (!q.deleted || q.ailleurs));
+  if(p){
+    p.deleted = true; p.ailleurs = null; p.el.remove();
+    return 1;
+  }
+  const ids = _pilesVassal.get(id);
+  if(!ids) return 0;
+  _pilesVassal.delete(id);
+  let n = 0;
+  for(const u of ids) n += _retirer(u);
+  return n;
+}
 
 function rejouerLog(segs){
   let n = 0;
@@ -2498,7 +2522,10 @@ function rejouerLog(segs){
       _infoEtat = s.substring(5); majChampsInfo();
       n++;
     } else if(s.startsWith('+/')){
-      if(/^\+\/[^/]+\/stack\//.test(s)) continue;
+      if(/^\+\/[^/]+\/stack\//.test(s)){
+        _pilesVassal.set(s.split('/')[1], _idsPile(s.substring(s.indexOf('/stack/') + 7)));
+        continue;
+      }
       const d = lirePiece(s);
       if(!parUid(d.uid)){
         const q = creerPion(s, 1e9);
@@ -2508,10 +2535,13 @@ function rejouerLog(segs){
         n++;
       }
     } else if(s.startsWith('-/')){
-      const p = parUid(s.substring(2));
-      if(p){ p.deleted = true; p.el.remove(); n++; }
+      n += _retirer(s.substring(2));
     } else if(s.startsWith('D/')){
       const t = _decoupeCmd(s.substring(2));
+      if(_pilesVassal.has(t[0])){
+        if(t[1]) _pilesVassal.set(t[0], _idsPile(t[1]));
+        continue;
+      }
       const p = parUid(_nul(t[0]));
       const te = p && _typeEtEtat(p.seg);
       if(te && t[1]){
@@ -2525,6 +2555,7 @@ function rejouerLog(segs){
       const t = _decoupeCmd(s.substring(2));
       const p = pions.find(q => q.uid === _nul(t[0]) && (!q.deleted || q.ailleurs));
       if(!p || t.length < 5) continue;
+      _changerDePile(p.uid, _nul(t[4]));
       // Retour sur la carte de jeu d'une pièce tenue à l'écart.
       if(p.ailleurs && t[1] === _carteJeu){
         p.deleted = false; p.ailleurs = null;
@@ -2542,6 +2573,19 @@ function rejouerLog(segs){
     }
   }
   return n;
+}
+
+// Une pièce déplacée quitte sa pile VASSAL et rejoint celle de la pièce
+// sur laquelle elle est posée.
+function _changerDePile(uid, dessous){
+  for(const [id, ids] of _pilesVassal){
+    if(ids.includes(uid)) _pilesVassal.set(id, ids.filter(u => u !== uid));
+  }
+  if(!dessous) return;
+  for(const [id, ids] of _pilesVassal){
+    const i = ids.indexOf(dessous);
+    if(i >= 0){ _pilesVassal.set(id, [...ids.slice(0, i + 1), uid, ...ids.slice(i + 1)]); return; }
+  }
 }
 
 // Range p juste au-dessus de « dessous » dans sa pile, ou au fond.
@@ -2592,7 +2636,7 @@ function preparerRelecture(segs){
 }
 
 function _instantane(){
-  return {info: _infoEtat,
+  return {info: _infoEtat, piles: new Map(_pilesVassal),
           pions: pions.map(p => ({p, seg: p.seg, x: p.x, y: p.y, ordre: p.ordre, deleted: p.deleted, ailleurs: p.ailleurs}))};
 }
 
@@ -2609,6 +2653,7 @@ function _restaurer(snap){
     else if(!p.el.isConnected) document.getElementById('mapInner').appendChild(p.el);
     if(segChange && !p.deleted) majApparence(p);
   }
+  _pilesVassal = new Map(snap.piles);
   if(_infoEtat !== snap.info){ _infoEtat = snap.info; majChampsInfo(); }
 }
 
@@ -2622,7 +2667,7 @@ function _resumeCoup(etape){
     .map(t => /^\*\*\* \((.+?)\) ([\d,]+)/.test(t) ? t.replace(/^\*\*\* \((.+?)\) ([\d,]+).*$/, '$1 $2')
               : t.replace(/^\*\s*/, '').replace(/\s*\*$/, ''));
   if(raps.length) return raps.join(' · ');
-  const parts = [];
+  const parts = [], retires = new Set(), modifies = new Set();
   for(let sg of etape){
     sg = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
     if(sg.startsWith('M/')){
@@ -2633,13 +2678,17 @@ function _resumeCoup(etape){
       const a = ancragePlusProche(+t[2], +t[3]);
       parts.push(`${q.nom} → ${a ? a.label : t[2] + ',' + t[3]}`);
     } else if(sg.startsWith('-/')){
-      const q = pions.find(x => x.uid === sg.substring(2));
-      if(q) parts.push(`${q.nom} retiré`);
+      const id = sg.substring(2);
+      const uids = _pilesVassal.has(id) ? _pilesVassal.get(id) : [id];
+      for(const u of uids){
+        const q = pions.find(x => x.uid === u && (!x.deleted || x.ailleurs));
+        if(q && !retires.has(q)){ retires.add(q); parts.push(`${q.nom} retiré`); }
+      }
     } else if(sg.startsWith('+/')){
       if(!/\/stack\//.test(sg)) parts.push(`${lirePiece(sg).nom} posé`);
     } else if(sg.startsWith('D/')){
       const q = pions.find(x => x.uid === _nul(_decoupeCmd(sg.substring(2))[0]));
-      if(q) parts.push(`${q.nom} modifié`);
+      if(q){ modifies.add(q); parts.push(`${q.nom} modifié`); }
     } else if(sg.startsWith('CHAT')){
       const m = _desechappe(sg.substring(4)).match(/^\*\*\* \((.+?)\) ([\d,]+)/);
       parts.push(m ? `${m[1]} ${m[2]}` : '💬');
@@ -2648,65 +2697,106 @@ function _resumeCoup(etape){
   // Un déplacement résume le coup : les changements d'état qui
   // l'accompagnent (marque Moved, propriétaire) ne sont pas répétés, et
   // une pile qui bouge s'écrit « 3 pions → 42M5 ».
+  // Un retrait en masse (pile entière, « remove all ») se compte.
   const uniques = [...new Set(parts)];
   const moves = uniques.filter(x => x.includes(' → '));
-  const autres = uniques.filter(x => !x.includes(' → ') && !(moves.length && x.endsWith(' modifié')));
+  let autres = uniques.filter(x => !x.includes(' → ') && !(moves.length && x.endsWith(' modifié')));
+  if(retires.size > 1)
+    autres = [`${retires.size} pions retirés`, ...autres.filter(x => !x.endsWith(' retiré'))];
+  if(modifies.size > 3 && !moves.length)
+    autres = [...autres.filter(x => !x.endsWith(' modifié')), `${modifies.size} pions modifiés`];
   const dest = [...new Set(moves.map(x => x.split(' → ')[1]))];
   const tete = moves.length > 1 && dest.length === 1 ? [`${moves.length} pions → ${dest[0]}`] : moves;
   return [...tete, ...autres].join(' · ') || '—';
 }
 
-function avancerLog(){
+function avancerLog(muet){
   if(_logPos >= _etapes.length) return false;
   const etape = _etapes[_logPos];
   const resume = _resumeCoup(etape);
   _instantanes[_logPos] = _instantane();
-  const avant = new Map(pions.map(p => [p, p.x + ',' + p.y + p.seg]));
+  const photo = _photo();
   _relecture = true;
   try { rejouerLog(etape); } finally { _relecture = false; }
   _logPos++;
   new Set(pions.map(cle)).forEach(rendrePile);
   if(_pileSel) afficherPile();
   // Les pions touchés par le coup sont signalés, et la vue les rejoint.
-  const touches = vivants().filter(p => avant.get(p) !== p.x + ',' + p.y + p.seg);
-  signalerCoup(touches);
+  if(!muet) signalerCoup(photo);
   document.getElementById('logCoup').textContent = resume;
   majBarreLog();
   if(_logPos === _etapes.length) chatLog('🏁 Fin du log');
   return true;
 }
 
-function reculerLog(){
+function reculerLog(muet){
   if(_logPos <= 0) return false;
   _logPos--;
+  const photo = _photo();
   _restaurer(_instantanes[_logPos]);
   new Set(pions.map(cle)).forEach(rendrePile);
   if(_pileSel) afficherPile();
+  if(!muet) signalerCoup(photo);
   document.getElementById('logCoup').textContent = _logPos ? _resumeCoup(_etapes[_logPos - 1]) : 'début';
   majBarreLog();
   return true;
 }
 
 function allerLog(cible){
-  while(_logPos < cible && avancerLog());
-  while(_logPos > cible && reculerLog());
+  while(_logPos < cible && avancerLog(true));
+  while(_logPos > cible && reculerLog(true));
 }
 
-function signalerCoup(liste){
+// État visible des pions avant un coup, pour savoir ce qu'il a changé.
+// Les pions HIP ne comptent pas : la vue ne doit pas les trahir.
+function _photo(){
+  return new Map(vivants().filter(p => !p.cache).map(p => [p, {x: p.x, y: p.y, seg: p.seg}]));
+}
+
+// Rayon, en hexagones, de la zone montrée autour d'une action.
+const RAYON_COUP = 6;
+
+function signalerCoup(photo){
   document.querySelectorAll('.pion.coup').forEach(e => e.classList.remove('coup'));
-  if(!liste.length) return;
-  for(const p of liste){
+  const ici = vivants().filter(p => !p.cache);
+  // Arrivées : pions déplacés ou posés. Retraits : pions disparus, montrés
+  // un instant à leur ancienne place. Sinon, simples changements d'état.
+  const arrives = ici.filter(p => { const a = photo.get(p); return !a || a.x !== p.x || a.y !== p.y; });
+  const modifies = ici.filter(p => { const a = photo.get(p); return a && a.x === p.x && a.y === p.y && a.seg !== p.seg; });
+  const encore = new Set(ici);
+  const retires = [...photo.keys()].filter(p => !encore.has(p));
+  for(const p of [...arrives, ...modifies]){
     p.el.classList.add('coup');
     setTimeout(() => p.el.classList.remove('coup'), 1600);
   }
-  // La vue suit le coup s'il sort de l'écran.
-  const w = document.getElementById('mapWrap').getBoundingClientRect();
-  const r = liste[0].el.getBoundingClientRect();
-  if(r.right < w.left || r.left > w.right || r.bottom < w.top || r.top > w.bottom){
-    const wrap = document.getElementById('mapWrap');
-    wrap.scrollLeft = liste[0].x * SC * zoom - wrap.clientWidth / 2;
-    wrap.scrollTop  = liste[0].y * SC * zoom - wrap.clientHeight / 2;
+  for(const p of retires){
+    const f = p.el.cloneNode(true);
+    f.classList.remove('sel', 'coup');
+    f.classList.add('retire');
+    document.getElementById('mapInner').appendChild(f);
+    setTimeout(() => f.remove(), 1600);
   }
+  // La vue se centre sur l'action : là où les pions arrivent, sinon là où
+  // ils ont été retirés ou modifiés.
+  const cibles = arrives.length ? arrives : retires.length ? retires : modifies;
+  if(cibles.length) cadrerSur(cibles.map(p => ({x: p.x, y: p.y})));
+}
+
+// Centre la vue sur des points (pixels natifs) avec un zoom qui montre
+// RAYON_COUP hexagones autour ; des points plus étalés (retrait en masse)
+// sont tous cadrés, sans descendre sous le zoom « Ajuster ».
+function cadrerSur(pts){
+  const wrap = document.getElementById('mapWrap');
+  if(!_mapW || !wrap.clientWidth) return;
+  const xs = pts.map(q => q.x), ys = pts.map(q => q.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const demiL = Math.max((RAYON_COUP + .5) * 2 * HEX_HX, (x1 - x0) / 2 + 2 * HEX_HX);
+  const demiH = Math.max((RAYON_COUP + .5) * 2 * HEX_HY, (y1 - y0) / 2 + 2 * HEX_HY);
+  const ajuste = Math.min(wrap.clientWidth / _mapW, wrap.clientHeight / _mapH);
+  const z = Math.max(ajuste, Math.min(wrap.clientWidth / (2 * demiL * SC), wrap.clientHeight / (2 * demiH * SC)));
+  setZoom(z);
+  wrap.scrollLeft = (x0 + x1) / 2 * SC * zoom - wrap.clientWidth / 2;
+  wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - wrap.clientHeight / 2;
 }
 
 function majBarreLog(){
