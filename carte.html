@@ -2562,7 +2562,7 @@ function importerPions(texte, label, annexes){
   preparerRelecture(segs.slice(iLog));
   _etendreCarte();
   new Set(vivants().map(cle)).forEach(rendrePile);
-
+  majBoutons();
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
 }
 
@@ -2847,13 +2847,39 @@ let _relecture = false;    // vrai pendant qu'un coup est rejoué
 
 function preparerRelecture(segs){
   _etapes = []; _logPos = 0; _instantanes = [];
-  for(const sg of segs){
-    if(sg.startsWith('LOG\t') || !_etapes.length) _etapes.push([sg]);
-    else _etapes[_etapes.length - 1].push(sg);
+  for(const tok of _decoupeSeq(segs.join('\x1b'), '\x1b')){
+    // Les entrées vides (« LOG\t » seul) ne sont pas des coups.
+    const cmds = _commandesLog(tok).filter(c => c.trim());
+    if(!cmds.length) continue;
+    if(tok.startsWith('LOG\t') || !_etapes.length) _etapes.push(cmds);
+    else _etapes[_etapes.length - 1].push(...cmds);
   }
-  // Les entrées vides (« LOG\t » seul) ne sont pas des coups.
-  _etapes = _etapes.filter(e => e.some(x => x.replace(/^LOG\t/, '').replace(/\\+$/, '').trim()));
   majBarreLog();
+}
+
+// SequenceEncoder.Decoder de VASSAL : un délimiteur précédé d'une
+// contre-oblique appartient au jeton, qui perd cette contre-oblique ; un
+// jeton entre apostrophes les perd aussi.
+function _decoupeSeq(val, delim){
+  const out = [];
+  let debut = 0, buf = '';
+  for(let i = 0; i < val.length; i++){
+    if(val[i] !== delim) continue;
+    if(i > 0 && val[i - 1] === '\\'){ buf += val.substring(debut, i - 1); debut = i; }
+    else { out.push(buf + val.substring(debut, i)); buf = ''; debut = i + 1; }
+  }
+  out.push(buf + val.substring(debut));
+  return out.map(t => t.length > 1 && t[0] === "'" && t[t.length - 1] === "'" ? t.slice(1, -1) : t);
+}
+
+// GameModule.decode puis BasicLogger.decode : une entrée LOG est une
+// commande dont chaque sous-commande est elle-même une entrée LOG
+// (LogCommand). On en tire les commandes simples, dans l'ordre.
+function _commandesLog(tok){
+  const parts = _decoupeSeq(tok, '\x1b');
+  if(parts.length > 1) return parts.flatMap(_commandesLog);
+  if(tok.startsWith('LOG\t')) return _commandesLog(tok.substring(4));
+  return tok ? [tok] : [];
 }
 
 function _instantane(){
@@ -2892,10 +2918,7 @@ function avancerLog(muet){
   _actionOuverte = false;
   _etapeLog = true;
   try {
-    for(const sg of etape){
-      const c = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
-      if(c && !c.startsWith('UNDO')) _logCmd(c);
-    }
+    for(const c of etape) if(!c.startsWith('UNDO')) _logCmd(c);
   } finally { _etapeLog = false; }
   _actionOuverte = false;
   _logPos++;
@@ -5970,15 +5993,18 @@ function ecrireVsav(){
 // BasicLogger : état de départ, puis « LOG\t<commande> » par action.
 function ecrireVlog(){
   if(!_logEnr || !_logEnr.length || !_logDepart) return false;
-  // GameModule.encode : un coup composé est la suite de ses commandes
-  // séparées par ESC ; dans le fichier, ces ESC sont précédés d'une
-  // contre-oblique (SequenceEncoder de BasicLogger).
+  // BasicLogger.write : chaque coup devient une LogCommand, dont chaque
+  // sous-commande est elle-même une LogCommand. GameModule.encode écrit
+  // donc « LOG\t<c1> ESC LOG\t<c2> … », et ces ESC, imbriqués dans la
+  // sauvegarde, prennent une contre-oblique (SequenceEncoder). Sans le
+  // « LOG\t » de chaque sous-commande, VASSAL les exécute au chargement
+  // au lieu d'en faire un coup à relire.
   const entrees = [];
   _logEnr.forEach((c, i) => {
     if(i && _logGroupes[i] === _logGroupes[i - 1]) entrees[entrees.length - 1].push(c);
     else entrees.push([c]);
   });
-  const lignes = entrees.map(l => 'LOG\t' + (l.length > 1 ? l.map(c => '\x1b' + c).join('') : l[0]).replace(/\x1b/g, '\\\x1b'));
+  const lignes = entrees.map(l => l.map(c => 'LOG\t' + c.replace(/\x1b/g, '\\\x1b')).join('\x1b').replace(/\x1b/g, '\\\x1b'));
   _telecharger([..._logDepart, ...lignes].join('\x1b'), _logNom || _nomExport('vlog'));
   chatLog(`📼 Log écrit : ${_logNom} — ${entrees.length} coup(s), ${_logEnr.length} commande(s)`);
   return true;
