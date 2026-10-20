@@ -106,6 +106,12 @@ button:disabled{opacity:.4;cursor:default}
 .pion{position:absolute;touch-action:none;cursor:pointer}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
+/* Le pion reçoit le clic partout où il est dessiné : sa face et ses
+   couches, tournées avec le CA d'un véhicule, débordent de son carré.
+   C'est la forme de VASSAL (FreeRotator.getShape, Embellishment.getShape) :
+   sous un chef, le bout visible d'un véhicule tourné reste cliquable. */
+.pion > img,.pion > .couche{pointer-events:auto}
+.pion.verrou *,.pion.retire *,.mini *{pointer-events:none!important}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
 .pion.coup{animation:coup 1.6s ease-out}
 .pion.retire{pointer-events:none;animation:retire 1.6s ease-out forwards}
@@ -2173,6 +2179,7 @@ function creerPion(seg, ordre){
   const el = document.createElement('div');
   el.className = 'pion';
   const face = document.createElement('img');
+  face.className = 'face';
   el.appendChild(face);
   const p = {id: pions.length, uid: d.uid, seg, x: d.x, y: d.y, ordre, nom: d.nom,
              el, face, sz: Math.round(48 * SC), deleted: false};
