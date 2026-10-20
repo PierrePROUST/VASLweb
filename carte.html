@@ -168,6 +168,7 @@ button:disabled{opacity:.4;cursor:default}
   <span class="sep"></span>
   <button id="btVsav" onclick="ecrireVsav()" disabled>Exporter .vsav</button>
   <button id="btLog" onclick="basculerLog()" disabled>Log</button>
+  <button id="btUndo" onclick="annuler()" disabled title="Undo last move [Ctrl+Z]">↶ Undo</button>
   <span id="logTxt"></span>
   <span class="sep"></span>
   <span id="barreLog" style="display:none">
@@ -2526,6 +2527,7 @@ function _carteDeJeu(infos){
 function importerPions(texte, label, annexes){
   for(const p of pions) p.el.remove();
   pions = []; _pileSel = null; afficherPile();
+  _histo = []; majUndo();
   const segs = texte.split('\x1b');
   // L'état de la partie précède le premier « LOG » ; la suite, dans un
   // .vlog, ce sont les coups.
@@ -2562,6 +2564,106 @@ function importerPions(texte, label, annexes){
   new Set(vivants().map(cle)).forEach(rendrePile);
 
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
+}
+
+// ═══ ANNULER — le bouton Undo de BasicLogger ═══
+// Chaque coup joué, reçu ou relu entre dans l'historique (logOutput).
+// Undo prend le dernier coup qui n'est pas encore annulé, en exécute
+// l'inverse — getUndoCommand : les sous-commandes en ordre inverse,
+// AddPiece ↔ RemovePiece, ChangePiece avec ses états échangés, MovePiece
+// vers l'ancienne place — puis le consigne et l'envoie aux autres joueurs
+// entre « UNDO\ttrue » et « UNDO\tfalse ». Ce coup-là ne s'annule pas.
+// Un message ou un jet de dés n'a pas d'inverse : Undo passe par-dessus.
+let _histo = [];          // {no, cmds, inv, annulable, annule, etape}
+let _annulation = false;  // vrai pendant qu'Undo consigne son coup
+let _etapeLog = false;    // vrai pendant qu'un coup relu est consigné
+
+// Champs d'une commande « / » tels qu'écrits (guillemets et
+// contre-obliques gardés), pour la réécrire dans l'autre sens.
+function _decoupeBrut(s){
+  const out = []; let cur = '', q = false;
+  for(let i = 0; i < s.length; i++){
+    const c = s[i];
+    if(c === '\\' && i+1 < s.length){ cur += c + s[i+1]; i++; continue; }
+    if(c === "'" && (cur === '' || q)) q = !q;
+    else if(c === '/' && !q){ out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+// Commande inverse, ou null si elle n'en a pas.
+function _inverse(c){
+  if(/^\+\/[^/]+\/stack\//.test(c)) return null;
+  if(c.startsWith('+/')) return '-/' + c.split('/')[1];
+  if(c.startsWith('-/')){
+    // RemovePiece.myUndoCommand : AddPiece de la pièce telle qu'elle était.
+    const uid = c.substring(2);
+    const p = pions.filter(q => q.uid === uid).pop();
+    return p ? p.seg : null;
+  }
+  if(c.startsWith('D/')){
+    const t = _decoupeBrut(c.substring(2));
+    return t.length >= 3 ? `D/${t[0]}/${t[2]}/${t[1]}` : null;
+  }
+  if(c.startsWith('M/')){
+    const t = _decoupeBrut(c.substring(2));
+    if(t.length < 9) return null;
+    return 'M/' + [t[0], t[5], t[6], t[7], t[8] || 'null', t[1], t[2], t[3], t[4], ...t.slice(9)].join('/');
+  }
+  return null;
+}
+
+function _histoCmd(c){
+  let e = _histo[_histo.length - 1];
+  if(!e || e.no !== _actionNo){
+    e = {no: _actionNo, cmds: [], inv: [], annulable: !_annulation, annule: false, etape: _etapeLog};
+    _histo.push(e);
+  }
+  e.cmds.push(c);
+  if(c.startsWith('UNDO')){ e.annulable = false; e.inv = []; }
+  const i = e.annulable ? _inverse(c) : null;
+  if(i) e.inv.unshift(i);
+  majUndo();
+}
+
+const _aAnnuler = () => {
+  for(let i = _histo.length - 1; i >= 0; i--){
+    const e = _histo[i];
+    if(e.annulable && !e.annule && e.inv.length) return e;
+  }
+  return null;
+};
+
+function majUndo(){
+  const b = document.getElementById('btUndo');
+  if(b) b.disabled = !_aAnnuler();
+}
+
+function annuler(){
+  const e = _aAnnuler();
+  if(!e) return false;
+  fermerMenu();
+  // Le dernier coup relu d'un .vlog : comme BasicLogger, Undo recule
+  // alors la relecture d'un coup.
+  if(e.etape && e === _histo[_histo.length - 1] && _logPos > 0) return reculerLog();
+  _avantAction();
+  const photo = _photo();
+  e.annule = true;
+  rejouerLog(e.inv);
+  _actionOuverte = false;
+  _annulation = true;
+  try {
+    ['UNDO\ttrue', ...e.inv, 'UNDO\tfalse'].forEach(_logCmd);
+  } finally { _annulation = false; }
+  _actionOuverte = false;
+  new Set(pions.map(cle)).forEach(rendrePile);
+  if(_pileSel) afficherPile();
+  signalerCoup(photo);
+  chatLog(`↶ Coup annulé (${e.inv.length} commande(s))`);
+  majUndo();
+  return true;
 }
 
 // ═══ RELECTURE D'UN .vlog ═══
@@ -2781,16 +2883,20 @@ function avancerLog(muet){
   const etape = _etapes[_logPos];
   _instantanes[_logPos] = _instantane();
   _instantanes[_logPos].log = _logEnr ? {enr: _logEnr, n: _logEnr.length} : null;
+  _instantanes[_logPos].histo = _histo.length;
   const photo = _photo();
   _relecture = true;
   try { rejouerLog(etape); } finally { _relecture = false; }
   // BasicLogger.step : le coup relu passe par sendAndLog, il entre donc
   // dans le log en cours et part chez les autres joueurs.
   _actionOuverte = false;
-  for(const sg of etape){
-    const c = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
-    if(c && !c.startsWith('UNDO')) _logCmd(c);
-  }
+  _etapeLog = true;
+  try {
+    for(const sg of etape){
+      const c = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
+      if(c && !c.startsWith('UNDO')) _logCmd(c);
+    }
+  } finally { _etapeLog = false; }
   _actionOuverte = false;
   _logPos++;
   new Set(pions.map(cle)).forEach(rendrePile);
@@ -2812,6 +2918,7 @@ function reculerLog(muet){
   const photo = _photo();
   const snap = _instantanes[_logPos];
   _restaurer(snap);
+  if(snap.histo !== undefined){ _histo.length = Math.min(snap.histo, _histo.length); majUndo(); }
   // VASSAL ne recule pas dans une relecture : ici, le coup relu sort du
   // log en cours. Revenir avant le début du log le fait repartir de là.
   if(_logEnr){
@@ -4103,6 +4210,14 @@ function demanderChoix(p, invites, S, valider){
   box.addEventListener('pointerdown', e => e.stopPropagation());
   setTimeout(() => listes[0] && listes[0].focus(), 0);
 }
+
+// Ctrl+Z : Undo, si aucun pion de la pile sélectionnée n'a pris la touche.
+document.addEventListener('keydown', e => {
+  if(!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || (e.key || '').toLowerCase() !== 'z') return;
+  if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  e.preventDefault();
+  annuler();
+});
 
 function fermerMenu(){
   const m = document.getElementById('ctx');
@@ -5529,7 +5644,7 @@ function _netAppliquer(texte){
   const segs = texte.split('\x1b').filter(s => s);
   if(!segs.length) return;
   _avantAction();
-  const avant = new Map(pions.map(p => [p, p.x + ',' + p.y + p.seg]));
+  const photo = _photo();
   _netReception = true;
   try {
     rejouerLog(segs);
@@ -5537,7 +5652,7 @@ function _netAppliquer(texte){
   } finally { _netReception = false; }
   new Set(pions.map(cle)).forEach(rendrePile);
   if(_pileSel) afficherPile();
-  signalerCoup(vivants().filter(p => avant.get(p) !== p.x + ',' + p.y + p.seg));
+  signalerCoup(photo);
 }
 
 // Coup joué ici : ses commandes, nées d'une même action, partent en une
@@ -5677,11 +5792,12 @@ let _logNom = null;       // fichier choisi au début du log
 let _logGroupes = [], _actionNo = 0, _actionOuverte = false;
 function _logCmd(c){
   if(_net) _netCoup(c);
-  if(!_logEnr) return;
   if(!_actionOuverte){
     _actionNo++; _actionOuverte = true;
     setTimeout(() => { _actionOuverte = false; }, 0);
   }
+  _histoCmd(c);
+  if(!_logEnr) return;
   _logEnr.push(c);
   _logGroupes.push(_actionNo);
   majBoutons();
@@ -5710,6 +5826,8 @@ function commencerLog(){
       _logNom = nom;
       _logEnr = []; _logGroupes = [];
       _logDepart = etatPartie();
+      // beginOutput vide aussi logOutput : on n'annule pas en deçà du log.
+      _histo = []; majUndo();
       chatLog(`⏺️ Enregistrement du log commencé : ${nom}`);
       majBoutons();
     };
