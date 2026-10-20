@@ -293,7 +293,7 @@ les très vieux fichiers.
 |---|---|
 | `_tourelle(ts)` | Applique la règle `isActive` de Turreted : renvoie `null` quand TCA = CA du véhicule (3 pour les types en `;r`, sinon le niveau de la couche « Rotate ») et que l'image affichée est l'image `avant`. Sinon renvoie `{i, img, dx, dy}`, le décalage venant du tableau du § 3.4 (`_DECALAGE_TCA`). |
 | Dessin de la tourelle (`majApparence`) | L'image garde sa taille propre (68 × SC). Elle est centrée sur le pion, puis décalée de (dx, dy) × SC. |
-| Rotation | `lirePiece` renvoie `rotIdx`, le rang du trait `rotate`. Les couches dont le trait est plus intérieur (tourelle, couches `emb2`) sont tournées comme le visage, autour du centre du pion. Les couches extérieures (Schürzen…) restent droites. |
+| Rotation | Assurée par `_rotations` / `_angleInterieur` et `orienter` (branche `map`) : tout ce qui est intérieur à un `rotate` tourne autour du centre du pion. La tourelle passe son rang de trait et son coin haut-gauche à `orienter`. |
 | `imagesCouches` | Une image de nationalité n'est plus écartée quand elle est décalée. Le CE (`xxCEnt`) et le BU (`xxBUnt`) des véhicules sans tourelle, la fascine de l'AVRE et les tourelles des `xxCT2tur` s'affichent. Une image de nationalité en (0, 0) reste traitée comme une autre face du pion. |
 | `commandesDe` → `turr` | TCA cw / ccw et BU, avec les touches Ctrl+S, Ctrl+A et Ctrl+B. |
 | `emb2` à plusieurs touches (`repTCA`) | Gérés comme `Embellishment0`, ce qui est correct. |
@@ -303,8 +303,7 @@ Points restants :
 
 - `drawUnderneathWhenSelected` n'est pas géré : une pièce sélectionnée
   n'est pas redessinée par-dessus sa tourelle.
-- Les labels (`label`) et le petit « ? » de nationalité ne tournent pas
-  avec la caisse, même quand leur trait est intérieur à `rotate`.
+- (Labels et « ? » : tournés par `orienter` depuis la fusion de `map`.)
 
 ---
 
