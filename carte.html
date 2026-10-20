@@ -4115,10 +4115,11 @@ function ajusterDissimulation(k){
   } finally { _ajustEnCours = false; }
 }
 
+// Clone.myKeyEvent : la copie rejoint la pile par placeOrMerge, au sommet.
 function cloner(p){
   const te = _typeEtEtat(p.seg);
   if(!te) return null;
-  const q = poserTraits(decoderTraits(te.type), decoderTraits(te.etat), p.x, p.y, p, 2);
+  const q = poserTraits(decoderTraits(te.type), decoderTraits(te.etat), p.x, p.y, p, 0);
   chatLog(`➕ ${p.nom} cloné`);
   return q;
 }
