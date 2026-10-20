@@ -90,8 +90,7 @@ button:disabled{opacity:.4;cursor:default}
 #pile:empty::before{content:"Cliquer un pion pour voir sa pile.";display:block;padding:8px;color:var(--doux);font-size:12px}
 .lig{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid #2c2c2c;
   touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
-.lig .mini{width:36px;height:36px;flex:none}
-.lig span{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lig .mini{width:36px;height:36px;flex:none;margin-right:auto}
 .lig button{padding:1px 6px;font-size:12px}
 #palRech{margin:6px 8px;padding:5px;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px}
 #palCorps{flex:1;overflow:auto;padding:0 8px 8px;font-size:12px}
@@ -115,8 +114,6 @@ button:disabled{opacity:.4;cursor:default}
 .survol .tt{font-weight:600;font-size:11px;padding:0 1px 4px}
 .survol .rang{display:flex;gap:6px;align-items:flex-end}
 .survol .cel{display:flex;flex-direction:column;align-items:center;gap:2px}
-.survol .cel span{font-size:10px;line-height:1.15;max-width:88px;text-align:center;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #ctx,.ssmenu{position:fixed;z-index:9600;min-width:190px;max-width:340px;max-height:80vh;overflow:auto;
   background:#f4f2ea;color:#111;border:1px solid #333;border-radius:4px;box-shadow:0 6px 20px rgba(0,0,0,.55);
   font-size:13px;padding:3px 0;user-select:none;-webkit-user-select:none}
@@ -4046,12 +4043,12 @@ function afficherPile(){
     im.className = 'mini';
     const copie = p.el.cloneNode(true);
     copie.classList.remove('sel');
+    copie.removeAttribute('title');
     copie.style.cssText = `position:absolute;left:0;top:0;width:${p.sz}px;height:${p.sz}px;`
                         + `transform:scale(${36 / p.sz});transform-origin:0 0;`;
     im.appendChild(copie);
-    const t = document.createElement('span');
-    t.textContent = p.el.title || p.nom;
-    l.append(im, t);
+    // Le pion seul, sans son nom.
+    l.append(im);
     l.addEventListener('contextmenu', e => { e.preventDefault(); ouvrirMenu(p, e.clientX, e.clientY); });
     for(const [txt, titre, f] of [['⋮', 'Commandes du pion (clic droit)', e => ouvrirMenu(p, e.clientX, e.clientY)],
                                   ['▲', 'Monter', () => changerRang(p, +1)],
@@ -4123,17 +4120,17 @@ function afficherSurvol(k, cx, cy){
     // Copie du pion affiché : face, couches et orientation comprises.
     const c = p.el.cloneNode(true);
     c.classList.remove('sel');
+    c.removeAttribute('title');
     c.style.cssText = `position:absolute;left:0;top:0;width:${p.sz}px;height:${p.sz}px;`
                     + `transform:scale(${SURVOL_ECHELLE});transform-origin:0 0;`;
     const boite = document.createElement('div');
     const cote = Math.round(p.sz * SURVOL_ECHELLE);
     boite.style.cssText = `position:relative;width:${cote}px;height:${cote}px`;
     boite.appendChild(c);
-    const n = document.createElement('span');
-    n.textContent = p.el.title || p.nom;
+    // Le pion seul, sans son nom.
     const cel = document.createElement('div');
     cel.className = 'cel';
-    cel.append(boite, n);
+    cel.append(boite);
     rang.appendChild(cel);
   }
   t.append(tt, rang);
