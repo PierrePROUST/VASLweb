@@ -287,38 +287,24 @@ les très vieux fichiers.
 
 ---
 
-## 6. Ce que fait `carte.html` aujourd'hui
+## 6. Ce que fait `carte.html`
 
 | Fonction | État |
 |---|---|
-| `_tourelle(ts)` (l. 1595) | Choisit bien `avant` ou `arrière` selon `flipped`, et `<préfixe><TCA>.svg`. **Affiche le marqueur dès que TCA > 0**, donc aussi quand TCA = 3 et que l'équipage est dans son état par défaut. Résultat : un marqueur « BU » est posé sur chaque char CT, alors que VASL n'en montre pas. |
-| Dessin de la tourelle (l. 2209) | L'image est **étirée à 100 % du pion**, en `left:0; top:0`. Elle devrait garder sa taille propre (68 × SC), être centrée et être décalée selon le tableau du § 3.4. |
-| Rotation | Seul `p.face` reçoit `rotate(...)`. Les `.couche` (tourelle, CE sans tourelle, marqueurs de `Bad Things`) restent droites, alors que dans VASL elles sont à l'intérieur de `rotate` et tournent avec la caisse. Les couches extérieures (Schürzen, labels) doivent, elles, rester droites. |
-| `commandesDe` → `turr` (l. 3135) | TCA cw / ccw et BU sont bien gérés, avec les touches Ctrl+S, Ctrl+A et Ctrl+B. |
+| `_tourelle(ts)` | Applique la règle `isActive` de Turreted : renvoie `null` quand TCA = CA du véhicule (3 pour les types en `;r`, sinon le niveau de la couche « Rotate ») et que l'image affichée est l'image `avant`. Sinon renvoie `{i, img, dx, dy}`, le décalage venant du tableau du § 3.4 (`_DECALAGE_TCA`). |
+| Dessin de la tourelle (`majApparence`) | L'image garde sa taille propre (68 × SC). Elle est centrée sur le pion, puis décalée de (dx, dy) × SC. |
+| Rotation | `lirePiece` renvoie `rotIdx`, le rang du trait `rotate`. Les couches dont le trait est plus intérieur (tourelle, couches `emb2`) sont tournées comme le visage, autour du centre du pion. Les couches extérieures (Schürzen…) restent droites. |
+| `imagesCouches` | Une image de nationalité n'est plus écartée quand elle est décalée. Le CE (`xxCEnt`) et le BU (`xxBUnt`) des véhicules sans tourelle, la fascine de l'AVRE et les tourelles des `xxCT2tur` s'affichent. Une image de nationalité en (0, 0) reste traitée comme une autre face du pion. |
+| `commandesDe` → `turr` | TCA cw / ccw et BU, avec les touches Ctrl+S, Ctrl+A et Ctrl+B. |
 | `emb2` à plusieurs touches (`repTCA`) | Gérés comme `Embellishment0`, ce qui est correct. |
 | Envoi des touches (`executerTouche`) | Une touche est passée à tous les traits, comme dans VASSAL. `turr`, le nom BU/CE, `repTCA` et le `report` restent donc synchronisés. |
-| CE sans tourelle (`emb2` −16, −16) | Bien placé par `imagesCouches`, mais **pas tourné** avec la caisse. |
-| `drawUnderneathWhenSelected` | Non géré. C'est mineur. |
 
-### Corrections proposées
+Points restants :
 
-1. **`_tourelle`** : renvoyer `null` quand `v === 3 && !flipped`. C'est la
-   règle `isActive` de Turreted, avec `getVehicleCA() = 3` pour les types
-   en `;r`. Sans `r`, il faudrait comparer à `CA + 1`, mais aucun pion
-   actuel n'est dans ce cas.
-2. **Placement** : renvoyer aussi le décalage, et dessiner l'image à sa
-   taille propre :
-   ```js
-   const DECALAGE_TCA = {1:[20,-10], 2:[20,5], 3:[20,20], 4:[-10,20], 5:[-10,5], 6:[-10,-10]};
-   // left = cote/2 + (dx − w/2)·SC ; top = cote/2 + (dy − h/2)·SC, avec w = h = 68
-   ```
-3. **Rotation** : regrouper le visage et les couches **intérieures** à
-   `rotate` (celles dont l'indice de trait est plus grand que celui du
-   trait `rotate`) dans un même conteneur tourné. Les couches extérieures
-   restent hors de ce conteneur. Pour cela, `_parseLayers` et `_tourelle`
-   doivent conserver l'indice du trait.
-4. Option : quand la pièce est sélectionnée, redessiner le visage au-dessus
-   du marqueur de tourelle (`drawUnderneathWhenSelected`).
+- `drawUnderneathWhenSelected` n'est pas géré : une pièce sélectionnée
+  n'est pas redessinée par-dessus sa tourelle.
+- Les labels (`label`) et le petit « ? » de nationalité ne tournent pas
+  avec la caisse, même quand leur trait est intérieur à `rotate`.
 
 ---
 
@@ -342,4 +328,4 @@ C'est un modèle maison qui ne suit pas celui de VASL :
   (commentaire l. 5813).
 
 Si l'on veut garder ce fichier, la piste la plus simple est de reprendre la
-lecture et le dessin de `carte.html`, une fois corrigés comme au § 6.
+lecture et le dessin de `carte.html` (§ 6).

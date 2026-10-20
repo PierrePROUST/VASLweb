@@ -1424,7 +1424,7 @@ function _parseLayers(ts){
     const iL = ch.indexOf(liste);
     const dx = parseInt(ch[iL-2], 10), dy = parseInt(ch[iL-1], 10);
     const niveau = parseInt((ts.eta[i] || '').replace(/\\+$/,'').trim(), 10);
-    out.push({images, dx: isNaN(dx) ? 0 : dx, dy: isNaN(dy) ? 0 : dy,
+    out.push({i, images, dx: isNaN(dx) ? 0 : dx, dy: isNaN(dy) ? 0 : dy,
       niveau: isNaN(niveau) ? 0 : Math.abs(niveau), actif: !isNaN(niveau) && niveau > 0});
   }
   return out;
@@ -1591,7 +1591,15 @@ function _deplace(ts){
   return null;
 }
 // Tourelle (trait VASL « turr ») : image <avant|arrière><TCA>.svg.
-//   turr;avant;arrière;touche cw;touche ccw  — état : « TCA;BU »
+//   turr;avant;arrière;touche cw;touche ccw[;r]  — état : « TCA;;flipped »
+// Le TCA est relatif à la caisse : 3, c'est dans l'axe. Comme
+// Turreted.isActive, rien n'est dessiné quand la tourelle est dans l'axe
+// et l'équipage dans son état par défaut (image « avant ») : un char CT
+// BU n'a pas de marqueur. Avec « r », getVehicleCA() vaut toujours 3 ;
+// sans, c'est le niveau de la couche « Rotate » de la caisse.
+// Turreted.getCurrentImageBounds : l'image (68 px) est centrée sur le
+// pion, puis décalée selon le TCA, du côté où pointe la tourelle.
+const _DECALAGE_TCA = {1: [20, -10], 2: [20, 5], 3: [20, 20], 4: [-10, 20], 5: [-10, 5], 6: [-10, -10]};
 function _tourelle(ts){
   if(!ts) return null;
   for(let i = 0; i < ts.typ.length; i++){
@@ -1600,7 +1608,19 @@ function _tourelle(ts){
     const e = (ts.eta[i] || '').replace(/\\/g, '').split(';');
     const v = parseInt(e[0], 10);
     if(!(v > 0)) return null;
-    return (e[e.length - 1] === 'true' ? ch[2] : ch[1]) + v + '.svg';
+    const retourne = e[e.length - 1] === 'true';
+    let ca = 3;
+    if(ch[5] !== 'r'){
+      ca = -1;
+      for(let j = i + 1; j < ts.typ.length; j++){
+        if(!/^emb2?;/.test(ts.typ[j]) || !/Rotate/.test(ts.typ[j])) continue;
+        ca = Math.abs(parseInt(ts.eta[j], 10)) || -1;
+        break;
+      }
+    }
+    if(v === ca && !retourne) return null;
+    const [dx, dy] = _DECALAGE_TCA[v] || [0, 0];
+    return {i, img: (retourne ? ch[2] : ch[1]) + v + '.svg', dx, dy};
   }
   return null;
 }
@@ -1622,8 +1642,10 @@ function lirePiece(seg){
   const faceCouche = !img;
   if(!img) img = _faceFromLayers(couches) || '';
   nom = _nomAvecLabels(ts, nom || img.split('/').pop());
-  // Orientation : facette courante d'un trait rotate, en degrés.
+  // Orientation : facette courante d'un trait rotate, en degrés. Son rang
+  // dit quelles couches tournent avec le pion : celles qui sont dedans.
   let rot = 0;
+  const rotIdx = ts ? ts.typ.findIndex(t => /^rotate;\d+;/.test(t.replace(/\\/g, ''))) : -1;
   const r = _trait(ts, /^rotate;\d+;/);
   if(r){
     const faces = parseInt(r.t.split(';')[1], 10) || 6;
@@ -1650,7 +1672,7 @@ function lirePiece(seg){
   return {
     uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
-    img, nom: nom || img.split('/').pop(), couches, faceCouche, rot, masque, hip, masqueNation,
+    img, nom: nom || img.split('/').pop(), couches, faceCouche, rot, rotIdx, masque, hip, masqueNation,
     vt: _pieceVaslTools(ts),
     masqueProprio: masque ? masqueProprio : null,
     hipProprio: hip ? hipProprio : null,
@@ -2207,11 +2229,16 @@ async function majApparence(p, d){
     }
   }
   if(!voile && d.tourelle){
-    const u = await chargerImage(d.tourelle);
+    const u = await chargerImage(d.tourelle.img);
     if(u){
       const o = new Image();
       o.className = 'couche'; o.src = u;
-      o.style.cssText = 'left:0;top:0;width:100%;height:100%';
+      await o.decode().catch(() => {});
+      // Taille propre de l'image, pas celle du pion : elle déborde.
+      const w = (o.naturalWidth || 68) * SC, h = (o.naturalHeight || 68) * SC;
+      o.style.cssText = `width:${w}px;height:${h}px;`
+        + `left:${p.sz / 2 + d.tourelle.dx * SC - w / 2}px;top:${p.sz / 2 + d.tourelle.dy * SC - h / 2}px`;
+      o.trait = d.tourelle.i;
       couches.push(o);
     }
   }
@@ -2240,6 +2267,15 @@ async function majApparence(p, d){
     couches.push(e);
   }
   if(gen !== p.gen) return;
+  // Comme FreeRotator : les traits intérieurs au « rotate » (rang plus
+  // grand) tournent avec le pion, autour de son centre — tourelle, CE d'un
+  // véhicule sans tourelle, Malf… Les couches extérieures restent droites.
+  if(d.rot && d.rotIdx >= 0) for(const o of couches){
+    if(!(o.trait > d.rotIdx)) continue;
+    const x = parseFloat(o.style.left) || 0, y = parseFloat(o.style.top) || 0;
+    o.style.transformOrigin = `${p.sz / 2 - x}px ${p.sz / 2 - y}px`;
+    o.style.transform = `rotate(${d.rot}deg)`;
+  }
   p.el.querySelectorAll('.couche').forEach(e => e.remove());
   p.face.before(...couches.filter(o => o.dessous).reverse());
   p.el.append(...couches.filter(o => !o.dessous));
@@ -2268,7 +2304,10 @@ async function imagesCouches(d, k, cote){
     const c = d.couches[i];
     if(!c.actif) continue;
     const im = _imgCouche(c);
-    if(!im || !im.trim() || im === d.img || /^[a-z]{2}\//.test(im) || /^ovr/i.test(im)) continue;
+    // Une image de nationalité posée en (0, 0) est une autre face du pion
+    // (brisé, HS…). Décalée, c'est un marqueur : le CE (xxCEnt) ou le BU
+    // (xxBUnt) d'un véhicule sans tourelle, les tourelles d'un xxCT2tur.
+    if(!im || !im.trim() || im === d.img || (/^[a-z]{2}\//.test(im) && !c.dx && !c.dy) || /^ovr/i.test(im)) continue;
     const u = await chargerImage(im);
     if(!u) continue;
     const o = new Image();
@@ -2282,6 +2321,7 @@ async function imagesCouches(d, k, cote){
       o.style.top  = (cote/2 + c.dy*k - h/2) + 'px';
     }
     o.dessous = iFace >= 0 && i > iFace;
+    o.trait = c.i;
     out.push(o);
   }
   return out;
