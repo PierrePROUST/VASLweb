@@ -174,7 +174,6 @@ button:disabled{opacity:.4;cursor:default}
     <span id="logPos" style="font-variant-numeric:tabular-nums;color:var(--doux)">0 / 0</span>
     <button id="lgAv" onclick="avancerLog()" title="Coup suivant [Page suivante]">▶</button>
     <button id="lgFin" onclick="allerLog(_etapes.length)" title="Fin du log">⏭</button>
-    <span id="logCoup" style="font-size:12px;color:var(--doux);max-width:260px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle"></span>
     <span class="sep"></span>
   </span>
   <button id="btUnmoved" onclick="leverDeplaces()" title="Mark unmoved — lève le statut Moved de tous les pions"><img id="icUnmoved" alt="" style="height:16px;vertical-align:-3px"> Unmoved</button>
@@ -2751,63 +2750,9 @@ function _restaurer(snap){
   if(_infoEtat !== snap.info){ _infoEtat = snap.info; majChampsInfo(); }
 }
 
-// Résumé lisible d'un coup, pour la barre de lecture.
-function _resumeCoup(etape){
-  // Le coup porte ses rapports (« * … ») : ils le résument, comme dans le
-  // chat de VASSAL. Sinon, on le décrit d'après ses commandes.
-  const raps = etape.map(sg => sg.replace(/^LOG\t/, '').replace(/\\+$/, ''))
-    .filter(sg => sg.startsWith('CHAT'))
-    .map(sg => _desechappe(sg.substring(4)))
-    .map(t => /^\*\*\* \((.+?)\) ([\d,]+)/.test(t) ? t.replace(/^\*\*\* \((.+?)\) ([\d,]+).*$/, '$1 $2')
-              : t.replace(/^\*\s*/, '').replace(/\s*\*$/, ''));
-  if(raps.length) return raps.join(' · ');
-  const parts = [], retires = new Set(), modifies = new Set();
-  for(let sg of etape){
-    sg = sg.replace(/^LOG\t/, '').replace(/\\+$/, '');
-    if(sg.startsWith('M/')){
-      const t = _decoupeCmd(sg.substring(2));
-      const q = pions.find(x => x.uid === _nul(t[0]));
-      if(!q) continue;
-      if(t[1] !== _carteJeu){ parts.push(`${q.nom} → ${t[1]}`); continue; }
-      const a = ancragePlusProche(+t[2], +t[3]);
-      parts.push(`${q.nom} → ${a ? a.label : t[2] + ',' + t[3]}`);
-    } else if(sg.startsWith('-/')){
-      const id = sg.substring(2);
-      const uids = _pilesVassal.has(id) ? _pilesVassal.get(id) : [id];
-      for(const u of uids){
-        const q = pions.find(x => x.uid === u && (!x.deleted || x.ailleurs));
-        if(q && !retires.has(q)){ retires.add(q); parts.push(`${q.nom} retiré`); }
-      }
-    } else if(sg.startsWith('+/')){
-      if(!/\/stack\//.test(sg)) parts.push(`${lirePiece(sg).nom} posé`);
-    } else if(sg.startsWith('D/')){
-      const q = pions.find(x => x.uid === _nul(_decoupeCmd(sg.substring(2))[0]));
-      if(q){ modifies.add(q); parts.push(`${q.nom} modifié`); }
-    } else if(sg.startsWith('CHAT')){
-      const m = _desechappe(sg.substring(4)).match(/^\*\*\* \((.+?)\) ([\d,]+)/);
-      parts.push(m ? `${m[1]} ${m[2]}` : '💬');
-    } else if(sg.startsWith('INFO\t')) parts.push('infos du scénario');
-  }
-  // Un déplacement résume le coup : les changements d'état qui
-  // l'accompagnent (marque Moved, propriétaire) ne sont pas répétés, et
-  // une pile qui bouge s'écrit « 3 pions → 42M5 ».
-  // Un retrait en masse (pile entière, « remove all ») se compte.
-  const uniques = [...new Set(parts)];
-  const moves = uniques.filter(x => x.includes(' → '));
-  let autres = uniques.filter(x => !x.includes(' → ') && !(moves.length && x.endsWith(' modifié')));
-  if(retires.size > 1)
-    autres = [`${retires.size} pions retirés`, ...autres.filter(x => !x.endsWith(' retiré'))];
-  if(modifies.size > 3 && !moves.length)
-    autres = [...autres.filter(x => !x.endsWith(' modifié')), `${modifies.size} pions modifiés`];
-  const dest = [...new Set(moves.map(x => x.split(' → ')[1]))];
-  const tete = moves.length > 1 && dest.length === 1 ? [`${moves.length} pions → ${dest[0]}`] : moves;
-  return [...tete, ...autres].join(' · ') || '—';
-}
-
 function avancerLog(muet){
   if(_logPos >= _etapes.length) return false;
   const etape = _etapes[_logPos];
-  const resume = _resumeCoup(etape);
   _instantanes[_logPos] = _instantane();
   const photo = _photo();
   _relecture = true;
@@ -2817,7 +2762,6 @@ function avancerLog(muet){
   if(_pileSel) afficherPile();
   // Les pions touchés par le coup sont signalés, et la vue les rejoint.
   if(!muet) signalerCoup(photo);
-  document.getElementById('logCoup').textContent = resume;
   majBarreLog();
   if(_logPos === _etapes.length) chatLog('🏁 Fin du log');
   return true;
@@ -2831,7 +2775,6 @@ function reculerLog(muet){
   new Set(pions.map(cle)).forEach(rendrePile);
   if(_pileSel) afficherPile();
   if(!muet) signalerCoup(photo);
-  document.getElementById('logCoup').textContent = _logPos ? _resumeCoup(_etapes[_logPos - 1]) : 'début';
   majBarreLog();
   return true;
 }
