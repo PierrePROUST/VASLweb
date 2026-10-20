@@ -640,25 +640,29 @@ function _gifDuBoard(files, nom, prefere){
   return null;
 }
 
+// Comme Map.getLocation de VASSAL : un board est décalé de la largeur des
+// boards qui le précèdent sur SA rangée, et de la hauteur de ceux qui le
+// précèdent dans SA colonne ; une case vide compte pour zéro. Avec des
+// boards recadrés ou de tailles différentes, ce n'est pas une grille.
 function _layoutBoards(boards){
-  const colW = {}, rowH = {};
+  const larg = new Map(), haut = new Map();
   for(const b of boards){
     const g = geoBoard(b);
     const w  = (b.crop && b.crop.w > 0) ? b.crop.w : g.w;
     const hh = (b.crop && b.crop.h > 0) ? b.crop.h : g.h;
     b.dispW = Math.round(w * b.zoom);
     b.dispH = Math.round(hh * b.zoom);
-    colW[b.col] = Math.max(colW[b.col] || 0, b.dispW);
-    rowH[b.row] = Math.max(rowH[b.row] || 0, b.dispH);
+    larg.set(b.col + ',' + b.row, b.dispW);
+    haut.set(b.col + ',' + b.row, b.dispH);
   }
-  const colX = {}, rowY = {};
-  let acc = 0;
-  for(const c of Object.keys(colW).map(Number).sort((a,b)=>a-b)){ colX[c] = acc; acc += colW[c]; }
-  const totalW = acc;
-  acc = 0;
-  for(const r of Object.keys(rowH).map(Number).sort((a,b)=>a-b)){ rowY[r] = acc; acc += rowH[r]; }
-  const totalH = acc;
-  for(const b of boards){ b.px = colX[b.col]; b.py = rowY[b.row]; }
+  let totalW = 0, totalH = 0;
+  for(const b of boards){
+    b.px = 0; b.py = 0;
+    for(let c = 0; c < b.col; c++) b.px += larg.get(c + ',' + b.row) || 0;
+    for(let r = 0; r < b.row; r++) b.py += haut.get(b.col + ',' + r) || 0;
+    totalW = Math.max(totalW, b.px + b.dispW);
+    totalH = Math.max(totalH, b.py + b.dispH);
+  }
   return {totalW, totalH};
 }
 
@@ -1322,9 +1326,12 @@ function _buildHexTable(boards){
       for(let r = r0; r <= r1; r++){
         const c = centreHex(g, col + r);
         if(c.x <= -g.hw/4 || c.x >= g.w + g.hw/4 || c.y <= -g.hh/4 || c.y >= g.h + g.hh/4) continue;
-        const lx = c.x - cropX, ly = c.y - cropY;
-        if(ly < -g.hh/2 || ly > dispH + g.hh/2) continue;
-        if(lx < -g.hw/2 || lx > dispW + g.hw/2) continue;
+        // ASLBoard.globalCoordinates : recadrage, puis grossissement (ZOOM),
+        // puis retournement sur la taille affichée.
+        const z = b.zoom || 1;
+        const lx = (c.x - cropX) * z, ly = (c.y - cropY) * z;
+        if(ly < -g.hh*z/2 || ly > dispH + g.hh*z/2) continue;
+        if(lx < -g.hw*z/2 || lx > dispW + g.hw*z/2) continue;
         const px = b.reversed ? dispW - lx : lx;
         const py = b.reversed ? dispH - ly : ly;
         _hexTable.push({name: b.name + col + r,
@@ -2128,6 +2135,7 @@ let _annexes = new Map();
 let _nomFichier = 'partie';
 let _coucheParUid = new Map();        // uid → couche (@@n) de sa pile d'origine
 let _pilesVassal = new Map();         // id de pile VASSAL → uids, du fond au sommet
+let _pilesRetirees = new Map();       // piles retirées d'un seul -/, pour Undo
 let _uidSeq = 0;
 
 const cle = p => p.x + ',' + p.y;
@@ -2499,6 +2507,7 @@ function _parseStacks(segs){
   const rangs = new Map();
   _coucheParUid = new Map();
   _pilesVassal = new Map();
+  _pilesRetirees = new Map();
   for(const seg of segs){
     if(!/^\+\/[^/]+\/stack\//.test(seg)) continue;
     const ch = seg.substring(seg.indexOf('/stack/') + 7).replace(/\\/g, '').split(';');
@@ -2579,38 +2588,65 @@ let _annulation = false;  // vrai pendant qu'Undo consigne son coup
 let _etapeLog = false;    // vrai pendant qu'un coup relu est consigné
 
 // Champs d'une commande « / » tels qu'écrits (guillemets et
-// contre-obliques gardés), pour la réécrire dans l'autre sens.
+// contre-obliques gardés), pour la réécrire dans l'autre sens. Comme
+// SequenceEncoder.Decoder, seul un « / » précédé d'une contre-oblique
+// est échappé ; les apostrophes ne protègent rien.
 function _decoupeBrut(s){
-  const out = []; let cur = '', q = false;
+  const out = []; let debut = 0;
   for(let i = 0; i < s.length; i++){
-    const c = s[i];
-    if(c === '\\' && i+1 < s.length){ cur += c + s[i+1]; i++; continue; }
-    if(c === "'" && (cur === '' || q)) q = !q;
-    else if(c === '/' && !q){ out.push(cur); cur = ''; continue; }
-    cur += c;
+    if(s[i] === '/' && (i === 0 || s[i-1] !== '\\')){ out.push(s.substring(debut, i)); debut = i + 1; }
   }
-  out.push(cur);
+  out.push(s.substring(debut));
   return out;
 }
 
-// Commande inverse, ou null si elle n'en a pas.
+// RemovePiece.myUndoCommand : AddPiece de la pièce telle qu'elle était,
+// plus le ChangePiece qui la remet dans sa pile. Nos piles n'ont pas
+// d'identifiant VASSAL : un M/ sur la pièce qui était dessous (null :
+// au fond) la remet à son rang, chez nous comme chez un client VASSAL.
+function _remise(p, sous){
+  const d = lirePiece(p.seg);
+  if(d.carte !== _carteJeu) return [p.seg];
+  return [p.seg, `M/${p.uid}/${_carteJeu}/${d.x}/${d.y}/${sous || 'null'}/${_carteJeu}/${d.x}/${d.y}/null/${joueur()}`];
+}
+
+// Pièce encore en jeu juste sous p, d'après les rangs d'avant le retrait.
+function _dessousRetire(p){
+  let best = null;
+  for(const q of vivants())
+    if(q !== p && q.x === p.x && q.y === p.y && q.ordre < p.ordre && (!best || q.ordre > best.ordre)) best = q;
+  return best ? best.uid : null;
+}
+
+// Commande(s) inverse(s), ou null si elle n'en a pas.
 function _inverse(c){
   if(/^\+\/[^/]+\/stack\//.test(c)) return null;
-  if(c.startsWith('+/')) return '-/' + c.split('/')[1];
+  if(c.startsWith('+/')) return ['-/' + c.split('/')[1]];
   if(c.startsWith('-/')){
-    // RemovePiece.myUndoCommand : AddPiece de la pièce telle qu'elle était.
     const uid = c.substring(2);
     const p = pions.filter(q => q.uid === uid).pop();
-    return p ? p.seg : null;
+    if(p) return _remise(p, _dessousRetire(p));
+    // Une pile entière : ses pièces reviennent du fond vers le sommet.
+    const ids = _pilesRetirees.get(uid);
+    if(!ids) return null;
+    const out = [];
+    let sous = null;
+    for(const u of ids){
+      const q = pions.filter(x => x.uid === u).pop();
+      if(!q) continue;
+      out.push(..._remise(q, sous));
+      sous = u;
+    }
+    return out.length ? out : null;
   }
   if(c.startsWith('D/')){
     const t = _decoupeBrut(c.substring(2));
-    return t.length >= 3 ? `D/${t[0]}/${t[2]}/${t[1]}` : null;
+    return t.length >= 3 ? [`D/${t[0]}/${t[2]}/${t[1]}`] : null;
   }
   if(c.startsWith('M/')){
     const t = _decoupeBrut(c.substring(2));
     if(t.length < 9) return null;
-    return 'M/' + [t[0], t[5], t[6], t[7], t[8] || 'null', t[1], t[2], t[3], t[4], ...t.slice(9)].join('/');
+    return ['M/' + [t[0], t[5], t[6], t[7], t[8] || 'null', t[1], t[2], t[3], t[4], ...t.slice(9)].join('/')];
   }
   return null;
 }
@@ -2624,7 +2660,7 @@ function _histoCmd(c){
   e.cmds.push(c);
   if(c.startsWith('UNDO')){ e.annulable = false; e.inv = []; }
   const i = e.annulable ? _inverse(c) : null;
-  if(i) e.inv.unshift(i);
+  if(i) e.inv.unshift(...i);
   majUndo();
 }
 
@@ -2672,17 +2708,9 @@ function annuler(){
 //   M/id/carte/x/y/dessous/carteAnc/xAnc/yAnc/dessousAnc/joueur
 // Les sous-commandes d'un coup composé suivent leur « LOG » dans des
 // segments à part : tout segment de la zone de log est donc examiné.
+// Un champ entouré d'apostrophes les perd (SequenceEncoder.unquote).
 function _decoupeCmd(s){
-  const out = []; let cur = '', q = false;
-  for(let i = 0; i < s.length; i++){
-    const c = s[i];
-    if(c === '\\' && i+1 < s.length){ cur += c + s[i+1]; i++; continue; }
-    if(c === "'" && (cur === '' || q)){ q = !q; continue; }
-    if(c === '/' && !q){ out.push(cur); cur = ''; continue; }
-    cur += c;
-  }
-  out.push(cur);
-  return out;
+  return _decoupeBrut(s).map(t => t.length > 1 && t[0] === "'" && t[t.length - 1] === "'" ? t.slice(1, -1) : t);
 }
 const _nul = v => (v === 'null' || v === '' ? null : v);
 const parUid = uid => pions.find(p => p.uid === uid && !p.deleted);
@@ -2701,6 +2729,7 @@ function _retirer(id){
   const ids = _pilesVassal.get(id);
   if(!ids) return 0;
   _pilesVassal.delete(id);
+  _pilesRetirees.set(id, ids);
   let n = 0;
   for(const u of ids) n += _retirer(u);
   return n;
