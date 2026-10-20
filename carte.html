@@ -3564,9 +3564,19 @@ function commandesDe(type){
               ({S}) => regle(S, n => n + 1 > N ? (boucle ? 1 : N) : n + 1));
       ajouter(i, ch[7], lireTouche(ch[29]) || toucheAncienne(ch[9], ch[8]),
               ({S}) => regle(S, n => n - 1 < 1 ? (boucle ? N : 1) : n - 1));
-      const raz = parseInt(ch[12], 10);
+      // Remise à un niveau (resetLevel) : sa valeur absolue donne le
+      // niveau, son signe l'activation — « 0 » ou « -1 » : niveau 1 éteint.
+      const raz = parseInt(ch[12], 10) || 0;
       if(ch[10] || ch[11]) ajouter(i, ch[10], lireTouche(ch[11]), ({S}) => {
-        const [, r] = niveau(S, i); S[i] = String(raz > 0 ? raz : 1) + r;
+        const [, r] = niveau(S, i);
+        const n = Math.min(N, Math.max(1, Math.abs(raz)));
+        S[i] = String(raz > 0 ? n : -n) + r;
+      });
+      // Niveau au hasard (rndKey, champ 20), activation inchangée.
+      if(ch[20]) ajouter(i, ch[21], lireTouche(ch[20]), ({S}) => {
+        const [v, r] = niveau(S, i);
+        const n = 1 + Math.floor(Math.random() * N);
+        S[i] = String(v < 0 ? -n : n) + r;
       });
     } else if(id === 'rotate'){
       // FreeRotator : rotate;facettes;touche cw;touche ccw;texte cw;texte ccw
@@ -3591,19 +3601,31 @@ function commandesDe(type){
     } else if(['replace', 'placemark', 'placeDM', 'placeACQ'].includes(id)){
       // PlaceMarker et ses dérivés VASL :
       //   commande;touche;chemin;définition;dx;dy;rotation;touche après;description;gpid;placement
-      const gpid = ch[10], chemin = ch[3] || '';
-      const placement = parseInt(ch[11], 10) || 0;
-      const apres = lireTouche(ch[8]);
-      ajouter(i, ch[1], lireTouche(ch[2]), ({p, effets}) => effets.push(() => {
-        // PlaceDM ne pose rien s'il y a déjà un DM au-dessus de l'unité.
+      // Le chemin peut être une définition entière, pleine de « ; »
+      // échappés : les champs se lisent comme SequenceEncoder.Decoder.
+      const f = _seq(t, ';');
+      const chemin = f[3] || '';
+      const placement = parseInt(f[11], 10) || 0;
+      const apres = lireTouche(f[8]);
+      ajouter(i, ch[1], lireTouche(ch[2]), ({p, S, effets}) => {
+        // PlaceDM ne pose rien sur une pièce dont le nom intérieur contient
+        // « broken », lu avant que la touche n'atteigne les traits
+        // intérieurs (VASL.counters.PlaceDM.myKeyEvent).
         if(id === 'placeDM'){
-          const s = pile(cle(p));
-          if(s.slice(s.indexOf(p) + 1).some(q => q.nom === 'DM')) return;
+          const Ti = T.slice(i + 1), Si = S.slice(i + 1);
+          if(/broken/.test(lirePiece('+/0/' + encoderTraits(Ti) + '/' + encoderTraits(Si)).nom)) return;
         }
-        const q = placerMarqueur(p, gpid, chemin, id === 'replace' ? 2 : placement);
-        if(q && apres) executerTouche(q, apres);
-        if(q && id === 'replace') retirer(p, true);
-      }));
+        effets.push(() => {
+          // … ni s'il y a déjà un DM au-dessus de l'unité.
+          if(id === 'placeDM'){
+            const s = pile(cle(p));
+            if(s.slice(s.indexOf(p) + 1).some(q => q.nom === 'DM')) return;
+          }
+          const q = placerMarqueur(p, chemin, placement);
+          if(q && apres) executerTouche(q, apres);
+          if(q && id === 'replace') retirer(p, true);
+        });
+      });
     } else if(id === 'macro'){
       // Trigger Action : macro;nom;commande;touche;condition;veille;actions;boucle…
       // La condition est évaluée sur les propriétés du pion au moment où
@@ -3884,17 +3906,44 @@ function envoyerChat(texte){
 
 // Pose le pion d'un PieceSlot (désigné par gpid, à défaut par le nom en
 // fin de chemin) à l'emplacement de `p`.
-function placerMarqueur(p, gpid, chemin, placement){
+// PieceSlot désigné par un chemin de composants (ComponentPathBuilder),
+// tel qu'il figure dans un trait : « Classe:nom/Classe:nom/… », avec le
+// « / » encore échappé une fois par la commande +/ qui porte le trait.
+function _slotDuChemin(chemin){
+  if(!_bdd || !chemin) return null;
+  const noms = _splitUnescaped(chemin.replace(/\\\//g, '/'), '/').map(x => {
+    const c = x.replace(/\\(.)/g, '$1');
+    const k = c.indexOf(':');
+    return k < 0 ? '' : c.substring(k + 1);
+  });
+  return _bdd.parChemin.get(noms.join('\u0001')) || null;
+}
+
+// Pose le marqueur d'un trait PlaceMarker / Replace. `spec` est son
+// markerSpec : un chemin vers un PieceSlot, ou une définition « +/… »
+// autonome (isMarkerStandalone). Le gpId du trait est celui du marqueur
+// créé, pas celui d'un PieceSlot : il ne sert pas à le retrouver.
+function placerMarqueur(p, spec, placement){
   if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
-  let x = _bdd.parGpid.get(gpid);
-  if(!x){
-    const nom = (chemin.replace(/\\(.)/g, '$1').match(/PieceSlot:([^/]*)$/) || [])[1];
-    if(nom) x = [..._bdd.parGpid.values()].find(y => y.n === nom);
+  let def = null, nom = null;
+  if(/^\+\\?\//.test(spec)){
+    // Définition dans le trait : un niveau d'échappement de « / » (la
+    // commande +/) et de tabulation (le trait) en trop.
+    def = developperDefinition(spec.replace(/\\\//g, '/').replace(/\\(\t)/g, '$1'));
+    if(def) nom = lirePiece('+/0/' + encoderTraits(def.T) + '/' + encoderTraits(def.S)).nom;
+  } else {
+    let x = _slotDuChemin(spec);
+    if(!x){
+      // Chemin introuvable (fenêtre renommée…) : le PieceSlot du même nom.
+      const n = (spec.replace(/\\(.)/g, '$1').match(/PieceSlot:([^/]*)$/) || [])[1];
+      if(n) x = [..._bdd.parGpid.values()].find(y => y.n === n);
+    }
+    def = x && developperDefinition(x.cmd);
+    nom = x && x.n;
   }
-  const def = x && developperDefinition(x.cmd);
-  if(!def){ chatLog(`⚠️ ${p.nom} : pion à poser introuvable (gpid ${gpid || '?'})`); return null; }
+  if(!def){ chatLog(`⚠️ ${p.nom} : pion à poser introuvable`); return null; }
   const q = poserTraits(def.T, def.S, p.x, p.y, p, placement);
-  chatLog(`➕ ${x.n} posé sur ${p.nom}`);
+  chatLog(`➕ ${nom} posé sur ${p.nom}`);
   return q;
 }
 
@@ -3976,12 +4025,7 @@ function dissimuler(p){
 // Comme Concealment.setId, il prend le joueur pour propriétaire.
 function poserConcealment(p, m){
   if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
-  const noms = m.marqueur ? _splitUnescaped(m.marqueur, '/').map(x => {
-    const c = x.replace(/\\(.)/g, '$1');
-    const k = c.indexOf(':');
-    return k < 0 ? '' : c.substring(k + 1);
-  }) : null;
-  let x = noms && _bdd.parChemin.get(noms.join('\u0001'));
+  let x = _slotDuChemin(m.marqueur);
   if(!x) x = _bdd.parChemin.get(['?', m.nation, /58/.test(m.image) ? 'L?' : '?'].join('\u0001'));
   const def = x && developperDefinition(x.cmd);
   if(!def){ chatLog(`⚠️ ${p.nom} : contre-pion « ? » introuvable pour ${m.nation || '?'}`); return null; }
