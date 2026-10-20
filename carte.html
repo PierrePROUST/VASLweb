@@ -173,6 +173,7 @@ button:disabled{opacity:.4;cursor:default}
     <span class="sep"></span>
   </span>
   <button id="btUnmoved" onclick="leverDeplaces()" title="Mark unmoved — lève le statut Moved de tous les pions"><img id="icUnmoved" alt="" style="height:16px;vertical-align:-3px"> Unmoved</button>
+  <button id="btRemove" onclick="ouvrirMassRemover(this)" title="Remove all counters of a given type"><img id="icRemove" alt="" style="height:16px;vertical-align:-3px"> ALL</button>
   <span class="sep"></span>
   <button onclick="basculerCote()">Pions</button>
   <span class="sep"></span>
@@ -1650,7 +1651,7 @@ function lirePiece(seg){
   return {
     uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
-    img, nom: nom || img.split('/').pop(), couches, faceCouche, rot, masque, hip, masqueNation,
+    img, nom: nom || img.split('/').pop(), nomBase: pm ? pm[2].replace(/\\/g,'').trim() : '', couches, faceCouche, rot, masque, hip, masqueNation,
     vt: _pieceVaslTools(ts),
     masqueProprio: masque ? masqueProprio : null,
     hipProprio: hip ? hipProprio : null,
@@ -2852,6 +2853,49 @@ function leverDeplaces(){
   return n;
 }
 
+// ── « Remove all counters of a given type » : le bouton ALL de VASL
+// (MassRemover). Son menu et ses listes de noms viennent du buildFile ;
+// une action retire de la carte de jeu tous les pions dont le nom simple
+// (BasicPiece) ou le nom affiché (« 1 FP », « Final Fire ») figure dans sa
+// liste. Tous les retraits forment un seul coup du log.
+async function ouvrirMassRemover(bt){
+  fermerMenu();
+  let bdd;
+  try { bdd = await chargerBDD(); } catch(e){ return; }
+  if(!bdd.massRemover.length){ chatLog('⚠️ Le module VASL ne déclare aucun MassRemover'); return; }
+  const m = document.createElement('div');
+  m.id = 'ctx';
+  for(const a of bdd.massRemover){
+    const it = document.createElement('div');
+    it.className = 'it';
+    it.textContent = a.nom;
+    it.title = a.pions.join(', ');
+    it.addEventListener('click', e => { e.stopPropagation(); fermerMenu(); retirerTous(a); });
+    m.appendChild(it);
+  }
+  document.body.appendChild(m);
+  const r = bt.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(r.left, window.innerWidth - m.offsetWidth - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(r.bottom + 2, window.innerHeight - m.offsetHeight - 4)) + 'px';
+}
+
+function retirerTous(action){
+  if(!_source){ chatLog('⚠️ Aucune partie ouverte'); return 0; }
+  const noms = new Set(action.pions);
+  const cibles = vivants().filter(p => {
+    const d = lirePiece(p.seg);
+    return noms.has(d.nomBase) || noms.has(d.nom);
+  });
+  // Un pion masqué par un autre joueur n'a aucune commande : il reste.
+  const garde = cibles.filter(accesRefuse);
+  const partis = cibles.filter(p => !accesRefuse(p));
+  for(const p of partis) retirer(p, true);
+  chatLog(partis.length ? `✖️ Remove all « ${action.nom} » : ${partis.length} pion(s) retiré(s)`
+                        : `Remove all « ${action.nom} » : aucun pion à retirer`);
+  if(garde.length) chatLog(`🔒 ${garde.length} pion(s) masqué(s) par un autre joueur laissé(s) en place`);
+  return partis.length;
+}
+
 function retirer(p, silencieux){
   if(p.deleted || refuser(p)) return;
   _avantAction();
@@ -3884,7 +3928,19 @@ async function _chargerBDD(){
       noms.unshift(a.getAttribute('entryName') || a.getAttribute('name') || '');
     parChemin.set(noms.join('\u0001'), parGpid.get(e.getAttribute('gpid')));
   }
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, version: mod.getAttribute('version')};
+  // Bouton « ALL » de la carte (MassRemover) : chaque entrée donne une
+  // action et un nom de pion ; les actions gardent l'ordre du module.
+  const massRemover = [];
+  for(const e of doc.getElementsByTagName('*')){
+    if(!e.tagName.endsWith('.MassRemover')) continue;
+    for(const en of e.getElementsByTagName('*')){
+      const nom = en.getAttribute('name') || '';
+      let a = massRemover.find(x => x.nom === nom);
+      if(!a) massRemover.push(a = {nom, pions: []});
+      a.pions.push(en.textContent || '');
+    }
+  }
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, version: mod.getAttribute('version')};
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
   chatLog(`📚 Base VASL ${_bdd.version} : ${slots.length} pions, ${cats.length} catégories`);
@@ -4732,6 +4788,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(window.innerWidth < 700) basculerCote();
   _brancherCommandes();
   chargerImage('mov.gif').then(u => { if(u) document.getElementById('icUnmoved').src = u; });
+  chargerImage('QC/Remove.png').then(u => { if(u) document.getElementById('icRemove').src = u; });
   majUtilisateur();
   _brancherDes();
   const ci = document.getElementById('chatIn');
