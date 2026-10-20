@@ -1424,7 +1424,7 @@ function _parseLayers(ts){
     const iL = ch.indexOf(liste);
     const dx = parseInt(ch[iL-2], 10), dy = parseInt(ch[iL-1], 10);
     const niveau = parseInt((ts.eta[i] || '').replace(/\\+$/,'').trim(), 10);
-    out.push({images, dx: isNaN(dx) ? 0 : dx, dy: isNaN(dy) ? 0 : dy,
+    out.push({i, images, dx: isNaN(dx) ? 0 : dx, dy: isNaN(dy) ? 0 : dy,
       niveau: isNaN(niveau) ? 0 : Math.abs(niveau), actif: !isNaN(niveau) && niveau > 0});
   }
   return out;
@@ -1534,7 +1534,7 @@ function _etiquettes(ts){
     if(!texte) continue;
     const ch = ts.typ[i].split(';');
     const rgb = v => /^\d+,\d+,\d+$/.test(v || '') ? `rgb(${v})` : null;
-    out.push({texte, taille: parseInt(ch[3], 10) || 10,
+    out.push({i, texte, taille: parseInt(ch[3], 10) || 10,
               fond: rgb(ch[4]), couleur: rgb(ch[5]) || '#000',
               posV: ch[6] || 't', decV: parseInt(ch[7], 10) || 0,
               posH: ch[8] || 'c', decH: parseInt(ch[9], 10) || 0,
@@ -1583,10 +1583,10 @@ function _deplace(ts){
     const ch = ts.typ[i].replace(/\\/g, '').split(';');
     // VASL (MarkMoved) : « moved;image » — bandeau <image>.svg contre le
     // bord droit du pion, aligné en haut.
-    if(id === 'moved') return {img: (ch[1] || 'moved') + '.svg', droite: true};
+    if(id === 'moved') return {i, img: (ch[1] || 'moved') + '.svg', droite: true};
     // VASSAL (MovementMarkable) : icône posée au coin haut-gauche du pion,
     // décalée de (dx, dy).
-    return {img: ch[1] || 'moved', dx: parseInt(ch[2], 10) || 0, dy: parseInt(ch[3], 10) || 0};
+    return {i, img: ch[1] || 'moved', dx: parseInt(ch[2], 10) || 0, dy: parseInt(ch[3], 10) || 0};
   }
   return null;
 }
@@ -1605,6 +1605,32 @@ function _tourelle(ts){
   return null;
 }
 
+// ── Orientation (trait FreeRotator de VASSAL, « rotate; ») :
+//   rotate;facettes;touche cw;touche ccw;texte cw;texte ccw;…
+// Facettes fixes (6 pour un Covered Arc d'hexagone, 8 pour la
+// boussole) : l'état est l'indice de la facette, et chaque cran CW tourne
+// de 360/n degrés en sens horaire — validAngles[i] = -i·360/n, dessiné
+// à -angle. Rotation libre (1 facette) : l'état est l'angle lui-même,
+// en degrés, compté en sens antihoraire (« -45.0 »).
+function _rotations(ts){
+  const out = [];
+  if(!ts) return out;
+  for(let i = 0; i < ts.typ.length; i++){
+    if(!/^rotate;/.test(ts.typ[i])) continue;
+    const n = parseInt(ts.typ[i].split(';')[1], 10) || 1;
+    const e = (ts.eta[i] || '').replace(/\\/g, '').trim();
+    let a;
+    if(n <= 1) a = -(parseFloat(e) || 0);
+    else { const v = parseInt(e, 10) || 0; a = ((v % n + n) % n) * (360 / n); }
+    a = ((a % 360) + 360) % 360;
+    if(a) out.push({i, angle: a});
+  }
+  return out;
+}
+// Angle d'un trait de rang i : la somme des rotate qui l'englobent.
+const _angleInterieur = (rotations, i) =>
+  ((rotations || []).reduce((a, r) => r.i < i ? a + r.angle : a, 0)) % 360;
+
 function lirePiece(seg){
   const ts = _developperPrototypes(_splitTypeState(seg), 0);
   const etatBP = ts ? ts.eta[ts.eta.length - 1] : seg.substring(seg.lastIndexOf('\t') + 1);
@@ -1622,14 +1648,10 @@ function lirePiece(seg){
   const faceCouche = !img;
   if(!img) img = _faceFromLayers(couches) || '';
   nom = _nomAvecLabels(ts, nom || img.split('/').pop());
-  // Orientation : facette courante d'un trait rotate, en degrés.
-  let rot = 0;
-  const r = _trait(ts, /^rotate;\d+;/);
-  if(r){
-    const faces = parseInt(r.t.split(';')[1], 10) || 6;
-    const v = parseInt(r.e, 10);
-    if(!isNaN(v)) rot = Math.round((v % faces) * (360 / faces));
-  }
+  // Orientation : angle de chaque trait rotate (Covered Arc des canons et
+  // véhicules, boussole…). Il s'applique à tout ce qui est à l'intérieur.
+  const rotations = _rotations(ts);
+  const rot = _angleInterieur(rotations, Infinity);
   // Dissimulation : l'état du trait conceal porte l'identifiant du joueur
   // qui a masqué la pièce, et son type l'image affichée à sa place.
   const c = _trait(ts, /^conceal;/);
@@ -1651,7 +1673,9 @@ function lirePiece(seg){
     uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
     img, nom: nom || img.split('/').pop(), couches, faceCouche, rot, masque, hip, masqueNation,
-    vt: _pieceVaslTools(ts),
+    vt: _pieceVaslTools(ts), rotations,
+    iTourelle: ts ? ts.typ.findIndex(t => /^turr;/.test(t)) : -1,
+    iMasque: ts ? ts.typ.findIndex(t => /^conceal;/.test(t)) : -1,
     masqueProprio: masque ? masqueProprio : null,
     hipProprio: hip ? hipProprio : null,
     compteurProprio: compteurProprio && compteurProprio !== 'null' ? compteurProprio : null,
@@ -2194,6 +2218,14 @@ async function majApparence(p, d){
     p.el.title = `${d.nom} — image introuvable : ${imgFace || '?'}`;
   }
   p.face.style.transform = d.rot ? `rotate(${d.rot}deg)` : '';
+  // Tout ce qui est intérieur à un trait rotate tourne avec la face,
+  // autour du centre du pion (FreeRotator.draw).
+  const orienter = (o, i, gauche, haut) => {
+    const a = _angleInterieur(d.rotations, i);
+    if(!a) return;
+    o.style.transformOrigin = gauche === undefined ? '50% 50%' : `${p.sz/2 - gauche}px ${p.sz/2 - haut}px`;
+    o.style.transform = `rotate(${a}deg)`;
+  };
   // Les couches de marqueur (ML/, MS/…) se superposent au visage ; une
   // image de nationalité est une autre face du pion, pas une surimpression.
   const couches = voile ? [] : await imagesCouches(d, SC, p.sz);
@@ -2203,6 +2235,7 @@ async function majApparence(p, d){
       const o = new Image();
       o.className = 'couche'; o.src = u;
       o.style.cssText = 'left:0;top:0;width:100%;height:100%';
+      orienter(o, d.iMasque);
       couches.push(o);
     }
   }
@@ -2212,6 +2245,7 @@ async function majApparence(p, d){
       const o = new Image();
       o.className = 'couche'; o.src = u;
       o.style.cssText = 'left:0;top:0;width:100%;height:100%';
+      orienter(o, d.iTourelle);
       couches.push(o);
     }
   }
@@ -2221,8 +2255,11 @@ async function majApparence(p, d){
       const o = new Image();
       o.className = 'couche'; o.src = u;
       await o.decode().catch(() => {});
-      o.style.cssText = `width:${o.naturalWidth * SC}px;height:${o.naturalHeight * SC}px;top:`
-        + (d.deplace.droite ? `0;left:${p.sz}px` : `${d.deplace.dy * SC}px;left:${d.deplace.dx * SC}px`);
+      const gauche = d.deplace.droite ? p.sz : d.deplace.dx * SC;
+      const haut = d.deplace.droite ? 0 : d.deplace.dy * SC;
+      o.style.cssText = `width:${o.naturalWidth * SC}px;height:${o.naturalHeight * SC}px;`
+        + `top:${haut}px;left:${gauche}px`;
+      orienter(o, d.deplace.i, gauche, haut);
       couches.push(o);
     }
   }
@@ -2237,6 +2274,7 @@ async function majApparence(p, d){
     e.style.color = t.couleur;
     if(t.fond) e.style.background = t.fond;
     e._label = t;
+    e._rotPion = _angleInterieur(d.rotations, t.i);
     couches.push(e);
   }
   if(gen !== p.gen) return;
@@ -2280,6 +2318,13 @@ async function imagesCouches(d, k, cote){
       o.style.width = w + 'px'; o.style.height = h + 'px';
       o.style.left = (cote/2 + c.dx*k - w/2) + 'px';
       o.style.top  = (cote/2 + c.dy*k - h/2) + 'px';
+    }
+    // Couche intérieure à un trait rotate : elle tourne autour du centre
+    // du pion, décalage compris.
+    const a = _angleInterieur(d.rotations, c.i);
+    if(a){
+      o.style.transformOrigin = (w && h) ? `${w/2 - c.dx*k}px ${h/2 - c.dy*k}px` : '50% 50%';
+      o.style.transform = `rotate(${a}deg)`;
     }
     o.dessous = iFace >= 0 && i > iFace;
     out.push(o);
@@ -2328,9 +2373,12 @@ function placerLabel(e, sz){
   if(t.justH === 'c') x -= w/2; else if(t.justH === 'r') x -= w;
   e.style.left = (sz/2 + x) + 'px';
   e.style.top = (sz/2 + y) + 'px';
-  if(t.rotation){
+  // Rotation propre du label, plus celle d'un trait rotate extérieur :
+  // toutes deux autour du centre du pion.
+  const a = (t.rotation || 0) + (e._rotPion || 0);
+  if(a){
     e.style.transformOrigin = `${-x}px ${-y}px`;
-    e.style.transform = `rotate(${t.rotation}deg)`;
+    e.style.transform = `rotate(${a}deg)`;
   }
 }
 
@@ -3033,7 +3081,11 @@ function commandesDe(type){
     const ch = t.split(';');
     const id = ch[0];
     if(id === 'emb2' || id === 'emb'){
-      const liste = ch.length > 17 && /\//.test(ch[16]) ? ch[16] : (ch.find(c => /\.(svg|gif|png)/i.test(c)) || '');
+      // Au format emb2, le 17e champ est la liste d'images, même faite de
+      // blancs : la couche du Covered Arc (« , , , , , » nommée ca1 à ca6)
+      // n'a pas d'image mais bien six niveaux. Les compter d'après une
+      // image réelle la faisait retomber à 1 à chaque cran.
+      const liste = ch.length > 17 ? ch[16] : (ch.find(c => /\.(svg|gif|png)/i.test(c)) || '');
       const N = Math.max(1, liste.split(',').length);
       const boucle = ch[18] !== 'false';
       const regle = (S, f) => { const [v, r] = niveau(S, i); const n = f(Math.abs(v)); S[i] = String(v < 0 ? -n : n) + r; };
