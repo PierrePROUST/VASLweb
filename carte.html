@@ -1807,7 +1807,9 @@ function _pieceVaslTools(ts){
   return null;
 }
 
-const _vtEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Les champs viennent du fichier ou d'un autre joueur : échappés aussi
+// pour un attribut (title="…").
+const _vtEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // Tours « 2,4,7 » ou « 2-5, 8 » (ScenarioCardButton.expandTurnSpec).
 function _vtTours(spec){
@@ -1823,13 +1825,16 @@ function _vtTours(spec){
 // État de ScenarioCardEditor (mySetState), dans l'ordre d'écriture.
 function _vtCarte(c){
   const v = (i, d) => (c[i] !== undefined && c[i] !== '') ? c[i] : d;
+  // Le code de nation entre dans des classes et la feuille de style :
+  // seuls les codes connus passent, les autres valent « alminor ».
+  const nat = (i, d) => { const x = v(i, d); return Object.prototype.hasOwnProperty.call(VT_NATIONS, x) ? x : 'alminor'; };
   return {
     id: v(0, ''), nom: v(1, ''), date: v(2, ''), lieu: v(3, ''), tours: v(4, '6'),
     toursLV: v(5, ''), toursNuit: v(6, ''),
     j: [
-      {code: v(7, 'germans'), nom: v(8, ''), elr: v(9, '1'), san: v(10, '1'), renforts: v(16, '')},
-      {code: v(11, 'americans'), nom: v(12, ''), elr: v(13, '1'), san: v(14, '1'), renforts: v(17, '')},
-      {code: v(50, 'russian'), nom: v(51, ''), elr: v(52, '1'), san: v(53, '1'), renforts: v(54, '')}
+      {code: nat(7, 'germans'), nom: v(8, ''), elr: v(9, '1'), san: v(10, '1'), renforts: v(16, '')},
+      {code: nat(11, 'americans'), nom: v(12, ''), elr: v(13, '1'), san: v(14, '1'), renforts: v(17, '')},
+      {code: nat(50, 'russian'), nom: v(51, ''), elr: v(52, '1'), san: v(53, '1'), renforts: v(54, '')}
     ],
     vc: v(15, ''), police: v(18, 'Verdana'), disposition: v(20, 'horizontal'),
     nvr: v(36, '-'), joueurs: parseInt(v(49, '2'), 10) === 3 ? 3 : 2
@@ -3984,6 +3989,14 @@ function infoDissimulation(p){
   return {};
 }
 
+// Pion qui sépare deux lieux dans une pile (prototype « Location » :
+// niveau de bâtiment, pont…) : propriété separateLocation. Un « ? » ne
+// dissimule rien sous lui (Concealment.keyEvent, Concealable).
+function _lieuSepare(p){
+  const ts = _developperPrototypes(_splitTypeState(p.seg), 0);
+  return !!ts && ts.typ.some(t => /^mark;separateLocation(;|$)/.test(t.replace(/\\/g, '')));
+}
+
 // Masque (`qui` = joueur) ou démasque (null) une unité, avec son « D/ ».
 function fixerMasque(p, qui){
   const te = _typeEtEtat(p.seg);
@@ -4014,7 +4027,12 @@ function dissimuler(p){
   }
   fixerMasque(p, idJoueur());
   const s = pile(cle(p));
-  const dejaLa = s.slice(s.indexOf(p) + 1).some(q => { const c = infoDissimulation(q); return c.compteur && c.nation === m.nation; });
+  let dejaLa = false;
+  for(const q of s.slice(s.indexOf(p) + 1)){
+    if(_lieuSepare(q)) break;
+    const c = infoDissimulation(q);
+    if(c.compteur && c.nation === m.nation){ dejaLa = true; break; }
+  }
   if(!dejaLa) poserConcealment(p, m);
   ajusterDissimulation(cle(p));
   chatLog(`❔ ${p.nom} dissimulé`);
@@ -4054,6 +4072,7 @@ function ajusterDissimulation(k){
     for(let i = s.length - 1; i >= 0; i--){
       const m = infos[i];
       if(m.compteur){ nations.add(m.nation); continue; }
+      if(_lieuSepare(s[i])){ nations.clear(); continue; }
       if(!m.unite || (m.proprio && m.proprio !== idJoueur())) continue;
       const doit = nations.has(m.nation);
       if(doit && !m.proprio) fixerMasque(s[i], idJoueur());
