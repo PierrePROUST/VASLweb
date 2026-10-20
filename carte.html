@@ -3714,7 +3714,7 @@ function rapportsEtat(p, type, tirees, cmds, nomAvant){
 function envoyerChat(texte){
   texte = (texte || '').trim();
   if(!texte) return;
-  _avantAction();
+  // Un message ne change pas la position : la relecture continue.
   const msg = `<${joueur()}> - ${texte}`;
   _logCmd('CHAT' + msg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
   afficherChat(msg);
@@ -4945,7 +4945,6 @@ function lancerdr(cat){
 
 // VASSAL encode le texte du chat en entités HTML.
 function _publierJet(msg){
-  _avantAction();
   _logCmd('CHAT' + msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
   afficherChat(msg);
 }
