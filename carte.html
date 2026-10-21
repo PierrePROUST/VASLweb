@@ -7177,7 +7177,7 @@ async function majApparence(p, d){
   }
   if(gen !== p.gen) return;
   p.el.querySelectorAll('.couche').forEach(e => e.remove());
-  p.face.before(...couches.filter(o => o.dessous).reverse());
+  p.face.before(...couches.filter(o => o.dessous));
   p.el.append(...couches.filter(o => !o.dessous));
   for(const e of p.el.querySelectorAll('.etiq')) placerLabel(e, p.sz);
   rendrePile(cle(p));
@@ -7230,7 +7230,10 @@ async function imagesCouches(d, k, cote){
     o.dessous = iFace >= 0 && i > iFace;
     out.push(o);
   }
-  return out;
+  // Ordre de dessin de VASSAL : de la couche la plus interne à la plus
+  // externe. Le compteur Firelane pose sa face opaque (FL-1…) sous le
+  // triangle « Alt Grain » : dans l'ordre inverse, le triangle disparaissait.
+  return out.reverse();
 }
 
 // Vignette composée — fond et couches — d'un pion de la palette. Bien
@@ -7247,7 +7250,7 @@ async function composerVignette(boite, d, cote){
   face.style.cssText = 'left:0;top:0;width:100%;height:100%';
   const couches = await imagesCouches(d, k, cote);
   // La plus interne d'abord : c'est l'ordre de dessin de VASSAL.
-  boite.replaceChildren(...couches.filter(o => o.dessous).reverse(), face,
+  boite.replaceChildren(...couches.filter(o => o.dessous), face,
                         ...couches.filter(o => !o.dessous));
 }
 
