@@ -49,6 +49,8 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
 .barreIcones{display:flex;align-items:center;gap:4px;height:36px;padding:0 8px;background:var(--barre);
   border-bottom:1px solid var(--bord);overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin}
 .barreIcones .sep{align-self:center;height:20px}
+.barreDes{height:32px}
+.barreDes .act.ico{height:24px;min-width:0;padding:1px 8px;font-size:13px}
 .act.ico{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;min-width:30px;height:28px;flex:none}
 .act img{height:16px;vertical-align:-3px}
 .act.actif{border-color:var(--accent);color:var(--accent)}
@@ -12149,6 +12151,8 @@ const DISPOSITIONS = {
     },
     barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster',
             '|', 'relecture', 'los', 'unmoved', 'all', '|', 'reseau', 'utilisateur'],
+    // Les dés restent à portée, en boutons sous la barre d'icônes.
+    barreDes: [...DES.filter(d => d.id.startsWith('DR_')).map(d => d.id), '|', ...DES.filter(d => d.id.startsWith('dr_')).map(d => d.id)],
     panneau: ['pile', 'palette', 'des']
   }
 };
@@ -12167,6 +12171,7 @@ function appliquerProfil(p){
   haut.replaceChildren(); gauche.replaceChildren(); bas.replaceChildren();
   if(d.menus) haut.appendChild(construireMenus(d.menus));
   if(d.barre) haut.appendChild(construireBarre(d.barre, 'barreIcones'));
+  if(d.barreDes) haut.appendChild(construireBarre(d.barreDes, 'barreIcones barreDes'));
   construireOnglets(d.panneau || ['pile', 'palette', 'des']);
   if(d.construire) d.construire();
   // Le tiroir de la tablette et les vues du téléphone partent fermés ; au
