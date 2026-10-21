@@ -14,6 +14,7 @@
   --menu-doux:#a8a8a8; --champ:#232323;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;height:100%;background:var(--fond);color:var(--texte);
   font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 body{display:flex;flex-direction:column;overflow:hidden}
@@ -26,13 +27,78 @@ button:hover{border-color:var(--accent)}
 /* Pas de délai de double appui ni de zoom de page sur les commandes. */
 button,select,label,.onglet,.wli,.lig,.vig{touch-action:manipulation}
 button:disabled{opacity:.4;cursor:default}
-#zoomTxt{min-width:52px;text-align:center;color:var(--doux)}
+/* ── Interface : menus, barre d'icônes, panneau à onglets (profil PC). */
+:root{--cible:28px;--marge-h:env(safe-area-inset-top,0px);--marge-b:env(safe-area-inset-bottom,0px);
+  --marge-g:env(safe-area-inset-left,0px);--marge-d:env(safe-area-inset-right,0px)}
+body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
+#chromeHaut,#chromeBas,#chromeGauche{flex:none}
+.menus{display:flex;align-items:center;height:26px;padding:0 6px;background:var(--barre);font-size:13px}
+.menus h1{font-size:13px;margin:0 10px 0 2px;font-weight:600;color:var(--doux);white-space:nowrap}
+.menus .titreMenu{background:none;border:1px solid transparent;padding:2px 9px;border-radius:3px}
+.menus .titreMenu:hover,.menus .titreMenu.ouvert,.menus .titreMenu:focus-visible{background:#333;border-color:transparent}
+.deroulant{position:fixed;z-index:9650;min-width:220px;max-width:360px;max-height:80vh;overflow:auto;padding:3px 0;
+  background:var(--menu-fond);color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:4px;
+  box-shadow:0 6px 20px rgba(0,0,0,.55);font-size:13px;user-select:none;-webkit-user-select:none}
+.deroulant .it{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 6px;cursor:pointer;white-space:nowrap}
+.deroulant .it:hover,.deroulant .it.focus{background:var(--menu-survol);color:#fff}
+.deroulant .it .ck{width:14px;text-align:center;flex:none}
+.deroulant .it .lb{flex:1}
+.deroulant .it .rc{opacity:.6;font-size:11px}
+.deroulant .it.off{color:#777;cursor:default;background:none}
+.deroulant .sepm{height:1px;background:var(--menu-bord);margin:3px 0}
+.barreIcones{display:flex;align-items:center;gap:4px;height:36px;padding:0 8px;background:var(--barre);
+  border-bottom:1px solid var(--bord);overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:thin}
+.barreIcones .sep{align-self:center;height:20px}
+.act.ico{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;min-width:30px;height:28px;flex:none}
+.act img{height:16px;vertical-align:-3px}
+.act.actif{border-color:var(--accent);color:var(--accent)}
+.act.enreg.actif{border-color:#c03a3a;color:#ff8a8a}
+.act.reseau.actif{border-color:#3c8f4a;color:#9fe0a8}
+.act.admin{border-color:#c0392b;color:#ff8a7a}
+.etiqAct{color:var(--doux);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+.etiqAct.zoom{min-width:46px;text-align:center}
+.etiqAct.enreg{color:#e05252;font-size:12px}
+.groupeAct{display:inline-flex;align-items:center;gap:4px;flex:none}
+.coteOnglets{display:flex;flex:none;background:#262626;border-bottom:1px solid var(--bord)}
+.coteOnglets button{flex:1;background:none;border:none;border-bottom:2px solid transparent;border-radius:0;
+  padding:6px 4px;color:var(--doux);font-size:13px}
+.coteOnglets button.actif{color:var(--accent);border-bottom-color:var(--accent)}
+.ongCorps{display:none;flex:1;min-height:0;flex-direction:column}
+.ongCorps.actif{display:flex}
+.poignee{flex:none;background:var(--bord);touch-action:none}
+.poignee.verticale{width:4px;cursor:col-resize}
+.poignee.horizontale{height:4px;cursor:row-resize}
+.poignee:hover{background:var(--accent)}
+.desBoutons{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:8px}
+.desBoutons .sepDes{grid-column:1/-1;height:1px;background:var(--bord);margin:2px 0}
+.infoScen{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;padding:4px 8px 8px}
+.infoScen label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--doux)}
+.infoScen input,.infoScen select{background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);
+  border-radius:4px;padding:4px;font:inherit;font-size:13px}
+.desAide{padding:4px 8px 8px;font-size:11px;color:var(--doux);overflow:auto}
+.desAide td{padding:1px 6px 1px 0}
+.act.bouton{padding:4px 6px;min-height:var(--cible)}
+.act.ligne{display:flex;align-items:center;gap:10px;width:100%;text-align:left;min-height:44px;padding:6px 12px;
+  background:none;border:none;border-bottom:1px solid #353535;border-radius:0;font-size:15px}
+.act.ligne .ic{width:24px;text-align:center;flex:none}
+.act.ligne .lb{flex:1}
+.act.ligne .rc{color:var(--menu-doux);font-size:12px}
+.act.ligne.actif{color:var(--accent)}
+.paletteCmd{top:12%;transform:translate(-50%,0);width:min(94vw,520px)}
+.paletteCmd .fc{padding:8px}
+#cmdRech{width:100%;padding:8px;font-size:15px}
+#cmdListe{max-height:55vh;overflow:auto;margin-top:6px}
+#cmdListe .it{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;cursor:pointer;border-radius:3px}
+#cmdListe .it.focus,#cmdListe .it:hover{background:var(--menu-survol);color:#fff}
+#cmdListe .it.off{opacity:.45}
+#cmdListe .rc{opacity:.65;font-size:12px;white-space:nowrap}
+.fenetre th[colspan]{padding-top:8px;color:var(--accent)}
 #mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
   user-select:none;-webkit-user-select:none}
 /* Couche de sélection décochée : ses pièces laissent passer le clic vers
    la carte ou le pion du dessous, comme si elles n'étaient qu'un décor. */
 .pion.verrou{pointer-events:none}
-#couches{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--doux)}
+#couches{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--doux);flex:none}
 #couches label{display:flex;align-items:center;gap:3px;cursor:pointer}
 #mapWrap.pan{cursor:grabbing}
 #mapWrap.dropping{outline:3px dashed var(--accent);outline-offset:-6px}
@@ -41,20 +107,14 @@ button:disabled{opacity:.4;cursor:default}
 .boardLayer{position:absolute;pointer-events:none}
 #vide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   text-align:center;color:var(--doux);padding:16px;pointer-events:none}
-#journal{max-height:96px;overflow:auto;background:var(--barre);border-top:1px solid var(--bord);
+#bas{flex:none}
+#journal{height:var(--hautJournal,96px);overflow:auto;background:var(--barre);border-top:1px solid var(--bord);
   padding:4px 10px;font-size:12px;color:var(--doux)}
 #journal div{white-space:pre-wrap}
 #journal .rap{color:#c9c2a8;font-style:italic}
 #journal .msg{color:var(--texte)}
 #chatBarre{display:flex;gap:6px;padding:3px 10px 5px;background:var(--barre)}
 #chatIn{flex:1;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px;padding:3px 6px;font:inherit;font-size:12px}
-#des{gap:4px;padding:4px 10px}
-#des button{padding:3px 8px;font-size:13px}
-#des label{font-size:12px;color:var(--doux);display:flex;align-items:center;gap:4px}
-#des input,#des select{background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);
-  border-radius:4px;padding:2px 4px;font:inherit;font-size:12px}
-#des input[type=number]{width:44px}
-#btUtilisateur.admin{border-color:#c0392b;color:#ff8a7a}
 /* Fenêtres d'identification et de gestion des utilisateurs. */
 .fenetre{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9800;
   width:min(92vw,380px);max-height:90vh;overflow:auto;background:var(--menu-fond);color:var(--menu-texte);
@@ -70,8 +130,6 @@ button:disabled{opacity:.4;cursor:default}
 .fenetre .fb{display:flex;gap:6px;flex-wrap:wrap}
 .fenetre .fb button{flex:1;min-height:32px}
 .fenetre .fb button.prim{background:#2f5f9e;color:#fff;border-color:#2f5f9e}
-#btNet.actif{border-color:#3c8f4a;color:#9fe0a8}
-#btLog.actif{border-color:#c03a3a;color:#ff8a8a}
 #fenLog{z-index:9900}
 .fenetre .fnote{margin:10px 0 0;font-size:11px;color:var(--menu-doux)}
 .fenetre table{width:100%;border-collapse:collapse;margin-bottom:6px}
@@ -87,14 +145,15 @@ button:disabled{opacity:.4;cursor:default}
 #journal .jet .san{color:#ff5a5a;font-weight:700}
 #journal .jet .qui{color:var(--doux)}
 .sep{width:1px;align-self:stretch;background:var(--bord);margin:0 4px}
-#logTxt{color:#e05252;font-size:12px}
 #corps{flex:1;display:flex;min-height:0}
 #corps #mapWrap{flex:1}
-#cote{width:320px;display:flex;flex-direction:column;background:var(--barre);
-  border-left:1px solid var(--bord);min-height:0}
+#cote{width:var(--largeurCote,320px);display:flex;flex-direction:column;background:var(--barre);
+  border-left:1px solid var(--bord);min-height:0;flex:none}
 #cote.ferme{display:none}
+#corps:has(#cote.ferme) #poigneeCote{display:none}
 #cote h2{font-size:13px;margin:0;padding:6px 8px;background:#262626;border-bottom:1px solid var(--bord)}
-#pile{max-height:40%;overflow:auto;border-bottom:1px solid var(--bord)}
+#pile{flex:1;overflow:auto;border-bottom:1px solid var(--bord)}
+#couches{padding:6px 8px;flex-wrap:wrap}
 #pile:empty::before{content:"Cliquer un pion pour voir sa pile.";display:block;padding:8px;color:var(--doux);font-size:12px}
 .lig{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid #2c2c2c;
   touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
@@ -169,7 +228,6 @@ button:disabled{opacity:.4;cursor:default}
 .editLabel button{background:#2f5f9e;color:#fff;border:none;padding:3px 8px}
 /* Fil de visée (VASLThread) : calque du fil, étiquettes noires de taille
    fixe à l'écran, pions transparents pendant la visée. */
-#btLOS.actif{border-color:var(--accent);color:var(--accent)}
 #mapWrap.visee{cursor:crosshair}
 #mapInner.losActif .pion{opacity:.33}
 #filLOS{position:absolute;left:0;top:0;z-index:8500;pointer-events:none;overflow:visible}
@@ -182,78 +240,49 @@ button:disabled{opacity:.4;cursor:default}
 </style>
 </head>
 <body>
-<div class="barre">
-  <h1>VASL — Carte</h1>
-  <button onclick="doOpen()">Ouvrir .vsav / .vlog</button>
-  <button id="btUtilisateur" onclick="demanderUtilisateur()" title="Utilisateur connecté — cliquer pour changer ou gérer les utilisateurs">👤 Observateur</button>
-  <button id="btNet" onclick="ouvrirReseau()" title="Partie à distance : héberger ou rejoindre une salle, comme le serveur de VASSAL">🌐 Hors ligne</button>
-  <span class="sep"></span>
-  <button onclick="zoomOut()" title="Zoom arrière">−</button>
-  <span id="zoomTxt">100 %</span>
-  <button onclick="zoomIn()" title="Zoom avant">+</button>
-  <button onclick="zoomFit()">Ajuster</button>
-  <button onclick="setZoom(1)">100 %</button>
-  <span class="sep"></span>
-  <button id="btVsav" onclick="ecrireVsav()" disabled>Exporter .vsav</button>
-  <button id="btLog" onclick="basculerLog()" disabled>Log</button>
-  <button id="btUndo" onclick="annuler()" disabled title="Undo last move [Ctrl+Z]">↶ Undo</button>
-  <span id="logTxt"></span>
-  <span class="sep"></span>
-  <span id="barreLog" style="display:none">
-    <button id="lgDebut" onclick="allerLog(0)" title="Début du log">⏮</button>
-    <button id="lgArr" onclick="reculerLog()" title="Coup précédent [Page précédente]">◀</button>
-    <span id="logPos" style="font-variant-numeric:tabular-nums;color:var(--doux)">0 / 0</span>
-    <button id="lgAv" onclick="avancerLog()" title="Coup suivant [Page suivante]">▶</button>
-    <button id="lgFin" onclick="allerLog(_etapes.length)" title="Fin du log">⏭</button>
-    <span class="sep"></span>
-  </span>
-  <button id="btUnmoved" onclick="leverDeplaces()" title="Mark unmoved — lève le statut Moved de tous les pions"><img id="icUnmoved" alt="" style="height:16px;vertical-align:-3px"> Unmoved</button>
-  <button id="btRemove" onclick="ouvrirMassRemover(this)" title="Remove all counters of a given type"><img id="icRemove" alt="" style="height:16px;vertical-align:-3px"> ALL</button>
-  <button id="btLOS" onclick="armerFil(event.ctrlKey && event.shiftKey ? 'l' : 'L')" oncontextmenu="event.preventDefault(); basculerVerbeux()"
-    title="Draw LOS Thread [F10] — Ctrl+Maj+clic : fil silencieux [Ctrl+Maj+F10]. Pendant le tracé : ↑/↓ niveau de la cible, Ctrl+↑/↓ niveau de la source. Clic droit : Verbose LOS mode">LOS</button>
-  <span class="sep"></span>
-  <button onclick="basculerCote()">Pions</button>
-  <span class="sep"></span>
-  <span id="couches" title="Couches que le clic peut sélectionner ; les autres laissent passer le clic">Sélection :
-    <label><input type="checkbox" data-couche="unite"> Unités</label>
-    <label><input type="checkbox" data-couche="marqueur"> Marqueurs</label>
-    <label><input type="checkbox" data-couche="carte"> Cartes et panneaux</label>
-  </span>
-</div>
-<div class="barre" id="des">
-  <button onclick="lancerDR('Other')" title="DR [F2]">DR</button>
-  <button onclick="lancerDR('IFT')" title="IFT attack DR [Ctrl+Maj+I]">IFT</button>
-  <button onclick="lancerDR('TH')" title="To Hit DR [Ctrl+Maj+H]">TH</button>
-  <button onclick="lancerDR('TK')" title="To Kill DR [Ctrl+Maj+K]">TK</button>
-  <button onclick="lancerDR('MC')" title="Morale Check DR [Ctrl+Maj+M]">MC</button>
-  <button onclick="lancerDR('Rally')" title="Rally DR [Ctrl+Maj+R]">Rally</button>
-  <button onclick="lancerDR('CC')" title="Close Combat DR [Ctrl+Maj+C]">CC</button>
-  <button onclick="lancerDR('TC')" title="Task Check DR [Ctrl+Maj+T]">TC</button>
-  <span class="sep"></span>
-  <button onclick="lancerdr('Other')" title="dr [F1]">dr</button>
-  <button onclick="lancerdr('SA')" title="Sniper Activation dr [Ctrl+Maj+S]">SA</button>
-  <button onclick="lancerdr('RS')" title="Random Selection dr [Ctrl+Maj+D]">RS</button>
-  <span class="sep"></span>
-  <label>SAN Axis <input type="number" id="sanAxis" min="0" max="12" placeholder="?"></label>
-  <label>Allied <input type="number" id="sanAllied" min="0" max="12" placeholder="?"></label>
-  <label title="Booby Trap (A/B/C)">Piège Axis <select id="bbAxis"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
-  <label>Allied <select id="bbAllied"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
-</div>
+<!-- L'interface (menus, barres, rail, navigation) est construite par
+     appliquerProfil() d'après le terminal ; la carte, les pions, le journal
+     et les contrôles de formulaire ne sont jamais recréés, seulement placés. -->
+<div id="chromeHaut"></div>
 <div id="corps">
+  <div id="chromeGauche"></div>
   <div id="mapWrap">
     <div id="mapScaler"><div id="mapInner"></div></div>
     <div id="vide">Ouvrir un fichier .vsav ou .vlog, ou le déposer ici,<br>pour afficher la carte du scénario.</div>
   </div>
+  <div id="poigneeCote" class="poignee verticale" title="Glisser pour régler la largeur du panneau"></div>
   <div id="cote">
-    <h2>Pile sélectionnée</h2>
-    <div id="pile"></div>
-    <h2>Palette VASL</h2>
-    <input id="palRech" placeholder="Rechercher un pion…" autocomplete="off">
-    <div id="palCorps"></div>
+    <div id="coteOnglets" class="coteOnglets" role="tablist"></div>
+    <div id="ongPile" class="ongCorps" role="tabpanel">
+      <div id="pile"></div>
+      <span id="couches" title="Couches que le clic peut sélectionner ; les autres laissent passer le clic">Sélection :
+        <label><input type="checkbox" data-couche="unite"> Unités</label>
+        <label><input type="checkbox" data-couche="marqueur"> Marqueurs</label>
+        <label><input type="checkbox" data-couche="carte"> Cartes et panneaux</label>
+      </span>
+    </div>
+    <div id="ongPalette" class="ongCorps" role="tabpanel">
+      <input id="palRech" placeholder="Rechercher un pion…" autocomplete="off" aria-label="Rechercher un pion">
+      <div id="palCorps"></div>
+    </div>
+    <div id="ongDes" class="ongCorps" role="tabpanel">
+      <div id="desBoutons" class="desBoutons"></div>
+      <div id="infoScen" class="infoScen">
+        <label>SAN Axis <input type="number" id="sanAxis" min="0" max="12" placeholder="?"></label>
+        <label>SAN Allied <input type="number" id="sanAllied" min="0" max="12" placeholder="?"></label>
+        <label title="Booby Trap (A/B/C)">Piège Axis <select id="bbAxis"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
+        <label title="Booby Trap (A/B/C)">Piège Allied <select id="bbAllied"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
+      </div>
+      <div id="desAide" class="desAide"></div>
+    </div>
   </div>
 </div>
-<div id="journal"></div>
-<div id="chatBarre"><input id="chatIn" placeholder="Message au chat (Entrée pour envoyer)" autocomplete="off"></div>
+<div id="poigneeJournal" class="poignee horizontale" title="Glisser pour régler la hauteur du journal"></div>
+<div id="bas">
+  <div id="journal" role="log" aria-live="polite"></div>
+  <div id="chatBarre"><input id="chatIn" placeholder="Message au chat (Entrée pour envoyer)" autocomplete="off" aria-label="Message au chat"></div>
+</div>
+<div id="chromeBas"></div>
 <input type="file" id="fileImport" style="display:none" onchange="handleFileImport(this)">
 
 <script>
@@ -1298,7 +1327,7 @@ function setZoom(z, fx, fy){
   _majScaler();
   wrap.scrollLeft = wx*zoom - (fx - wr.left);
   wrap.scrollTop  = wy*zoom - (fy - wr.top);
-  document.getElementById('zoomTxt').textContent = Math.round(zoom*100) + ' %';
+  rafraichirActions(['zoomTxt']);
   if(_fil) dessinerFil();
   // L'effectif des piles ne se montre que de loin.
   if(_effectifPiles && loin !== _vueDeLoin()) rendreToutes();
@@ -5332,7 +5361,7 @@ function armerFil(mode){
   if(_filArme){ desarmerFil(); return; }
   if(!_losBoards){ chatLog('ℹ️ Ouvrir une partie avant de tracer une ligne de vue'); return; }
   _filArme = mode;
-  document.getElementById('btLOS').classList.add('actif');
+  rafraichirActions(['los', 'losMuet']);
   document.getElementById('mapWrap').classList.add('visee');
   document.getElementById('mapInner').classList.add('losActif');
   fermerMenu(); cacherSurvol();
@@ -5340,7 +5369,7 @@ function armerFil(mode){
 }
 function desarmerFil(){
   _filArme = null;
-  document.getElementById('btLOS').classList.remove('actif');
+  rafraichirActions(['los', 'losMuet']);
   document.getElementById('mapWrap').classList.remove('visee');
   document.getElementById('mapInner').classList.remove('losActif');
   _effacerFil();
@@ -7060,6 +7089,7 @@ function _brancherCouches(){
       COUCHES_SEL[c.dataset.couche] = c.checked;
       try { localStorage.setItem('couchesSel', JSON.stringify(COUCHES_SEL)); } catch(e){}
       rendreToutes();
+      rafraichirActions(['couche_' + c.dataset.couche]);
     });
   });
 }
@@ -7218,10 +7248,7 @@ const _aAnnuler = () => {
   return null;
 };
 
-function majUndo(){
-  const b = document.getElementById('btUndo');
-  if(b) b.disabled = !_aAnnuler();
-}
+function majUndo(){ rafraichirActions(['undo']); }
 
 function annuler(){
   const e = _aAnnuler();
@@ -7614,15 +7641,7 @@ function cadrerSur(pts){
   wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - wrap.clientHeight / 2;
 }
 
-function majBarreLog(){
-  const b = document.getElementById('barreLog');
-  b.style.display = _etapes.length ? '' : 'none';
-  document.getElementById('logPos').textContent = `${_logPos} / ${_etapes.length}`;
-  document.getElementById('lgDebut').disabled = document.getElementById('lgArr').disabled = _logPos <= _logPlancher;
-  document.getElementById('lgArr').title = _logPlancher > 0 && _logPos <= _logPlancher
-    ? 'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler' : 'Coup précédent [Page précédente]';
-  document.getElementById('lgFin').disabled = document.getElementById('lgAv').disabled = _logPos >= _etapes.length;
-}
+function majBarreLog(){ rafraichirActions(['relecture', ...ACTIONS.relecture.groupe]); }
 
 function _dessous(p){
   const s = pile(cle(p));
@@ -9228,7 +9247,6 @@ function _appuiLong(e, p){
   document.addEventListener('pointercancel', leve);
 }
 
-function basculerCote(){ document.getElementById('cote').classList.toggle('ferme'); }
 
 // ═══════════════════════════════════════════════════════════════
 // BASE DE DONNÉES DES PIONS — le buildFile du module VASL
@@ -9587,13 +9605,7 @@ function seConnecter(u, admin){
                     : '👤 Observateur : les pions dissimulés et HIP restent cachés'));
 }
 
-function majUtilisateur(){
-  const b = document.getElementById('btUtilisateur');
-  if(!b) return;
-  b.textContent = '👤 ' + (_admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'Observateur'));
-  b.classList.toggle('admin', _admin);
-  b.title = 'Utilisateur connecté — cliquer pour changer ou gérer les utilisateurs';
-}
+function majUtilisateur(){ rafraichirActions(['utilisateur']); }
 
 // ── Accès aux pions masqués.
 // « web » est l'identifiant d'avant les comptes : il ne réserve rien.
@@ -10474,13 +10486,7 @@ function _netCoup(c){
 }
 
 function majNet(){
-  const b = document.getElementById('btNet');
-  if(b){
-    const n = _net, s = _netSalleCourante(n);
-    const nb = s ? n.joueurs.filter(j => j.salle === s).length : 0;
-    b.textContent = !n ? '🌐 Hors ligne' : s ? `🌐 ${s} (${nb})` : '🌐 Connexion…';
-    b.classList.toggle('actif', !!n);
-  }
+  rafraichirActions(['reseau']);
   const f = document.getElementById('fenUtil');
   if(f && f.dataset.net) ouvrirReseau();
 }
@@ -10694,15 +10700,7 @@ function _fenetreLog(titre, corps, brancher){
   brancher(w);
 }
 
-function majBoutons(){
-  document.getElementById('btVsav').disabled = !_source;
-  const b = document.getElementById('btLog');
-  b.disabled = !_source && !enregistreLog();
-  b.classList.toggle('actif', enregistreLog());
-  b.textContent = enregistreLog() ? '⏹ Log' : 'Log';
-  b.title = enregistreLog() ? `Terminer le log « ${_logNom} » et l'écrire [Alt+Maj+W]` : 'Commencer un fichier de log [Alt+W]';
-  document.getElementById('logTxt').textContent = enregistreLog() ? '⏺ ' + _nbActions() : '';
-}
+function majBoutons(){ rafraichirActions(['vsav', 'log', 'logTxt']); }
 
 // Piles de la carte de jeu, d'après l'état courant. VASL écrit aussi les
 // piles d'un seul pion. La couche (@@n) est celle de la pièce du fond
@@ -10847,6 +10845,633 @@ function _zipWrite(files){
   return new Blob([...locals, ...centrals, eo], {type: 'application/octet-stream'});
 }
 
+// ═══════════════════════════════════════════════════════════════
+// INTERFACE — PROFILS DE TERMINAL ET REGISTRE D'ACTIONS
+// Toute action de l'interface est déclarée une seule fois (ACTIONS) ;
+// chaque profil (PC, tablette, téléphone) dit où l'afficher
+// (DISPOSITIONS). rafraichirActions() met à jour tout élément qui porte
+// data-action : libellé, raccourci, état actif, allumé, coché, visible.
+// Les raccourcis clavier ne passent pas par ce registre : leurs écouteurs
+// restent ceux de leur section ; « touche » ne sert qu'à l'affichage.
+// ═══════════════════════════════════════════════════════════════
+const _v = f => typeof f === 'function' ? f() : f;
+
+// Dés : catégories et raccourcis d'ASLDiceBot (voir _brancherDes).
+const DES = [
+  {id: 'DR_Other', lib: 'DR', titre: 'DR', touche: 'F2', faire: () => lancerDR('Other')},
+  {id: 'DR_IFT', lib: 'IFT', titre: 'IFT attack DR', touche: 'Ctrl+Maj+I', faire: () => lancerDR('IFT')},
+  {id: 'DR_TH', lib: 'TH', titre: 'To Hit DR', touche: 'Ctrl+Maj+H', faire: () => lancerDR('TH')},
+  {id: 'DR_TK', lib: 'TK', titre: 'To Kill DR', touche: 'Ctrl+Maj+K', faire: () => lancerDR('TK')},
+  {id: 'DR_MC', lib: 'MC', titre: 'Morale Check DR', touche: 'Ctrl+Maj+M', faire: () => lancerDR('MC')},
+  {id: 'DR_Rally', lib: 'Rally', titre: 'Rally DR', touche: 'Ctrl+Maj+R', faire: () => lancerDR('Rally')},
+  {id: 'DR_CC', lib: 'CC', titre: 'Close Combat DR', touche: 'Ctrl+Maj+C', faire: () => lancerDR('CC')},
+  {id: 'DR_TC', lib: 'TC', titre: 'Task Check DR', touche: 'Ctrl+Maj+T', faire: () => lancerDR('TC')},
+  {id: 'dr_Other', lib: 'dr', titre: 'dr', touche: 'F1', faire: () => lancerdr('Other')},
+  {id: 'dr_SA', lib: 'SA', titre: 'Sniper Activation dr', touche: 'Ctrl+Maj+S', faire: () => lancerdr('SA')},
+  {id: 'dr_RS', lib: 'RS', titre: 'Random Selection dr', touche: 'Ctrl+Maj+D', faire: () => lancerdr('RS')}
+];
+
+const _texteReseau = () => {
+  const n = _net, s = n && _netSalleCourante(n);
+  const nb = s ? n.joueurs.filter(j => j.salle === s).length : 0;
+  return !n ? 'Hors ligne' : s ? `${s} (${nb})` : 'Connexion…';
+};
+const _nomUtilisateur = () => _admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'Observateur');
+const _enRelecture = () => _etapes.length > 0;
+
+const ACTIONS = {
+  ouvrir:   {lib: 'Ouvrir .vsav / .vlog', court: 'Ouvrir', ico: '📂', faire: doOpen},
+  vsav:     {lib: 'Exporter .vsav', court: 'Exporter', ico: '💾', faire: ecrireVsav, actif: () => !!_source},
+  log:      {lib: () => enregistreLog() ? `Terminer le log « ${_logNom} » et l'écrire` : 'Commencer un fichier de log',
+             court: () => enregistreLog() ? '⏹ Log' : 'Log', ico: '⏺', classe: 'enreg',
+             touche: () => enregistreLog() ? 'Alt+Maj+W' : 'Alt+W', faire: basculerLog,
+             actif: () => !!_source || enregistreLog(), allume: enregistreLog},
+  logTxt:   {etiquette: () => enregistreLog() ? '⏺ ' + _nbActions() : '', classe: 'enreg'},
+  undo:     {lib: 'Annuler le dernier coup (Undo)', court: 'Undo', ico: '↶', touche: 'Ctrl+Z', faire: annuler,
+             actif: () => !!_aAnnuler()},
+  unmoved:  {lib: 'Mark unmoved — lever le statut Moved de tous les pions', court: 'Unmoved', img: 'mov.gif',
+             faire: leverDeplaces},
+  all:      {lib: 'Remove all — retirer tous les pions d\'un type…', court: 'ALL', img: 'QC/Remove.png',
+             faire: ancre => ouvrirMassRemover(ancre)},
+  los:      {lib: 'Ligne de vue (LOS)', court: 'LOS', ico: '👁', touche: 'F10',
+             faire: (ancre, e) => armerFil(e && e.ctrlKey && e.shiftKey ? 'l' : 'L'), allume: () => !!_filArme},
+  losMuet:  {lib: 'Ligne de vue silencieuse', court: 'LOS muette', ico: '👁', touche: 'Ctrl+Maj+F10',
+             faire: () => armerFil('l'), allume: () => _filArme === 'l'},
+  verbeux:  {lib: 'LOS détaillée (Verbose LOS mode)', coche: () => _losVerbeux, faire: basculerVerbeux},
+  zoomMoins:{lib: 'Zoom arrière', ico: '−', faire: zoomOut},
+  zoomPlus: {lib: 'Zoom avant', ico: '+', faire: zoomIn},
+  zoomTxt:  {etiquette: () => Math.round(zoom * 100) + ' %', classe: 'zoom'},
+  ajuster:  {lib: 'Ajuster la carte à la vue', court: 'Ajuster', ico: '⤢', faire: zoomFit},
+  zoom100:  {lib: 'Zoom 100 %', court: '100 %', ico: '1:1', faire: () => setZoom(1)},
+  reseau:   {lib: () => 'Partie à distance — ' + _texteReseau(), court: _texteReseau, ico: '🌐', classe: 'reseau',
+             texteBarre: true, faire: ouvrirReseau, allume: () => !!_net},
+  utilisateur: {lib: () => `Utilisateur : ${_nomUtilisateur()} — changer ou gérer les utilisateurs`,
+             court: _nomUtilisateur, ico: '👤', texteBarre: true, faire: demanderUtilisateur,
+             classe: () => _admin ? 'admin' : ''},
+  pions:    {lib: 'Panneau Pile, Palette, Dés', court: 'Pions', ico: '♟', faire: () => basculerCote(),
+             coche: () => !document.getElementById('cote').classList.contains('ferme')},
+  journal:  {lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => basculerJournal(),
+             coche: () => !document.getElementById('bas').hidden},
+  infoScenario: {lib: 'SAN et pièges du scénario…', court: 'SAN', ico: '🎯', faire: () => montrerOnglet('des')},
+  palette:  {lib: 'Palette des pions', court: 'Palette', ico: '🗂', faire: () => montrerOnglet('palette')},
+  pile:     {lib: 'Pile sélectionnée', court: 'Pile', ico: '▤', faire: () => montrerOnglet('pile')},
+  des:      {lib: 'Dés', court: 'Dés', ico: '🎲', faire: () => montrerOnglet('des')},
+  effectif: {lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
+  commandes:{lib: 'Palette de commandes…', court: 'Commandes', ico: '⌘', touche: 'Ctrl+K', faire: () => ouvrirPaletteCommandes()},
+  raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
+  couche_unite:    {lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
+  couche_marqueur: {lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
+  couche_carte:    {lib: 'Sélection : cartes et panneaux', coche: () => COUCHES_SEL.carte, faire: () => basculerCouche('carte')},
+  profil_auto:     {lib: 'Affichage : automatique', coche: () => _profilChoisi === 'auto', faire: () => choisirProfil('auto')},
+  profil_pc:       {lib: 'Affichage : PC', coche: () => _profilChoisi === 'pc', faire: () => choisirProfil('pc')},
+  profil_tablette: {lib: 'Affichage : tablette', coche: () => _profilChoisi === 'tablette', faire: () => choisirProfil('tablette')},
+  profil_mobile:   {lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
+  // Relecture d'un .vlog : visible seulement s'il reste des coups.
+  relecture:{groupe: ['lgDebut', 'lgArr', 'logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
+  lgDebut:  {lib: 'Début du log', ico: '⏮', faire: () => allerLog(0), actif: () => _logPos > _logPlancher},
+  lgArr:    {lib: () => _logPlancher > 0 && _logPos <= _logPlancher
+               ? 'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler' : 'Coup précédent',
+             ico: '◀', touche: 'Page précédente', faire: () => reculerLog(), actif: () => _logPos > _logPlancher},
+  logPos:   {etiquette: () => `${_logPos} / ${_etapes.length}`},
+  lgAv:     {lib: 'Coup suivant', ico: '▶', touche: 'Page suivante', faire: () => avancerLog(),
+             actif: () => _logPos < _etapes.length},
+  lgFin:    {lib: 'Fin du log', ico: '⏭', faire: () => allerLog(_etapes.length), actif: () => _logPos < _etapes.length}
+};
+for(const d of DES) ACTIONS[d.id] = {lib: d.titre, court: d.lib, ico: d.lib, touche: d.touche, faire: d.faire, de: true};
+
+// ── Rendu d'une action, sous la forme demandée :
+//   'icone'   bouton de barre (icône, et texte pour l'utilisateur, le réseau)
+//   'bouton'  bouton à libellé court (dés, rail)
+//   'menu'    entrée de menu déroulant, raccourci à droite
+//   'ligne'   entrée de feuille ou de liste, en grand
+function rendreAction(id, forme = 'icone'){
+  const a = ACTIONS[id];
+  if(!a) return document.createTextNode('');
+  if(a.groupe){
+    const g = document.createElement('span');
+    g.className = 'groupeAct';
+    g.dataset.action = id;
+    for(const x of a.groupe) g.appendChild(rendreAction(x, forme === 'menu' ? 'icone' : forme));
+    return g;
+  }
+  if(a.etiquette){
+    const e = document.createElement('span');
+    e.className = 'etiqAct ' + (a.classe || '');
+    e.dataset.action = id;
+    return e;
+  }
+  const menu = forme === 'menu';
+  const el = document.createElement(menu ? 'div' : 'button');
+  el.dataset.action = id;
+  el.dataset.forme = forme;
+  if(menu){
+    el.className = 'it';
+    el.setAttribute('role', a.coche ? 'menuitemcheckbox' : 'menuitem');
+    el.tabIndex = -1;
+    el.innerHTML = '<span class="ck"></span><span class="lb"></span><span class="rc"></span>';
+  } else {
+    el.type = 'button';
+    el.className = 'act ' + forme + (a.de ? ' de' : '');
+    if(a.img){
+      const im = document.createElement('img');
+      im.alt = '';
+      chargerImage(a.img).then(u => { if(u) im.src = u; });
+      el.appendChild(im);
+    } else if(a.ico && forme !== 'bouton'){
+      const i = document.createElement('span');
+      i.className = 'ic'; i.setAttribute('aria-hidden', 'true');
+      i.textContent = a.ico;
+      el.appendChild(i);
+    }
+    const t = document.createElement('span');
+    t.className = 'lb';
+    el.appendChild(t);
+    if(forme === 'ligne'){ const rc = document.createElement('span'); rc.className = 'rc'; el.appendChild(rc); }
+  }
+  el.addEventListener('click', e => {
+    if(el.classList.contains('off') || el.disabled) return;
+    e.stopPropagation();
+    if(menu) fermerDeroulants();
+    executerAction(id, e.currentTarget, e);
+  });
+  if(id === 'los') el.addEventListener('contextmenu', e => {
+    // Clic droit sur le bouton LOS : Verbose LOS mode, comme VASL.
+    if(_dernierPointeur !== 'mouse') return;
+    e.preventDefault(); basculerVerbeux(); rafraichirActions(['verbeux']);
+  });
+  _majAction(el, a, id);
+  return el;
+}
+
+// Les actions passent toutes par ici : la fréquence d'usage sert à trier
+// les commandes des barres tactiles.
+function executerAction(id, ancre, e){
+  const a = ACTIONS[id];
+  if(!a || !a.faire || (a.actif && !a.actif())) return;
+  a.faire(ancre, e);
+  rafraichirActions();
+}
+
+function _majAction(el, a, id){
+  if(a.groupe){ el.hidden = !!(a.visible && !a.visible()); return; }
+  if(a.etiquette){ el.textContent = _v(a.etiquette); el.hidden = !!(a.visible && !a.visible()); return; }
+  const lib = _v(a.lib), t = _v(a.touche) || '';
+  const forme = el.dataset.forme;
+  el.title = t ? `${lib} [${t}]` : lib;
+  el.setAttribute('aria-label', lib);
+  const lb = el.querySelector('.lb');
+  if(lb){
+    lb.textContent = forme === 'menu' || forme === 'ligne' ? lib
+                   : forme === 'bouton' || (forme === 'icone' && (a.texteBarre || (!a.ico && !a.img))) ? _v(a.court || a.lib)
+                   : forme === 'rail' ? _v(a.court || a.lib) : '';
+  }
+  const rc = el.querySelector('.rc');
+  if(rc) rc.textContent = t;
+  const off = !!(a.actif && !a.actif());
+  if(forme === 'menu'){ el.classList.toggle('off', off); el.setAttribute('aria-disabled', String(off)); }
+  else el.disabled = off;
+  const allume = !!(a.allume && a.allume());
+  el.classList.toggle('actif', allume);
+  if(forme !== 'menu' && a.allume) el.setAttribute('aria-pressed', String(allume));
+  if(a.coche){
+    const c = !!a.coche();
+    el.setAttribute('aria-checked', String(c));
+    const ck = el.querySelector('.ck');
+    if(ck) ck.textContent = c ? '✓' : '';
+    if(forme !== 'menu') el.classList.toggle('actif', c);
+  }
+  const cl = _v(a.classe);
+  if(el._classe !== cl){ if(el._classe) el.classList.remove(el._classe); if(cl) el.classList.add(cl); el._classe = cl; }
+  el.hidden = !!(a.visible && !a.visible());
+}
+
+// Met à jour les éléments rendus, tous ou ceux des actions données.
+function rafraichirActions(ids){
+  const sel = ids ? ids.map(i => `[data-action="${i}"]`).join(',') : '[data-action]';
+  if(!sel) return;
+  for(const el of document.querySelectorAll(sel)){
+    const a = ACTIONS[el.dataset.action];
+    if(a) _majAction(el, a, el.dataset.action);
+  }
+}
+
+// ═══ INTERFACE — PROFILS DE TERMINAL ═══
+// Le profil se choisit d'après le pointeur et la taille de l'écran, jamais
+// d'après le navigateur annoncé ; le réglage « Affichage » peut l'imposer.
+// Geste par geste, c'est pointerType qui décide (PC portable tactile).
+let _profilChoisi = _lirePref('aslweb.profil') || 'auto';
+let _profil = null;
+function detecterProfil(){
+  if(_profilChoisi !== 'auto') return _profilChoisi;
+  const tactile = matchMedia('(pointer: coarse)').matches && !matchMedia('(hover: hover)').matches;
+  if(!tactile) return 'pc';
+  return Math.min(innerWidth, innerHeight) >= 600 ? 'tablette' : 'mobile';
+}
+function choisirProfil(p){
+  _profilChoisi = p;
+  try { localStorage.setItem('aslweb.profil', p); } catch(e){}
+  appliquerProfil(detecterProfil());
+}
+
+const DISPOSITIONS = {
+  pc: {
+    menus: {
+      'Fichier':   ['ouvrir', 'vsav', '-', 'log'],
+      'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'infoScenario'],
+      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'couche_unite', 'couche_marqueur', 'couche_carte',
+                    'effectif', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile'],
+      'Outils':    ['los', 'losMuet', 'verbeux', '-', 'commandes'],
+      'Réseau':    ['reseau', 'utilisateur'],
+      'Aide':      ['raccourcis']
+    },
+    barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster',
+            '|', 'relecture', 'los', 'unmoved', 'all', '|', 'reseau', 'utilisateur'],
+    panneau: ['pile', 'palette', 'des']
+  }
+};
+// Tant qu'un profil n'a pas sa disposition propre, il reprend celle du PC.
+const disposition = p => DISPOSITIONS[p] || DISPOSITIONS.pc;
+
+function appliquerProfil(p){
+  const ancien = _profil;
+  _profil = p;
+  document.body.dataset.terminal = p;
+  fermerDeroulants(); fermerMenu();
+  const d = disposition(p);
+  const haut = document.getElementById('chromeHaut'), gauche = document.getElementById('chromeGauche'),
+        bas = document.getElementById('chromeBas');
+  haut.replaceChildren(); gauche.replaceChildren(); bas.replaceChildren();
+  if(d.menus) haut.appendChild(construireMenus(d.menus));
+  if(d.barre) haut.appendChild(construireBarre(d.barre, 'barreIcones'));
+  construireOnglets(d.panneau || ['pile', 'palette', 'des']);
+  if(d.construire) d.construire();
+  // Une première fois : sur un téléphone, la carte avant le panneau.
+  if(!ancien && window.innerWidth < 700) basculerCote(false);
+  rafraichirActions();
+  for(const f of _apresProfil) f(p, ancien);
+  _surRedimension();
+}
+const _apresProfil = [];
+
+function construireBarre(ids, classe){
+  const b = document.createElement('div');
+  b.className = classe;
+  b.setAttribute('role', 'toolbar');
+  for(const id of ids){
+    if(id === '|'){ const s = document.createElement('span'); s.className = 'sep'; b.appendChild(s); continue; }
+    b.appendChild(rendreAction(id, 'icone'));
+  }
+  return b;
+}
+
+// ── Panneau latéral à onglets : Pile | Palette | Dés.
+let _ongletCote = _lirePref('aslweb.onglet') || 'pile';
+const ONGLETS = {pile: 'ongPile', palette: 'ongPalette', des: 'ongDes'};
+function construireOnglets(liste){
+  const o = document.getElementById('coteOnglets');
+  o.replaceChildren();
+  for(const n of liste){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.onglet = n;
+    b.setAttribute('role', 'tab');
+    b.textContent = ACTIONS[n].court;
+    b.addEventListener('click', () => montrerOnglet(n));
+    o.appendChild(b);
+  }
+  if(!liste.includes(_ongletCote)) _ongletCote = liste[0];
+  montrerOnglet(_ongletCote, true);
+}
+function montrerOnglet(n, sansOuvrir){
+  _ongletCote = n;
+  try { localStorage.setItem('aslweb.onglet', n); } catch(e){}
+  for(const [k, id] of Object.entries(ONGLETS)) document.getElementById(id).classList.toggle('actif', k === n);
+  for(const b of document.querySelectorAll('#coteOnglets button')){
+    b.classList.toggle('actif', b.dataset.onglet === n);
+    b.setAttribute('aria-selected', String(b.dataset.onglet === n));
+  }
+  if(!sansOuvrir) basculerCote(true);
+  _majOngletPile();
+}
+// L'onglet Pile dit combien de pions sont sélectionnés.
+function _majOngletPile(){
+  const b = document.querySelector('#coteOnglets button[data-onglet="pile"]');
+  if(b) b.textContent = 'Pile' + (_sel.size ? ` (${_sel.size})` : '');
+}
+_apresSelection.push(_majOngletPile);
+
+function basculerCote(ouvrir){
+  const c = document.getElementById('cote');
+  const ferme = ouvrir === undefined ? !c.classList.contains('ferme') : !ouvrir;
+  if(ferme === c.classList.contains('ferme')) return;
+  c.classList.toggle('ferme', ferme);
+  rafraichirActions(['pions']);
+  _surRedimension();
+}
+function basculerJournal(montrer){
+  const b = document.getElementById('bas');
+  b.hidden = montrer === undefined ? !b.hidden : !montrer;
+  document.getElementById('poigneeJournal').hidden = b.hidden;
+  rafraichirActions(['journal']);
+  _surRedimension();
+}
+function basculerCouche(c){
+  const i = document.querySelector(`#couches input[data-couche="${c}"]`);
+  if(!i) return;
+  i.checked = !i.checked;
+  i.dispatchEvent(new Event('change'));
+}
+function basculerEffectif(){
+  _effectifPiles = !_effectifPiles;
+  try { localStorage.setItem('aslweb.effectifPiles', _effectifPiles ? '1' : '0'); } catch(e){}
+  rendreToutes();
+}
+
+// ── Dés de l'onglet Dés : DR, puis dr, puis le rappel des raccourcis.
+function construireDes(){
+  const box = document.getElementById('desBoutons');
+  box.replaceChildren();
+  for(const d of DES){
+    if(d.id === 'dr_Other'){ const s = document.createElement('div'); s.className = 'sepDes'; box.appendChild(s); }
+    box.appendChild(rendreAction(d.id, 'bouton'));
+  }
+  document.getElementById('desAide').innerHTML = '<table>' + DES.map(d =>
+    `<tr><td>${_esc(d.titre)}</td><td>${_esc(d.touche)}</td></tr>`).join('') + '</table>';
+}
+
+// ── Poignées : largeur du panneau (240 à 520 px), hauteur du journal
+// (48 à 300 px), retenues d'une visite à l'autre.
+function _brancherPoignees(){
+  const racine = document.documentElement.style;
+  const lc = parseInt(_lirePref('aslweb.largeurCote'), 10), hj = parseInt(_lirePref('aslweb.hautJournal'), 10);
+  if(lc) racine.setProperty('--largeurCote', lc + 'px');
+  if(hj) racine.setProperty('--hautJournal', hj + 'px');
+  const brancher = (el, cle, varCss, mini, maxi, mesure) => el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const id = e.pointerId, depart = mesure(e), x0 = e.clientX, y0 = e.clientY;
+    let v = depart.v;
+    const bouge = ev => {
+      if(ev.pointerId !== id) return;
+      v = Math.max(mini, Math.min(maxi, depart.v + depart.sens(ev.clientX - x0, ev.clientY - y0)));
+      racine.setProperty(varCss, v + 'px');
+    };
+    const fin = ev => {
+      if(ev.pointerId !== id) return;
+      document.removeEventListener('pointermove', bouge);
+      document.removeEventListener('pointerup', fin);
+      document.removeEventListener('pointercancel', fin);
+      try { localStorage.setItem(cle, String(Math.round(v))); } catch(err){}
+      _surRedimension();
+    };
+    document.addEventListener('pointermove', bouge);
+    document.addEventListener('pointerup', fin);
+    document.addEventListener('pointercancel', fin);
+  });
+  brancher(document.getElementById('poigneeCote'), 'aslweb.largeurCote', '--largeurCote', 240, 520,
+    () => ({v: document.getElementById('cote').offsetWidth, sens: dx => -dx}));
+  brancher(document.getElementById('poigneeJournal'), 'aslweb.hautJournal', '--hautJournal', 48, 300,
+    () => ({v: document.getElementById('journal').offsetHeight, sens: (dx, dy) => -dy}));
+}
+
+// ═══ INTERFACE — BARRE DE MENUS (profil PC) ═══
+// Menus déroulants ; Alt seul ouvre le premier (F10 reste la LOS de VASL),
+// les flèches y circulent, Entrée choisit, Échap referme.
+let _menuOuvert = null;     // {titre, liste, items, i}
+function construireMenus(def){
+  const barre = document.createElement('div');
+  barre.className = 'menus';
+  barre.setAttribute('role', 'menubar');
+  const h = document.createElement('h1');
+  h.textContent = 'VASL — Carte';
+  barre.appendChild(h);
+  for(const [nom, ids] of Object.entries(def)){
+    const t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'titreMenu';
+    t.textContent = nom;
+    t.setAttribute('role', 'menuitem');
+    t.setAttribute('aria-haspopup', 'true');
+    t._ids = ids;
+    t.addEventListener('pointerdown', e => e.stopPropagation());
+    t.addEventListener('click', e => {
+      e.stopPropagation();
+      if(_menuOuvert && _menuOuvert.titre === t) fermerDeroulants(); else ouvrirDeroulant(t);
+    });
+    t.addEventListener('mouseenter', () => { if(_menuOuvert && _menuOuvert.titre !== t) ouvrirDeroulant(t); });
+    barre.appendChild(t);
+  }
+  return barre;
+}
+
+function ouvrirDeroulant(t, focusPremier){
+  fermerDeroulants(); fermerMenu();
+  const m = document.createElement('div');
+  m.className = 'deroulant';
+  m.setAttribute('role', 'menu');
+  for(const id of t._ids){
+    if(id === '-'){ const s = document.createElement('div'); s.className = 'sepm'; s.setAttribute('role', 'separator'); m.appendChild(s); continue; }
+    m.appendChild(rendreAction(id, 'menu'));
+  }
+  m.addEventListener('pointerdown', e => e.stopPropagation());
+  document.body.appendChild(m);
+  const r = t.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(r.left, window.innerWidth - m.offsetWidth - 4)) + 'px';
+  m.style.top = r.bottom + 'px';
+  t.classList.add('ouvert');
+  t.setAttribute('aria-expanded', 'true');
+  const items = [...m.querySelectorAll('.it')];
+  _menuOuvert = {titre: t, liste: m, items, i: focusPremier ? 0 : -1};
+  if(focusPremier) _focusItem(0);
+}
+function _focusItem(i){
+  const o = _menuOuvert;
+  if(!o || !o.items.length) return;
+  o.i = (i + o.items.length) % o.items.length;
+  o.items.forEach((it, k) => it.classList.toggle('focus', k === o.i));
+  o.items[o.i].focus({preventScroll: true});
+  o.items[o.i].scrollIntoView({block: 'nearest'});
+}
+function fermerDeroulants(){
+  if(!_menuOuvert) return;
+  _menuOuvert.liste.remove();
+  _menuOuvert.titre.classList.remove('ouvert');
+  _menuOuvert.titre.setAttribute('aria-expanded', 'false');
+  _menuOuvert = null;
+}
+function _brancherMenus(){
+  document.addEventListener('pointerdown', () => fermerDeroulants());
+  let altSeul = false;
+  window.addEventListener('keydown', e => {
+    if(e.key === 'Alt'){ altSeul = !e.ctrlKey && !e.shiftKey && !e.metaKey; return; }
+    altSeul = false;
+    const o = _menuOuvert;
+    if(!o) return;
+    const titres = [...document.querySelectorAll('.menus .titreMenu')];
+    const j = titres.indexOf(o.titre);
+    const k = e.key;
+    if(!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Escape', 'Home', 'End'].includes(k)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if(k === 'Escape'){ const t = o.titre; fermerDeroulants(); t.focus(); return; }
+    if(k === 'ArrowDown') _focusItem(o.i + 1);
+    else if(k === 'ArrowUp') _focusItem(o.i < 0 ? -1 : o.i - 1);
+    else if(k === 'Home') _focusItem(0);
+    else if(k === 'End') _focusItem(-1);
+    else if(k === 'ArrowLeft' || k === 'ArrowRight')
+      ouvrirDeroulant(titres[(j + (k === 'ArrowLeft' ? -1 : 1) + titres.length) % titres.length], true);
+    else if(o.i >= 0) o.items[o.i].click();
+  }, true);
+  window.addEventListener('keyup', e => {
+    if(e.key !== 'Alt' || !altSeul) return;
+    altSeul = false;
+    if(_profil !== 'pc' || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    const t = document.querySelector('.menus .titreMenu');
+    if(!t) return;
+    e.preventDefault();
+    if(_menuOuvert) fermerDeroulants(); else ouvrirDeroulant(t, true);
+  });
+  // Alt enfoncé puis un clic : ce n'est pas « Alt seul ».
+  window.addEventListener('pointerdown', () => { altSeul = false; }, true);
+}
+
+// ═══ INTERFACE — PALETTE DE COMMANDES (Ctrl+K) ═══
+// Recherche floue sur toutes les actions et sur les noms des pions de la
+// base ; un pion choisi est posé au centre de la vue.
+function _scoreFlou(texte, q){
+  texte = texte.toLowerCase();
+  const i = texte.indexOf(q);
+  if(i >= 0) return 1000 - i - texte.length / 100;
+  let k = 0, s = 0, dernier = -1;
+  for(let j = 0; j < texte.length && k < q.length; j++){
+    if(texte[j] === q[k]){ s += dernier === j - 1 ? 3 : 1; dernier = j; k++; }
+  }
+  return k === q.length ? s : -1;
+}
+function ouvrirPaletteCommandes(){
+  fermerDeroulants(); fermerMenu();
+  const ancien = document.getElementById('fenCmd');
+  if(ancien){ ancien.remove(); return; }
+  const w = document.createElement('div');
+  w.id = 'fenCmd'; w.className = 'fenetre paletteCmd';
+  w.innerHTML = '<div class="fc"><input id="cmdRech" autocomplete="off" placeholder="Action ou pion…" aria-label="Rechercher une action ou un pion"><div id="cmdListe" role="listbox"></div></div>';
+  document.body.appendChild(w);
+  const inp = w.querySelector('#cmdRech'), liste = w.querySelector('#cmdListe');
+  let res = [], i = 0;
+  const actions = Object.entries(ACTIONS).filter(([, a]) => a.faire && !a.etiquette && !a.groupe);
+  const calculer = () => {
+    const q = inp.value.trim().toLowerCase();
+    res = [];
+    for(const [id, a] of actions){
+      if(a.visible && !a.visible()) continue;
+      const lib = String(_v(a.lib));
+      const s = q ? _scoreFlou(lib + ' ' + (_v(a.court) || ''), q) : 1;
+      if(s >= 0) res.push({s: s + 5, lib, rc: _v(a.touche) || '', off: !!(a.actif && !a.actif()), faire: () => executerAction(id)});
+    }
+    if(q && _bdd){
+      const pions = [];
+      for(const x of _bdd.pions){
+        const s = _scoreFlou(x.n, q);
+        if(s >= 0) pions.push({s, lib: '♟ ' + x.n, rc: 'poser', faire: () => _poserAuCentre(x)});
+      }
+      pions.sort((a, b) => b.s - a.s);
+      res.push(...pions.slice(0, 40));
+    }
+    res.sort((a, b) => b.s - a.s);
+    res = res.slice(0, 60);
+    i = 0;
+    dessiner();
+  };
+  const dessiner = () => {
+    liste.replaceChildren(...res.map((r, k) => {
+      const d = document.createElement('div');
+      d.className = 'it' + (k === i ? ' focus' : '') + (r.off ? ' off' : '');
+      d.setAttribute('role', 'option');
+      d.innerHTML = `<span class="lb">${_esc(r.lib)}</span><span class="rc">${_esc(r.rc)}</span>`;
+      d.addEventListener('click', () => choisir(k));
+      return d;
+    }));
+    const f = liste.children[i];
+    if(f) f.scrollIntoView({block: 'nearest'});
+  };
+  const choisir = k => {
+    const r = res[k];
+    if(!r || r.off) return;
+    w.remove();
+    r.faire();
+  };
+  inp.addEventListener('input', calculer);
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if(e.key === 'Escape'){ w.remove(); return; }
+    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      i = (i + (e.key === 'ArrowDown' ? 1 : -1) + res.length) % Math.max(1, res.length);
+      dessiner();
+    } else if(e.key === 'Enter'){ e.preventDefault(); choisir(i); }
+  });
+  w.addEventListener('pointerdown', e => e.stopPropagation());
+  const fermer = e => { if(!w.contains(e.target)){ w.remove(); document.removeEventListener('pointerdown', fermer, true); } };
+  document.addEventListener('pointerdown', fermer, true);
+  calculer();
+  inp.focus();
+  if(!_bdd) chargerBDD().then(() => { if(w.isConnected && inp.value) calculer(); }).catch(() => {});
+}
+// Pose au centre de la vue, même si un panneau la recouvre.
+function _poserAuCentre(x){
+  const wr = document.getElementById('mapWrap').getBoundingClientRect();
+  const c = clientVersCarte(wr.left + wr.width/2, wr.top + wr.height/2, null, true);
+  if(c) poserDepuisPalette(x, c.x, c.y);
+}
+
+// ═══ INTERFACE — AIDE DES RACCOURCIS ═══
+function aideRaccourcis(){
+  fermerFenetres();
+  const m = metriques();
+  const lignes = (titre, l) => `<tr><th colspan="2">${_esc(titre)}</th></tr>`
+    + l.map(([a, b]) => `<tr><td>${_esc(a)}</td><td class="nb">${_esc(b)}</td></tr>`).join('');
+  const actions = Object.values(ACTIONS).filter(a => _v(a.touche) && !a.de).map(a => [_v(a.lib), _v(a.touche)]);
+  const w = document.createElement('div');
+  w.id = 'fenUtil'; w.className = 'fenetre';
+  w.innerHTML = `<div class="ft">Raccourcis clavier et gestes</div><div class="fc"><table>
+    ${lignes('Partie', [...actions, ['Palette de commandes', 'Ctrl+K'], ['Menus', 'Alt']])}
+    ${lignes('Dés', DES.map(d => [d.titre, d.touche]))}
+    ${lignes('Pions et piles', [
+      ['Commandes du pion (menu)', 'clic droit · appui long'],
+      ['Sélectionner la pile', 'clic'], ['Déplier / replier la pile', 'double-clic'],
+      ['Ajouter ou retirer un pion', 'Ctrl+clic'], ['Ajouter à la sélection', 'Maj+clic'],
+      ['Rectangle de sélection', 'Maj+glisser dans le vide'],
+      ['Mettre au sommet de la pile', libelleTouche(m.top) || '↑'], ['Mettre au fond', libelleTouche(m.bottom) || '↓'],
+      ['Monter d\'un cran', libelleTouche(m.up) || '→'], ['Descendre d\'un cran', libelleTouche(m.down) || '←'],
+      ['Replier, puis désélectionner', 'Échap']])}
+    ${lignes('Ligne de vue (pendant le tracé)', [['Niveau de la cible', '↑ / ↓'], ['Niveau de la source', 'Ctrl+↑ / Ctrl+↓'],
+      ['Plus haut niveau hors toit', 'Ctrl à l\'appui'], ['Annuler', 'Échap']])}
+    ${lignes('Relecture', [['Coup suivant / précédent', 'Page suivante / précédente']])}
+    </table><div class="fb"><button id="utFermer" class="prim">Fermer</button></div></div>`;
+  document.body.appendChild(w);
+  w.querySelector('#utFermer').onclick = () => w.remove();
+}
+
+// Raccourcis de l'interface. Ctrl+K passe après les commandes des pions,
+// qui le prendraient si un trait le déclarait.
+function _brancherInterface(){
+  window.addEventListener('keydown', e => {
+    if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.target.id !== 'cmdRech') return;
+    if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key || '').toLowerCase() === 'k'){
+      e.preventDefault();
+      ouvrirPaletteCommandes();
+    }
+  });
+  let t = null;
+  const reevaluer = () => {
+    clearTimeout(t);
+    t = setTimeout(() => { const p = detecterProfil(); if(p !== _profil) appliquerProfil(p); }, 200);
+  };
+  window.addEventListener('resize', reevaluer);
+  for(const q of ['(pointer: coarse)', '(hover: hover)']){
+    const mq = matchMedia(q);
+    if(mq.addEventListener) mq.addEventListener('change', reevaluer);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   _setupDropZone();
   _setupPanZoom();
@@ -10859,14 +11484,16 @@ document.addEventListener('DOMContentLoaded', () => {
   mw.addEventListener('dragstart',   e => { if(!saisie(e.target)) e.preventDefault(); });
   const r = document.getElementById('palRech');
   r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
-  if(window.innerWidth < 700) basculerCote();
   _brancherCommandes();
+  _brancherMenus();
+  _brancherInterface();
+  _brancherPoignees();
+  construireDes();
+  appliquerProfil(detecterProfil());
   // Libellé des boutons d'icône pour les lecteurs d'écran : leur infobulle.
   for(const b of document.querySelectorAll('button[title]:not([aria-label])')) b.setAttribute('aria-label', b.title);
-  window.addEventListener('resize', _surRedimension);
+  window.addEventListener('resize', () => { _redim = _redim || -1; _surRedimension(); });
   window.addEventListener('orientationchange', _surRedimension);
-  chargerImage('mov.gif').then(u => { if(u) document.getElementById('icUnmoved').src = u; });
-  chargerImage('QC/Remove.png').then(u => { if(u) document.getElementById('icRemove').src = u; });
   _brancherFil();
   majUtilisateur();
   _brancherDes();
