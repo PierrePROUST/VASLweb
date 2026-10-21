@@ -227,6 +227,14 @@ body[data-terminal=mobile] #bas[data-etat=compact]:not([hidden]){top:auto;height
 body[data-terminal=mobile].saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
 body[data-terminal=mobile] #bas[data-etat=compact] #journal{min-height:48px}
 .poigneeChat{display:none}
+.chatRapide{display:none;gap:6px;padding:4px 10px 2px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
+  background:var(--barre)}
+body[data-terminal=mobile].chatOuvert .chatRapide,body[data-terminal=tablette] #bas:not(.replie) .chatRapide{display:flex}
+.pastilleChat{flex:none;height:36px;padding:0 12px;border-radius:18px;white-space:nowrap;font-size:14px}
+.pastilleChat.lieu{border-color:var(--accent)}
+.pastilleChat.phase{color:#9fc7ff}
+.phrasesChat{width:calc(100% - 20px);margin:6px 10px 10px;min-height:40vh;font:16px/1.4 inherit;background:var(--champ);
+  color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:4px;padding:8px}
 body[data-terminal=mobile] #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
 .poigneeChat::after{content:"";position:absolute;left:50%;top:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:#666}
 .apercuChat{display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 10px;background:#232323;
@@ -10467,7 +10475,18 @@ async function _chargerBDD(){
     bottom: lireTouche(sm.getAttribute('bottom')) || METRIQUES_DEFAUT.bottom,
     up: lireTouche(sm.getAttribute('up')) || METRIQUES_DEFAUT.up,
     down: lireTouche(sm.getAttribute('down')) || METRIQUES_DEFAUT.down} : null;
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, version: mod.getAttribute('version')};
+  // Noms des phases : ceux des niveaux de la couche « Phase » de la roue
+  // des phases (images MC/Phase1…8), si le module les donne.
+  let nomsPhases = null;
+  for(const t of [...protos.values(), ...slots.map(x => x.cmd)]){
+    const m = t.match(/emb2;[^\t]*?Phase1\.svg[^\t]*/);
+    if(!m) continue;
+    const ch = m[0].split(';'), i = ch.findIndex(c => /Phase1\.svg/.test(c));
+    const noms = (ch[i + 1] || '').split(',').map(x => x.replace(/\\/g, '').trim());
+    if(noms.some(Boolean)) nomsPhases = noms;
+    break;
+  }
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, nomsPhases, version: mod.getAttribute('version')};
   rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
@@ -12858,6 +12877,91 @@ function _brancherPoigneeChat(){
   });
 }
 
+// ═══ CHAT — SAISIE RAPIDE ═══
+// Au doigt, une rangée de pastilles au-dessus du champ : le lieu de la pile
+// sélectionnée, des phrases, les phases. Un appui insère (on complète, puis
+// on envoie) ; un appui long envoie la pastille seule.
+// Phases : la base VASL 6.7.x ne nomme pas les niveaux de sa roue des
+// phases (huit images MC/Phase1…8, noms vides) ; on prend alors les
+// abréviations du livre de règles ASL, dans l'ordre du tour.
+const PHASES_ASL = ['RPh', 'PFPh', 'MPh', 'DFPh', 'AFPh', 'RtPh', 'APh', 'CCPh'];
+const PHRASES_DEFAUT = ['OK', 'À toi', 'Attends', 'Fini', 'Merci'];
+function phrasesChat(){
+  try {
+    const l = JSON.parse(localStorage.getItem('aslweb.phrasesChat') || 'null');
+    if(Array.isArray(l)) return l.filter(x => typeof x === 'string' && x.trim());
+  } catch(e){}
+  return PHRASES_DEFAUT.slice();
+}
+const phasesChat = () => (_bdd && _bdd.nomsPhases && _bdd.nomsPhases.filter(Boolean).length) ? _bdd.nomsPhases.filter(Boolean) : PHASES_ASL;
+
+// Insère au curseur, précédé d'une espace si besoin ; le focus revient au
+// champ dans le même geste (iOS n'ouvre le clavier qu'ainsi).
+function insererChat(t){
+  const ci = document.getElementById('chatIn');
+  const v = ci.value, a = ci.selectionStart ?? v.length, b = ci.selectionEnd ?? v.length;
+  const avant = v.slice(0, a), ajout = (avant && !/\s$/.test(avant) ? ' ' : '') + t;
+  ci.value = avant + ajout + v.slice(b);
+  ci.focus();
+  const k = a + ajout.length;
+  try { ci.setSelectionRange(k, k); } catch(e){}
+  _majEnvoi();
+}
+
+function majSaisieRapide(){
+  const r = document.getElementById('chatRapide');
+  if(!r) return;
+  r.replaceChildren();
+  const pastille = (texte, cls, titre) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'pastilleChat ' + (cls || '');
+    b.textContent = texte;
+    b.title = titre || 'Appui : insérer — appui long : envoyer';
+    let long = false, t = null;
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();           // le champ garde le focus
+      long = false;
+      t = setTimeout(() => { long = true; vibrer(); envoyerChat(b._texte); }, APPUI_LONG);
+    });
+    const annuler = () => clearTimeout(t);
+    b.addEventListener('pointerup', annuler); b.addEventListener('pointercancel', annuler); b.addEventListener('pointerleave', annuler);
+    b.addEventListener('click', () => { if(long){ long = false; return; } insererChat(b._texte); });
+    b._texte = texte;
+    r.appendChild(b);
+    return b;
+  };
+  // Le lieu de la pile sélectionnée, nommé comme dans les rapports.
+  const s = _pileSel ? pile(_pileSel) : [];
+  if(s.length){
+    const l = lieu(s[0].x, s[0].y);
+    if(l !== 'offboard'){ const b = pastille('📍 ' + l, 'lieu'); b._texte = l; }
+  }
+  for(const p of phrasesChat()) pastille(p);
+  for(const p of phasesChat()) pastille(p, 'phase');
+  const ed = document.createElement('button');
+  ed.type = 'button'; ed.className = 'pastilleChat modif';
+  ed.textContent = '✎'; ed.title = 'Modifier les phrases'; ed.setAttribute('aria-label', 'Modifier les phrases');
+  ed.addEventListener('click', editerPhrasesChat);
+  r.appendChild(ed);
+}
+
+// Une phrase par ligne ; enregistré à la fermeture, lignes vides ignorées.
+function editerPhrasesChat(){
+  const z = document.createElement('textarea');
+  z.className = 'phrasesChat';
+  z.value = phrasesChat().join('\n');
+  z.setAttribute('aria-label', 'Phrases rapides, une par ligne');
+  const f = ouvrirFeuille({id: 'feuillePhrases', titre: 'Phrases rapides', fermer: () => {
+    const l = z.value.split('\n').map(x => x.trim()).filter(Boolean);
+    try { localStorage.setItem('aslweb.phrasesChat', JSON.stringify(l)); } catch(e){}
+    majSaisieRapide();
+  }});
+  f.corps.appendChild(z);
+  z.focus();
+}
+_apresSelection.push(() => { if(_etatChat || _profil === 'tablette') majSaisieRapide(); });
+_apresEtatChat.push(e => { if(e) majSaisieRapide(); });
+
 // ═══ CHAT — CHAMP DE SAISIE ═══
 // Comme le Chatter de VASSAL, une seule ligne, envoyée par Entrée ; au
 // doigt, un bouton ➤ et la touche « Envoyer » du clavier, qui reste ouvert
@@ -12884,6 +12988,11 @@ function _brancherChat(){
   // Le bouton ne prend pas le focus : le clavier reste ouvert.
   bt.addEventListener('pointerdown', e => e.preventDefault());
   bt.addEventListener('click', () => { if(ci.value.trim()) envoyerSaisie(); });
+  const r = document.createElement('div');
+  r.id = 'chatRapide'; r.className = 'chatRapide';
+  r.setAttribute('aria-label', 'Saisie rapide');
+  document.getElementById('bas').insertBefore(r, document.getElementById('chatBarre'));
+  majSaisieRapide();
   _brancherClavier();
   _brancherPoigneeChat();
   majAideChat();
