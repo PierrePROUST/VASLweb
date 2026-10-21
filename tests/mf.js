@@ -1,8 +1,8 @@
 // Décompte des MF / MP d'après la table des terrains de VASL Tools : après
 // chaque déplacement, coût de l'hexagone entré et cumul, au chat et au
 // log (« * 5-4-8 SSsq : +2 MF (cumul 2 MF) »). Bois, mur, pile avec chef,
-// saut par le chemin le moins cher, montée, Undo, véhicule sur route et
-// en bois (Z : moitié des MP du gpid), Mark unmoved.
+// saut par le chemin le moins cher, montée, Undo, véhicule sur route
+// (1 MP boutonné, ½ équipage découvert) et en bois (Z : moitié des MP du gpid), Mark unmoved.
 const {ouvrir} = require('./commun.js');
 (async () => {
   const {b, pg, errs} = await ouvrir(process.argv[2] || 'carte.html');
@@ -71,6 +71,13 @@ const {ouvrir} = require('./commun.js');
     r.mpT34 = natureMouvement(tk);
     await aller([tk], rte2);
     r.route = msg();
+    // Équipage découvert (CE, Ctrl+B) : ½ MP ; boutonné : 1 MP.
+    executerTouche(tk, _touche(66, 2)); await tic();
+    r.nomCE = tk.nom;
+    await aller([tk], rte);
+    r.routeCE = msg();
+    executerTouche(tk, _touche(66, 2)); await tic();
+    await aller([tk], rte2);
     const boisR = voisins(rte2).find(v => v && T(v) === 'Woods');
     if(boisR){ await aller([tk], boisR); r.charBois = msg(); }
     // 9. Rien sur les pions ; Mark unmoved remet les cumuls à zéro.

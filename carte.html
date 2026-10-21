@@ -8342,7 +8342,9 @@ function natureMouvement(p){
   if(pr.vehicleType){
     const te = _typeEtEtat(p.seg), S = te ? decoderTraits(te.etat) : [];
     const gpid = ((S[S.length - 1] || '').split(';')[3] || '').trim();
-    n = {col: _COL_VEH[pr.vehicleType] || null, unite: 'MP', mp: MP_VEHICULES[gpid] || null};
+    // Boutonné : VASL l'écrit dans le nom courant (« … BU », sinon « CE »).
+    n = {col: _COL_VEH[pr.vehicleType] || null, unite: 'MP', mp: MP_VEHICULES[gpid] || null,
+         bu: /(^|\s)BU(\s|$)/.test(lirePiece(p.seg).nom || '')};
   } else if(pr.CounterType === 'unit' && (/^\d{1,2}[-+]\d$/.test(nom) || /^\d+-\d+-\d+/.test(nom) || /\bhero\b/i.test(nom)))
     n = {col: 'inf', unite: 'MF', mp: null};
   p._natMvt = {seg: p.seg, n};
@@ -8359,10 +8361,13 @@ function _coteVers(m, a, b){
 }
 
 // Valeur d'une case du chart. ctx : {cot, mp, ruisseau (0 sec, 1 peu
-// profond, 2 profond)}. Rend un nombre, 'ALL', 'NA' ou null (inconnu).
+// profond, 2 profond), bu (véhicule boutonné)}. Rend un nombre, 'ALL', 'NA' ou null (inconnu).
 // Les drapeaux (B, D, R, *…) ne changent pas le coût ; « R » (coût de
 // route par un côté de route) est traité par l'appelant.
 function _valeurTEC(txt, ctx){
+  // « [BU:1] » : la valeur pour un véhicule boutonné (route : ½, BU 1).
+  const bu = /\[BU:\s*([^\]]+)\]/.exec(String(txt || ''));
+  if(bu && ctx.bu) return _valeurTEC(bu[1], {cot: ctx.cot, mp: ctx.mp});
   let t = String(txt || '').replace(/\[[^\]]*\]|\{[^}]*\}/g, ' ').trim();
   if(!t) return null;
   if(/\bor\b/.test(t)) t = t.split(/\bor\b/).pop().trim();      // Shellholes : « 1 or 2* »
@@ -8409,7 +8414,7 @@ function coutEntree(m, a, b, n){
     && a.getHexsideLocation(s).getTerrain() && a.getHexsideLocation(s).getTerrain().isRoad();
   const caseC = ligne && _casesTEC(ligne, col);
   let cout = parRoute && (c.isRoad() || _parRouteTEC(caseC))
-    ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp})
+    ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu})
     : caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp}) : null;
   if(parRoute && !c.isRoad()) lib += ' (route)';
   const cotHex = cout;
