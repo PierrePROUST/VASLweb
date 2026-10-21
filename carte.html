@@ -380,6 +380,9 @@ body.maj .pion.immob{pointer-events:auto}
 .survol .tt{font-weight:600;font-size:11px;padding:0 1px 4px}
 .survol .rang{display:flex;gap:6px;align-items:flex-end}
 .survol .cel{display:flex;flex-direction:column;align-items:center;gap:2px}
+/* Terrain sous la pile (CounterDetailViewer « show terrain beneath ») */
+.survol .terrain{display:block;border:1px solid #000;border-radius:2px}
+.survol .lieuT{font-size:10px;line-height:1.1;opacity:.85}
 #ctx,.ssmenu{position:fixed;z-index:9600;min-width:190px;max-width:340px;max-height:80vh;overflow:auto;
   background:var(--menu-fond);color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:4px;
   box-shadow:0 6px 20px rgba(0,0,0,.55);font-size:13px;padding:3px 0;user-select:none;-webkit-user-select:none}
@@ -9867,6 +9870,8 @@ function afficherSurvol(k, cx, cy){
   tt.textContent = `${ici} — ${s.length} pion${s.length > 1 ? 's' : ''}`;
   const rang = document.createElement('div');
   rang.className = 'rang';
+  const terrain = _terrainSous(a && Math.hypot(a.x - s[0].x, a.y - s[0].y) < 4 ? a : s[0], ici);
+  if(terrain) rang.appendChild(terrain);
   for(const p of s){
     // Copie du pion affiché : face, couches et orientation comprises.
     const c = p.el.cloneNode(true);
@@ -9888,6 +9893,49 @@ function afficherSurvol(k, cx, cy){
   document.body.appendChild(t);
   _placerSurvol(t, cx, cy);
   _survolCle = k;
+}
+
+// Terrain sous la pile, comme l'option « show terrain beneath » du
+// CounterDetailViewer de VASSAL : un carré de 150 px de carte (au zoom
+// 1, en pixels VASL) centré sur l'hexagone, découpé dans les boards
+// affichés — overlays et SSR compris — et dessiné à l'échelle des pions
+// de l'aperçu. Le nom du lieu est écrit dessous.
+const SURVOL_TERRAIN = 150;
+function _terrainSous(c, lieu){
+  const k = SC * SURVOL_ECHELLE;
+  const cote = Math.round(SURVOL_TERRAIN * k);
+  // Zone voulue, en pixels de carte affichée.
+  const x0 = c.x * SC - SURVOL_TERRAIN * SC / 2, y0 = c.y * SC - SURVOL_TERRAIN * SC / 2;
+  const L = SURVOL_TERRAIN * SC;
+  const cv = document.createElement('canvas');
+  cv.className = 'terrain';
+  cv.width = cote; cv.height = cote;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#222'; g.fillRect(0, 0, cote, cote);
+  let vu = false;
+  for(const b of document.querySelectorAll('#mapInner canvas.boardLayer')){
+    const bx = parseFloat(b.style.left) || 0, by = parseFloat(b.style.top) || 0;
+    const bw = parseFloat(b.style.width) || b.width, bh = parseFloat(b.style.height) || b.height;
+    // Intersection de la zone et du board, en pixels de carte.
+    const ix = Math.max(x0, bx), iy = Math.max(y0, by);
+    const ax = Math.min(x0 + L, bx + bw), ay = Math.min(y0 + L, by + bh);
+    if(ax <= ix || ay <= iy) continue;
+    // Le canvas du board a sa propre résolution (plafonnée sur mobile).
+    const rx = b.width / bw, ry = b.height / bh;
+    try {
+      g.drawImage(b, (ix - bx) * rx, (iy - by) * ry, (ax - ix) * rx, (ay - iy) * ry,
+                  (ix - x0) / L * cote, (iy - y0) / L * cote, (ax - ix) / L * cote, (ay - iy) / L * cote);
+      vu = true;
+    } catch(e){ /* canvas illisible : pas de terrain */ }
+  }
+  if(!vu) return null;
+  const cel = document.createElement('div');
+  cel.className = 'cel';
+  const t = document.createElement('div');
+  t.className = 'lieuT';
+  t.textContent = lieu;
+  cel.append(cv, t);
+  return cel;
 }
 
 // Au-dessus du curseur, sans sortir de la fenêtre.
