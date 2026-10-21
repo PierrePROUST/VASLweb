@@ -304,6 +304,10 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 .mini{position:relative;width:42px;height:42px;overflow:hidden;pointer-events:none}
 .mini img{position:absolute;pointer-events:none}
 .pion{position:absolute;touch-action:none;cursor:pointer;-webkit-touch-callout:none}
+/* Trait Immobilized : Fire Lane en surimpression… Le clic simple passe
+   au travers ; Maj enfoncée, la pièce redevient saisissable. */
+.pion.immob,.pion.immob-jamais{pointer-events:none}
+body.maj .pion.immob{pointer-events:auto}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
@@ -6346,6 +6350,24 @@ function _tourelle(ts){
   return null;
 }
 
+// ── Trait Immobilized de VASSAL (« immob; ») :
+//   immob;sélection;mouvement;empilement;description
+// Sélection : i (Maj+clic), t (Ctrl), c (Alt), n (jamais). Empilement :
+// L la pièce s'empile, R (défaut) jamais — elle reste seule à sa place.
+function _immobilise(ts){
+  if(!ts) return null;
+  const t = ts.typ.find(x => /^immob;/.test(x));
+  if(!t) return null;
+  const ch = t.replace(/\\(.)/g, '$1').split(';');
+  const sel = ch[1] || '', emp = ch[3] === undefined || ch[3] === '' ? 'R' : ch[3];
+  return {maj: /[itc]/.test(sel), jamais: sel.includes('n'), empile: emp.includes('L')};
+}
+// Maj enfoncée : les pièces à sélection Maj+clic deviennent saisissables.
+const _toucheMaj = e => document.body && document.body.classList.toggle('maj', !!e.shiftKey);
+window.addEventListener('keydown', _toucheMaj, true);
+window.addEventListener('keyup', _toucheMaj, true);
+window.addEventListener('blur', () => document.body && document.body.classList.remove('maj'));
+
 // ── Orientation (trait FreeRotator de VASSAL, « rotate; ») :
 //   rotate;facettes;touche cw;touche ccw;texte cw;texte ccw;…
 // Facettes fixes (6 pour un Covered Arc d'hexagone, 8 pour la
@@ -6414,7 +6436,7 @@ function lirePiece(seg){
     uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
     img, nom: nom || img.split('/').pop(), nomBase: pm ? pm[2].replace(/\\/g,'').trim() : '', couches, faceCouche, rot, masque, hip, masqueNation,
-    vt: _pieceVaslTools(ts), rotations,
+    vt: _pieceVaslTools(ts), rotations, immob: _immobilise(ts),
     iMasque: ts ? ts.typ.findIndex(t => /^conceal;/.test(t)) : -1,
     masqueProprio: masque ? masqueProprio : null,
     hipProprio: hip ? hipProprio : null,
@@ -6823,7 +6845,9 @@ let _coucheParUid = new Map();        // uid → couche (@@n) de sa pile d'origi
 let _pilesVassal = new Map();         // id de pile VASSAL → uids, du fond au sommet
 let _uidSeq = 0;
 
-const cle = p => p.x + ',' + p.y;
+// Une pièce qui ne s'empile pas (trait Immobilized « R ») forme à elle
+// seule sa pile : un Fire Lane posé sur des unités ne les rejoint pas.
+const cle = p => p.seul ? '#' + p.uid : p.x + ',' + p.y;
 const vivants = () => pions.filter(p => !p.deleted);
 // Une pile, du fond vers le sommet. Simple filtre, toujours exact : seul
 // le rendu complet (rendreToutes) passe par un index des piles.
@@ -6949,7 +6973,11 @@ function creerPion(seg, ordre){
   const face = document.createElement('img');
   el.appendChild(face);
   const p = {id: pions.length, uid: d.uid, seg, x: d.x, y: d.y, ordre, nom: d.nom,
-             el, face, sz: Math.round(48 * SC), deleted: false};
+             el, face, sz: Math.round(48 * SC), deleted: false,
+             seul: !!(d.immob && !d.immob.empile)};
+  // Sélection réservée à Maj+clic (ou impossible) : un clic simple la
+  // traverse vers les pièces de dessous, comme dans VASSAL.
+  if(d.immob && (d.immob.maj || d.immob.jamais)) el.classList.add(d.immob.jamais ? 'immob-jamais' : 'immob');
   pions.push(p);
   el.addEventListener('pointerdown', e => _pionPointerDown(e, p));
   el.addEventListener('contextmenu', e => {
@@ -7049,12 +7077,21 @@ async function majApparence(p, d){
     p.face.src = url;
     await p.face.decode().catch(() => {});
     // Taille propre au pion : 48 px pour un 1/2", 60 px pour un 5/8".
-    if(p.face.naturalWidth) p.sz = Math.round(p.face.naturalWidth * SC);
+    // Une image qui n'est pas carrée — le Fire Lane en surimpression,
+    // 85×76 pour un hexagone — garde ses proportions, centrée dans le
+    // carré de son plus grand côté : étirée, ses bras ne tombaient plus
+    // sur les côtés d'hexagone.
+    const nw = p.face.naturalWidth || 0, nh = p.face.naturalHeight || nw;
+    if(nw) p.sz = Math.round(Math.max(nw, nh) * SC);
     p.face.style.cssText = '';
+    if(nw && nw !== nh){
+      const w = nw * SC, h = nh * SC;
+      p.face.style.cssText = `width:${w}px;height:${h}px;left:${(p.sz - w) / 2}px;top:${(p.sz - h) / 2}px`;
+    }
     if(d.faceCouche && !voile){
       // Pion fait de couches : sa taille est celle de la plus grande, et
       // chacune garde la sienne, centrée — comme Embellishment.draw().
-      let cote = p.face.naturalWidth || 0;
+      let cote = Math.max(nw, nh);
       for(const c of d.couches){
         if(!c.actif) continue;
         const u = await chargerImage(_imgCouche(c));
@@ -7064,7 +7101,7 @@ async function majApparence(p, d){
         cote = Math.max(cote, o.naturalWidth || 0, o.naturalHeight || 0);
       }
       if(gen !== p.gen) return;
-      if(cote > p.face.naturalWidth){
+      if(cote > Math.max(nw, nh)){
         p.sz = Math.round(cote * SC);
         const w = p.face.naturalWidth * SC, h = p.face.naturalHeight * SC;
         p.face.style.cssText = `width:${w}px;height:${h}px;`
@@ -7295,14 +7332,22 @@ function rendrePile(k, tous){
     p.el.style.height = r.h + 'px';
     p.el.style.left = (r.x + (p.decX || 0) * SC) + 'px';
     p.el.style.top  = (r.y + (p.decY || 0) * SC) + 'px';
-    // Une pile dépliée passe au-dessus de ses voisines.
-    p.el.style.zIndex = (deplie ? 5000 : p.fond ? 2 : 10) + i;
+    // Une pile dépliée passe au-dessus de ses voisines. Une pièce qui ne
+    // s'empile pas (Fire Lane) se dessine au-dessus de la pile de son
+    // hexagone, comme la pièce posée en dernier dans VASSAL.
+    p.el.style.zIndex = p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : p.fond ? 2 : 10) + i;
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
   });
   _decorPile(k, s, rects, deplie);
+  // Les pièces non empilées posées au même endroit restent au-dessus.
+  if(s.length && !s[0].seul)
+    for(const q of vivants()) if(q.seul && !q.cache && q.x === s[0].x && q.y === s[0].y)
+      q.el.style.zIndex = 10 + _hauteurSous(q);
 }
+// Hauteur de la pile ordinaire sur laquelle une pièce non empilée est posée.
+const _hauteurSous = q => pile(q.x + ',' + q.y).filter(x => !x.cache).length;
 
 // Rendu complet : une passe pour grouper, une pour placer.
 function rendreToutes(){
@@ -11700,7 +11745,8 @@ function majBoutons(){ rafraichirActions(['vsav', 'log', 'logTxt']); }
 function _segmentsPiles(){
   const out = [];
   let n = 0;
-  for(const k of new Set(vivants().map(cle))){
+  // Une pièce qui ne s'empile pas n'appartient à aucune pile VASSAL.
+  for(const k of new Set(vivants().filter(p => !p.seul).map(cle))){
     const s = pile(k);
     let couche = -1;
     for(const p of s) if(_coucheParUid.has(p.uid)){ couche = _coucheParUid.get(p.uid); break; }
