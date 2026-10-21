@@ -227,6 +227,16 @@ body[data-terminal=mobile] #bas[data-etat=compact]:not([hidden]){top:auto;height
 body[data-terminal=mobile].saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
 body[data-terminal=mobile] #bas[data-etat=compact] #journal{min-height:48px}
 .poigneeChat{display:none}
+.filtresChat{display:none;gap:6px;padding:4px 10px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
+  background:var(--barre);border-bottom:1px solid var(--bord)}
+body[data-terminal=mobile].chatOuvert .filtresChat,body[data-terminal=tablette] #bas:not(.replie) .filtresChat{display:flex}
+.filtresChat .pastilleChat{height:30px;font-size:12px;opacity:.55}
+.filtresChat .pastilleChat.actif{opacity:1;border-color:var(--accent)}
+body:not([data-terminal=pc]) #journal:not([data-filtres~=msg]) > .msg,
+body:not([data-terminal=pc]) #journal:not([data-filtres~=jet]) > .jet,
+body:not([data-terminal=pc]) #journal:not([data-filtres~=rap]) > .rap,
+body:not([data-terminal=pc]) #journal:not([data-filtres~=sys]) > .sys:not(.alerte){display:none}
+body:not([data-terminal=pc]) .lieuChat{color:var(--accent);text-decoration:underline;cursor:pointer}
 .chatRapide{display:none;gap:6px;padding:4px 10px 2px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
   background:var(--barre)}
 body[data-terminal=mobile].chatOuvert .chatRapide,body[data-terminal=tablette] #bas:not(.replie) .chatRapide{display:flex}
@@ -1762,6 +1772,7 @@ let _hexTable = [];
 // grande que la distance d'accrochage (75 px), ce qui suffit.
 const GRILLE_HEX = 80;
 let _grilleHex = new Map();
+let _hexParNom = new Map();
 const _caseHex = (x, y) => Math.floor(x / GRILLE_HEX) + ',' + Math.floor(y / GRILLE_HEX);
 
 // Les hexagones retenus sont ceux dont le centre tombe sur l'image du board,
@@ -1791,6 +1802,14 @@ function _buildHexTable(boards){
           x: (b.px || 0) + px + BOARD_MARGIN, y: (b.py || 0) + py + BOARD_MARGIN});
       }
     }
+  }
+  // Nom d'ancrage → point, côtés compris (« 33B5 », « 33B5/NE ») : les
+  // lieux cités au chat deviennent cliquables.
+  _hexParNom = new Map();
+  for(const h of _hexTable){
+    _hexParNom.set(h.name, {x: h.x, y: h.y});
+    for(let c = 1; c <= 6; c++)
+      _hexParNom.set(h.name + '/' + ['', 'N', 'NE', 'SE', 'S', 'SO', 'NO'][c], {x: h.x + COTES[c][0], y: h.y + COTES[c][1]});
   }
   _grilleHex = new Map();
   for(const h of _hexTable){
@@ -12962,6 +12981,83 @@ function editerPhrasesChat(){
 _apresSelection.push(() => { if(_etatChat || _profil === 'tablette') majSaisieRapide(); });
 _apresEtatChat.push(e => { if(e) majSaisieRapide(); });
 
+// ═══ CHAT — LECTURE ═══
+// Filtres du journal (au doigt) : Messages, Dés, Rapports, Système, par
+// une classe CSS sur #journal ; une alerte n'est jamais masquée. Les lieux
+// cités dans les messages et les rapports deviennent des liens qui centrent
+// la carte. Le texte vient des autres joueurs : des nœuds texte et des
+// span, jamais innerHTML.
+const FILTRES_CHAT = [['msg', 'Messages'], ['jet', 'Dés'], ['rap', 'Rapports'], ['sys', 'Système']];
+let _filtresChat = (() => {
+  try { const l = JSON.parse(localStorage.getItem('aslweb.filtresChat') || 'null'); if(Array.isArray(l)) return new Set(l); } catch(e){}
+  return new Set(['msg', 'jet', 'rap']);
+})();
+function majFiltresChat(){
+  const j = document.getElementById('journal');
+  j.dataset.filtres = [..._filtresChat].join(' ');
+  for(const b of document.querySelectorAll('#filtresChat button')){
+    const oui = _filtresChat.has(b.dataset.filtre);
+    b.classList.toggle('actif', oui);
+    b.setAttribute('aria-pressed', String(oui));
+  }
+}
+function _construireFiltresChat(){
+  const f = document.createElement('div');
+  f.id = 'filtresChat'; f.className = 'filtresChat';
+  f.setAttribute('role', 'toolbar');
+  f.setAttribute('aria-label', 'Filtres du journal');
+  for(const [c, lib] of FILTRES_CHAT){
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'pastilleChat'; b.dataset.filtre = c;
+    b.textContent = lib;
+    b.addEventListener('pointerdown', e => e.preventDefault());
+    b.addEventListener('click', () => {
+      if(_filtresChat.has(c)) _filtresChat.delete(c); else _filtresChat.add(c);
+      try { localStorage.setItem('aslweb.filtresChat', JSON.stringify([..._filtresChat])); } catch(e){}
+      majFiltresChat();
+      const j = document.getElementById('journal'); j.scrollTop = j.scrollHeight;
+    });
+    f.appendChild(b);
+  }
+  const bas = document.getElementById('bas');
+  bas.insertBefore(f, document.getElementById('journal'));
+  majFiltresChat();
+}
+
+// Lieux d'une ligne de message ou de rapport, en liens.
+function _lierLieux(el){
+  if(!_hexParNom.size || !(el.classList.contains('msg') || el.classList.contains('rap'))) return;
+  const t = el.textContent;
+  const re = /[A-Za-z0-9]+(?:\/(?:NE|NO|SE|SO|N|S))?/g;
+  let m, k = 0, morceaux = [];
+  while((m = re.exec(t))){
+    if(!_hexParNom.has(m[0])) continue;
+    if(m.index > k) morceaux.push(document.createTextNode(t.slice(k, m.index)));
+    const s = document.createElement('span');
+    s.className = 'lieuChat';
+    s.textContent = m[0];
+    morceaux.push(s);
+    k = m.index + m[0].length;
+  }
+  if(!morceaux.length) return;
+  if(k < t.length) morceaux.push(document.createTextNode(t.slice(k)));
+  el.replaceChildren(...morceaux);
+}
+_apresLigne.push(_lierLieux);
+
+function _brancherLectureChat(){
+  _construireFiltresChat();
+  document.getElementById('journal').addEventListener('click', e => {
+    const s = e.target.closest && e.target.closest('.lieuChat');
+    if(!s || !_profil || _profil === 'pc') return;
+    const pt = _hexParNom.get(s.textContent);
+    if(!pt) return;
+    // Depuis le journal plein, on revient à la carte pour voir le lieu.
+    if(_etatChat === 'plein') vueMobile('carte');
+    cadrerSur([pt]);
+  });
+}
+
 // ═══ CHAT — CHAMP DE SAISIE ═══
 // Comme le Chatter de VASSAL, une seule ligne, envoyée par Entrée ; au
 // doigt, un bouton ➤ et la touche « Envoyer » du clavier, qui reste ouvert
@@ -12993,6 +13089,7 @@ function _brancherChat(){
   r.setAttribute('aria-label', 'Saisie rapide');
   document.getElementById('bas').insertBefore(r, document.getElementById('chatBarre'));
   majSaisieRapide();
+  _brancherLectureChat();
   _brancherClavier();
   _brancherPoigneeChat();
   majAideChat();
