@@ -204,6 +204,13 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
 .lig{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid #2c2c2c;
   touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .lig .mini{width:36px;height:36px;flex:none;margin-right:auto}
+.lig.sel{background:rgba(217,164,65,.16);box-shadow:inset 3px 0 0 var(--accent)}
+.bordPile{font-size:11px;color:var(--doux);padding:3px 8px;text-transform:uppercase;letter-spacing:.04em}
+#pile{position:relative}
+.inserPile{position:absolute;left:4px;right:4px;height:3px;background:var(--accent);border-radius:2px;pointer-events:none}
+body:not([data-terminal=pc]) .lig{min-height:60px}
+body:not([data-terminal=pc]) .lig .mini{width:56px;height:56px}
+body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(--cible)}
 .lig button{padding:1px 6px;font-size:12px}
 #palRech{margin:6px 8px;padding:5px;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px}
 #palCorps{flex:1;overflow:auto;padding:0 8px 8px;font-size:12px}
@@ -9355,6 +9362,12 @@ function selectionnerPile(k){
   }
 }
 
+// Panneau de la pile courante, du sommet (en haut) vers le fond. Chaque
+// ligne montre si son pion est sélectionné. Clic : ce pion seul ; Ctrl
+// (Cmd) : l'ajouter ou le retirer ; Maj : la plage depuis le dernier clic.
+// Glisser une ligne dans la liste change son rang (un seul M/) ; vers la
+// carte, elle emporte la sélection si elle en fait partie, sinon ce pion.
+let _ancrePile = null;
 function afficherPile(){
   purgerSelection();
   majEventail();
@@ -9363,38 +9376,101 @@ function afficherPile(){
   box.innerHTML = '';
   if(!_pileSel) return;
   const s = pile(_pileSel).filter(p => !p.cache).reverse();
+  if(!s.length) return;
+  const tete = document.createElement('div');
+  tete.className = 'bordPile';
+  tete.textContent = '▲ Sommet';
+  box.appendChild(tete);
+  const marque = document.createElement('div');
+  marque.className = 'inserPile';
+  marque.hidden = true;
+  const lignes = [];
+  // Vignettes de 56 px au doigt, de 36 px à la souris.
+  const coteMini = _profil && _profil !== 'pc' ? 56 : 36;
   for(const p of s){
     const l = document.createElement('div');
-    l.className = 'lig';
-    l.title = 'Glisser vers la carte pour déplacer ce pion seul';
+    l.className = 'lig' + (_sel.has(p) ? ' sel' : '');
+    const nom = p.el.title || p.nom;
+    l.title = nom + ' — glisser dans la liste pour changer son rang, vers la carte pour le déplacer';
+    l.setAttribute('role', 'option');
+    l.setAttribute('aria-label', nom);
+    l.setAttribute('aria-selected', String(_sel.has(p)));
     // Copie réduite du pion affiché : fond, couches et orientation.
     const im = document.createElement('div');
     im.className = 'mini';
     const copie = p.el.cloneNode(true);
-    copie.classList.remove('sel');
+    copie.classList.remove('sel', 'deplie');
     copie.removeAttribute('title');
     copie.style.cssText = `position:absolute;left:0;top:0;width:${p.sz}px;height:${p.sz}px;`
-                        + `transform:scale(${36 / p.sz});transform-origin:0 0;`;
+                        + `transform:scale(${coteMini / p.sz});transform-origin:0 0;opacity:1`;
     im.appendChild(copie);
     // Le pion seul, sans son nom.
     l.append(im);
     l.addEventListener('contextmenu', e => { e.preventDefault(); if(_dernierPointeur === 'mouse') ouvrirMenu(p, e.clientX, e.clientY, 'mouse'); });
+    const plusieurs = () => _sel.has(p) && _sel.size > 1;
     for(const [txt, titre, f] of [['⋮', 'Commandes du pion (clic droit)', e => ouvrirMenu(p, e.clientX, e.clientY, e.pointerType || _dernierPointeur)],
                                   ['▲', 'Monter', () => changerRang(p, +1)],
                                   ['▼', 'Descendre', () => changerRang(p, -1)],
-                                  ['✕', 'Retirer de la carte', () => retirer(p)]]){
+                                  ['✕', 'Retirer de la carte (la sélection, si ce pion en fait partie)',
+                                   () => plusieurs() ? retirerSelection() : retirer(p)]]){
       const b = document.createElement('button');
       b.textContent = txt; b.title = titre; b.setAttribute('aria-label', titre);
       b.addEventListener('pointerdown', e => e.stopPropagation());
       b.addEventListener('click', f);
       l.appendChild(b);
     }
-    l.addEventListener('pointerdown', e => glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
-      const c = clientVersCarte(cx, cy);
-      if(c) deplacer([p], c.x, c.y);
-    }, null, {appuiLong: 300}));
+    // Rang visé : avant ou après la ligne la plus proche du pointeur.
+    const vise = ev => {
+      let best = null, bd = Infinity;
+      for(const x of lignes){
+        const r = x.l.getBoundingClientRect();
+        const d = Math.abs((r.top + r.bottom) / 2 - ev.clientY);
+        if(d < bd){ bd = d; best = {x, r}; }
+      }
+      return best && {q: best.x.p, r: best.r, dessus: ev.clientY < (best.r.top + best.r.bottom) / 2};
+    };
+    l.addEventListener('pointerdown', e => {
+      if(e.button > 0) return;
+      glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
+        const c = clientVersCarte(cx, cy);
+        if(c) deplacer(_sel.has(p) ? piecesADeplacer() : [p], c.x, c.y);
+      }, ev => {
+        if(!selectionnable(p)) return;
+        if(ev && (ev.ctrlKey || ev.metaKey)) selectionner([p], 'basculer');
+        else if(ev && ev.shiftKey && _ancrePile && s.includes(_ancrePile)){
+          const a = s.indexOf(_ancrePile), b = s.indexOf(p);
+          selectionner(s.slice(Math.min(a, b), Math.max(a, b) + 1));
+          return;
+        } else selectionner([p]);
+        _ancrePile = p;
+      }, {
+        appuiLong: 300,
+        zone: box,
+        dansZone: ev => {
+          const v = vise(ev);
+          if(!v) return;
+          const br = box.getBoundingClientRect();
+          marque.hidden = false;
+          marque.style.top = ((v.dessus ? v.r.top : v.r.bottom) - br.top + box.scrollTop - 1) + 'px';
+        },
+        horsZone: () => { marque.hidden = true; },
+        fin: () => { marque.hidden = true; },
+        lacherZone: ev => {
+          const v = vise(ev);
+          if(!v || v.q === p) return;
+          // La liste va du sommet au fond : « dessus » veut dire juste au-dessus.
+          const sans = pile(cle(p)).filter(x => x !== p);
+          deplacerDansPile(p, sans.indexOf(v.q) + (v.dessus ? 1 : 0));
+        }
+      });
+    });
+    lignes.push({l, p});
     box.appendChild(l);
   }
+  const pied = document.createElement('div');
+  pied.className = 'bordPile';
+  pied.textContent = '▼ Fond';
+  box.append(pied, marque);
 }
 
 // ═══ APERÇU DES PILES AU SURVOL ═══
