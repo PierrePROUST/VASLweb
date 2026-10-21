@@ -9,6 +9,9 @@
 :root{
   --fond:#2b2b2b; --barre:#1e1e1e; --texte:#e6e6e6; --doux:#9a9a9a;
   --accent:#d9a441; --bord:#444;
+  /* Menus, fenêtres et aperçus : sombres, comme le reste de l'interface. */
+  --menu-fond:#2f2f2f; --menu-texte:#e6e6e6; --menu-survol:#2f5f9e; --menu-bord:#555;
+  --menu-doux:#a8a8a8; --champ:#232323;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--fond);color:var(--texte);
@@ -20,6 +23,8 @@ body{display:flex;flex-direction:column;overflow:hidden}
 button{background:#333;color:var(--texte);border:1px solid var(--bord);
   border-radius:4px;padding:5px 10px;font:inherit;cursor:pointer}
 button:hover{border-color:var(--accent)}
+/* Pas de délai de double appui ni de zoom de page sur les commandes. */
+button,select,label,.onglet,.wli,.lig,.vig{touch-action:manipulation}
 button:disabled{opacity:.4;cursor:default}
 #zoomTxt{min-width:52px;text-align:center;color:var(--doux)}
 #mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
@@ -52,28 +57,28 @@ button:disabled{opacity:.4;cursor:default}
 #btUtilisateur.admin{border-color:#c0392b;color:#ff8a7a}
 /* Fenêtres d'identification et de gestion des utilisateurs. */
 .fenetre{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9800;
-  width:min(92vw,380px);max-height:90vh;overflow:auto;background:#f4f2ea;color:#111;
-  border:1px solid #333;border-radius:6px;box-shadow:0 8px 28px rgba(0,0,0,.6);font-size:13px}
+  width:min(92vw,380px);max-height:90vh;overflow:auto;background:var(--menu-fond);color:var(--menu-texte);
+  border:1px solid var(--menu-bord);border-radius:6px;box-shadow:0 8px 28px rgba(0,0,0,.6);font-size:13px}
 .fenetre .ft{padding:7px 12px;font-weight:700;background:#2f5f9e;color:#fff;border-radius:6px 6px 0 0}
 .fenetre .fc{padding:10px 12px}
 .fenetre p{margin:0 0 8px}
-.fenetre label{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;font-size:12px;color:#333}
+.fenetre label{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;font-size:12px;color:var(--menu-doux)}
 .fenetre label.coche{flex-direction:row;align-items:center;gap:6px}
-.fenetre input:not([type=checkbox]),.fenetre select{padding:6px;font:inherit;font-size:14px;color:#111;
-  background:#fff;border:1px solid #888;border-radius:3px}
-.fenetre .ferr{min-height:16px;color:#b00;font-weight:600;font-size:12px;margin-bottom:4px}
+.fenetre input:not([type=checkbox]),.fenetre select{padding:6px;font:inherit;font-size:14px;color:var(--menu-texte);
+  background:var(--champ);border:1px solid var(--menu-bord);border-radius:3px}
+.fenetre .ferr{min-height:16px;color:#ff6b6b;font-weight:600;font-size:12px;margin-bottom:4px}
 .fenetre .fb{display:flex;gap:6px;flex-wrap:wrap}
-.fenetre .fb button{flex:1;min-height:32px;background:#e4e1d6;color:#111;border-color:#999}
+.fenetre .fb button{flex:1;min-height:32px}
 .fenetre .fb button.prim{background:#2f5f9e;color:#fff;border-color:#2f5f9e}
 #btNet.actif{border-color:#3c8f4a;color:#9fe0a8}
 #btLog.actif{border-color:#c03a3a;color:#ff8a8a}
 #fenLog{z-index:9900}
-.fenetre .fnote{margin:10px 0 0;font-size:11px;color:#666}
+.fenetre .fnote{margin:10px 0 0;font-size:11px;color:var(--menu-doux)}
 .fenetre table{width:100%;border-collapse:collapse;margin-bottom:6px}
-.fenetre th{text-align:left;border-bottom:1px solid #999;padding:3px}
-.fenetre td{padding:3px;border-bottom:1px solid #ddd}
+.fenetre th{text-align:left;border-bottom:1px solid var(--menu-bord);padding:3px}
+.fenetre td{padding:3px;border-bottom:1px solid #3a3a3a}
 .fenetre td.nb{text-align:right}
-.fenetre td button{padding:1px 8px;font-size:12px;background:#e4e1d6;color:#111;border-color:#999}
+.fenetre td button,.fenetre button.petit{padding:1px 8px;font-size:12px}
 #journal .jet{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--texte);padding:1px 0}
 #journal .jet img{width:22px;height:22px}
 #journal .jet .cat{font-weight:600}
@@ -92,21 +97,30 @@ button:disabled{opacity:.4;cursor:default}
 #pile{max-height:40%;overflow:auto;border-bottom:1px solid var(--bord)}
 #pile:empty::before{content:"Cliquer un pion pour voir sa pile.";display:block;padding:8px;color:var(--doux);font-size:12px}
 .lig{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid #2c2c2c;
-  touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
+  touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .lig .mini{width:36px;height:36px;flex:none;margin-right:auto}
 .lig button{padding:1px 6px;font-size:12px}
 #palRech{margin:6px 8px;padding:5px;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px}
 #palCorps{flex:1;overflow:auto;padding:0 8px 8px;font-size:12px}
 .grille{display:flex;flex-wrap:wrap;gap:4px;padding:6px 2px}
 .vig{width:46px;height:46px;background:#2a2a2a;border:1px solid var(--bord);border-radius:3px;
-  display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;
+  display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:pan-y;
   user-select:none;-webkit-user-select:none}
 .mini{position:relative;width:42px;height:42px;overflow:hidden;pointer-events:none}
 .mini img{position:absolute;pointer-events:none}
-.pion{position:absolute;touch-action:none;cursor:pointer}
+.pion{position:absolute;touch-action:none;cursor:pointer;-webkit-touch-callout:none}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
+/* Pile dépliée : une trame et un liseré sous ses pions écartés ; le pion
+   survolé est cerné, pour que le clic soit sans surprise. */
+.fondPile{position:absolute;z-index:4999;pointer-events:none;border:1px solid var(--accent);border-radius:4px;
+  background:repeating-linear-gradient(45deg,rgba(20,20,20,.55) 0 6px,rgba(60,60,60,.55) 6px 12px)}
+.pion.deplie:hover:not(.sel){outline:1px dashed #fff;outline-offset:0}
+.pastille{position:absolute;z-index:6000;pointer-events:none;transform:translate(-50%,-50%) scale(var(--zinv,1));
+  background:#1e1e1e;color:var(--texte);border:1px solid var(--bord);border-radius:9px;padding:0 5px;
+  font:600 11px/16px system-ui,sans-serif;white-space:nowrap}
+.pastille.partielle{background:var(--accent);color:#111;border-color:#111}
 .pion.coup{animation:coup 1.6s ease-out}
 .pion.retire{pointer-events:none;animation:retire 1.6s ease-out forwards}
 @keyframes retire{0%,40%{opacity:.9;box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{opacity:0;box-shadow:none}}
@@ -114,26 +128,27 @@ button:disabled{opacity:.4;cursor:default}
 .fantome{position:fixed;z-index:9999;pointer-events:none;opacity:.8}
 .cible{position:absolute;z-index:9000;pointer-events:none;width:24px;height:24px;margin:-12px 0 0 -12px;
   border:3px solid var(--accent);border-radius:50%}
-.survol{position:fixed;z-index:9500;pointer-events:none;background:#f2efe4;color:#1a1a1a;
-  border:1px solid #222;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.55);padding:4px 6px 5px}
+.survol{position:fixed;z-index:9500;pointer-events:none;background:var(--menu-fond);color:var(--menu-texte);
+  border:1px solid var(--menu-bord);border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,.55);padding:4px 6px 5px}
 .survol .tt{font-weight:600;font-size:11px;padding:0 1px 4px}
 .survol .rang{display:flex;gap:6px;align-items:flex-end}
 .survol .cel{display:flex;flex-direction:column;align-items:center;gap:2px}
 #ctx,.ssmenu{position:fixed;z-index:9600;min-width:190px;max-width:340px;max-height:80vh;overflow:auto;
-  background:#f4f2ea;color:#111;border:1px solid #333;border-radius:4px;box-shadow:0 6px 20px rgba(0,0,0,.55);
-  font-size:13px;padding:3px 0;user-select:none;-webkit-user-select:none}
+  background:var(--menu-fond);color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:4px;
+  box-shadow:0 6px 20px rgba(0,0,0,.55);font-size:13px;padding:3px 0;user-select:none;-webkit-user-select:none}
 .ssmenu{display:none;z-index:9601}
 .ouvert > .ssmenu{display:block}
-#ctx .tt{font-weight:700;padding:4px 10px 5px;border-bottom:1px solid #bbb;margin-bottom:2px}
+#ctx .tt{font-weight:700;padding:4px 10px 5px;border-bottom:1px solid var(--menu-bord);margin-bottom:2px}
 #ctx .it{display:flex;justify-content:space-between;gap:18px;padding:4px 10px;cursor:pointer;white-space:nowrap}
-#ctx .it:hover,#ctx .it.ouvert{background:#2f5f9e;color:#fff}
+#ctx .it:hover,#ctx .it.ouvert{background:var(--menu-survol);color:#fff}
 #ctx .it .rc{opacity:.6;font-size:11px}
 #ctx .it.smi > .rc{opacity:.8}
-#ctx .vide{padding:4px 10px;color:#666;font-style:italic}
-#ctx .it.off,#ctx .it.off:hover{color:#999;background:none;cursor:default}
+#ctx .vide{padding:4px 10px;color:var(--menu-doux);font-style:italic}
+#ctx .it.off,#ctx .it.off:hover{color:#777;background:none;cursor:default}
 .editLabel.choix{flex-direction:column;align-items:stretch}
 .editLabel.choix label{display:flex;justify-content:space-between;gap:8px;align-items:center}
-.editLabel select{padding:2px 4px;font:inherit;font-size:13px;max-width:220px}
+.editLabel select{padding:2px 4px;font:inherit;font-size:13px;max-width:220px;background:var(--champ);color:var(--menu-texte);
+  border:1px solid var(--menu-bord)}
 .onglets{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--bord);margin-top:4px}
 .onglet{padding:2px 7px;font-size:11px;background:#262626;border:1px solid var(--bord);border-bottom:none;
   border-radius:3px 3px 0 0;cursor:pointer;color:var(--doux)}
@@ -146,9 +161,10 @@ button:disabled{opacity:.4;cursor:default}
 .wboite{width:100%;margin:4px 0;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);padding:3px}
 .wtitre{font-weight:600;font-size:11px;color:var(--doux);margin:6px 0 2px}
 .etiq{position:absolute;white-space:nowrap;pointer-events:none;padding:0 1px;z-index:2}
-.editLabel{position:fixed;z-index:9700;display:flex;gap:4px;align-items:center;background:#f4f2ea;color:#111;
-  border:1px solid #333;border-radius:4px;padding:4px 6px;box-shadow:0 4px 14px rgba(0,0,0,.5);font-size:12px}
-.editLabel input{width:180px;padding:3px 5px;border:1px solid #888;border-radius:3px;font:inherit;font-size:13px}
+.editLabel{position:fixed;z-index:9700;display:flex;gap:4px;align-items:center;background:var(--menu-fond);
+  color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:4px;padding:4px 6px;box-shadow:0 4px 14px rgba(0,0,0,.5);font-size:12px}
+.editLabel input{width:180px;padding:3px 5px;border:1px solid var(--menu-bord);border-radius:3px;font:inherit;font-size:13px;
+  background:var(--champ);color:var(--menu-texte)}
 .editLabel button{background:#2f5f9e;color:#fff;border:none;padding:3px 8px}
 /* Fil de visée (VASLThread) : calque du fil, étiquettes noires de taille
    fixe à l'écran, pions transparents pendant la visée. */
@@ -158,7 +174,10 @@ button:disabled{opacity:.4;cursor:default}
 #filLOS{position:absolute;left:0;top:0;z-index:8500;pointer-events:none;overflow:visible}
 .etiqLOS{position:absolute;z-index:8600;pointer-events:none;transform-origin:0 0;white-space:nowrap;
   background:#000;color:#fff;font:11px/14px Dialog,Arial,sans-serif;padding:1px 1px 0}
-@media (max-width:700px){ #cote{position:absolute;right:0;top:44px;bottom:0;z-index:50;width:min(320px,90vw)} }
+/* Sur petit écran, le panneau couvre la carte, et elle seule : il est
+   placé dans #corps, sous les barres et au-dessus du journal. */
+#corps{position:relative}
+@media (max-width:700px){ #cote{position:absolute;right:0;top:0;bottom:0;z-index:50;width:min(320px,90vw)} }
 </style>
 </head>
 <body>
@@ -1269,40 +1288,84 @@ function setZoom(z, fx, fy){
   if(fx === undefined){ fx = wr.left + wr.width/2; fy = wr.top + wr.height/2; }
   const wx = (wrap.scrollLeft + (fx - wr.left)) / zoom;
   const wy = (wrap.scrollTop  + (fy - wr.top )) / zoom;
+  const loin = _effectifPiles && _vueDeLoin();
   zoom = z;
-  document.getElementById('mapInner').style.transform = `scale(${zoom})`;
+  if(!_zoomAuto) _zoomManuel = true;
+  const mi = document.getElementById('mapInner');
+  mi.style.transform = `scale(${zoom})`;
+  mi.style.setProperty('--zinv', 1 / zoom);
   _majScaler();
   wrap.scrollLeft = wx*zoom - (fx - wr.left);
   wrap.scrollTop  = wy*zoom - (fy - wr.top);
   document.getElementById('zoomTxt').textContent = Math.round(zoom*100) + ' %';
   if(_fil) dessinerFil();
+  // L'effectif des piles ne se montre que de loin.
+  if(_effectifPiles && loin !== _vueDeLoin()) rendreToutes();
 }
 function zoomIn(){  setZoom(zoom*1.25); }
 function zoomOut(){ setZoom(zoom/1.25); }
+// Zoom choisi par le joueur, ou seulement celui d'« Ajuster » : après une
+// rotation de l'écran, on n'ajuste de nouveau que dans ce second cas.
+let _zoomManuel = false, _zoomAuto = false;
 function zoomFit(){
   if(!_mapW) return;
   const wrap = document.getElementById('mapWrap');
-  setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/_mapH));
+  _zoomAuto = true;
+  try { setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/_mapH)); } finally { _zoomAuto = false; }
+  _zoomManuel = false;
   wrap.scrollLeft = 0; wrap.scrollTop = 0;
 }
 
+// Fenêtre redimensionnée ou écran tourné : on garde le point de la carte
+// qui était au centre de la vue, ou l'on ajuste si le joueur n'a pas zoomé.
+let _centreVue = null, _redim = null;
+function _noterCentre(){
+  const w = document.getElementById('mapWrap');
+  if(_mapW && w.clientWidth) _centreVue = {x: (w.scrollLeft + w.clientWidth/2) / zoom, y: (w.scrollTop + w.clientHeight/2) / zoom};
+}
+function _surRedimension(){
+  clearTimeout(_redim);
+  _redim = setTimeout(() => {
+    _redim = null;
+    const w = document.getElementById('mapWrap');
+    if(_mapW && w.clientWidth){
+      if(!_zoomManuel) zoomFit();
+      else if(_centreVue){
+        w.scrollLeft = _centreVue.x * zoom - w.clientWidth/2;
+        w.scrollTop  = _centreVue.y * zoom - w.clientHeight/2;
+      }
+    }
+    _noterCentre();
+    for(const f of _apresRedimension) f();
+  }, 200);
+}
+const _apresRedimension = [];
+
+// Les pointeurs posés sur la carte, pions compris : un pincement qui
+// commence sur un pion zoome, et abandonne le glissé du pion.
+const _pointeursCarte = new Map();
 function _setupPanZoom(){
   const wrap = document.getElementById('mapWrap');
-  const pts = new Map();
+  const pts = _pointeursCarte;
   let pinch = null;
   wrap.addEventListener('pointerdown', e => {
-    pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
-    wrap.setPointerCapture(e.pointerId);
-    wrap.classList.add('pan');
+    // Un pion garde son geste (sélection, glissé) : seul, son doigt ne
+    // déplace pas la carte.
+    const pion = !!(e.target.closest && e.target.closest('.pion'));
+    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, pion});
+    if(!pion){ try { wrap.setPointerCapture(e.pointerId); } catch(err){} }
+    if(!pion || pts.size > 1) wrap.classList.add('pan');
     if(pts.size === 2){
+      if(_glisse) _glisse.abandonner();
+      for(const q of pts.values()) q.pion = false;
       const [a, b] = [...pts.values()];
       pinch = {d: Math.hypot(a.x-b.x, a.y-b.y), z: zoom};
     }
   });
-  wrap.addEventListener('pointermove', e => {
+  window.addEventListener('pointermove', e => {
     const p = pts.get(e.pointerId);
     if(!p) return;
-    if(pts.size === 1){
+    if(pts.size === 1 && !p.pion){
       wrap.scrollLeft -= e.clientX - p.x;
       wrap.scrollTop  -= e.clientY - p.y;
     }
@@ -1318,8 +1381,9 @@ function _setupPanZoom(){
     if(pts.size < 2) pinch = null;
     if(!pts.size) wrap.classList.remove('pan');
   };
-  wrap.addEventListener('pointerup', fin);
-  wrap.addEventListener('pointercancel', fin);
+  window.addEventListener('pointerup', fin);
+  window.addEventListener('pointercancel', fin);
+  wrap.addEventListener('scroll', () => { if(!_redim) _noterCentre(); });
   wrap.addEventListener('wheel', e => {
     e.preventDefault();
     setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1/1.1), e.clientX, e.clientY);
@@ -6374,9 +6438,8 @@ async function _chargerImage(path){
 //   x, y    position en pixels VASL natifs
 //   ordre   rang dans la pile, du fond vers le sommet
 // ═══════════════════════════════════════════════════════════════
-const STACK_DX = 4, STACK_DY = -4;    // décalage d'empilement, à l'écran
 let pions = [];
-let _pileSel = null;                  // clé de la pile sélectionnée
+let _pileSel = null;                  // clé de la pile courante : celle du dernier pion sélectionné
 let _source = null;                   // segments de l'état chargé
 let _carteJeu = 'Main Map';           // nom VASSAL de la carte de jeu
 let _annexes = new Map();
@@ -6387,8 +6450,77 @@ let _uidSeq = 0;
 
 const cle = p => p.x + ',' + p.y;
 const vivants = () => pions.filter(p => !p.deleted);
+// Une pile, du fond vers le sommet. Simple filtre, toujours exact : seul
+// le rendu complet (rendreToutes) passe par un index des piles.
 function pile(k){
-  return vivants().filter(p => cle(p) === k).sort((a, b) => a.ordre - b.ordre);
+  return pions.filter(p => !p.deleted && cle(p) === k).sort((a, b) => a.ordre - b.ordre);
+}
+
+// Toutes les piles en une passe : clé → pions, du fond vers le sommet.
+function indexerPiles(){
+  const ix = new Map();
+  for(const p of pions){
+    if(p.deleted) continue;
+    const k = cle(p);
+    let l = ix.get(k);
+    if(!l) ix.set(k, l = []);
+    l.push(p);
+  }
+  for(const l of ix.values()) l.sort((a, b) => a.ordre - b.ordre);
+  return ix;
+}
+
+// ═══ SÉLECTION — d'après KeyBuffer de VASSAL ═══
+// La sélection est un ensemble de pions, pas une pile : une touche
+// s'applique à chacun d'eux. _pileSel désigne la pile « courante », celle
+// du dernier pion sélectionné ; tout le code qui le lit continue de marcher.
+// Une pile dépliée (Stack.setExpanded) écarte ses pions : on peut alors en
+// viser un seul.
+let _sel = new Set();          // pions sélectionnés
+let _depliees = new Set();     // clés des piles dépliées
+// Ni un pion HIP de l'adversaire, ni une carte ou un panneau de VASL Tools.
+const selectionnable = p => !!p && !p.deleted && !p.cache && !p.fond;
+const selDans = k => pile(k).filter(p => _sel.has(p));
+const pileEntiereSel = k => { const s = pile(k).filter(selectionnable); return s.length > 0 && s.every(p => _sel.has(p)); };
+// Fonctions appelées après chaque changement de sélection (panneau, éventail…).
+const _apresSelection = [];
+
+// Les pions retirés, partis ailleurs ou devenus invisibles quittent la sélection.
+function purgerSelection(){
+  for(const p of _sel) if(!selectionnable(p) || !pions.includes(p)) _sel.delete(p);
+}
+
+// mode : 'remplacer' | 'ajouter' | 'basculer' | 'retirer'
+function selectionner(liste, mode = 'remplacer'){
+  const avant = new Set(_sel), ancienne = _pileSel;
+  liste = liste.filter(selectionnable);
+  if(mode === 'remplacer') _sel = new Set(liste);
+  else for(const p of liste){
+    if(mode === 'ajouter') _sel.add(p);
+    else if(mode === 'retirer' || (mode === 'basculer' && _sel.has(p))) _sel.delete(p);
+    else _sel.add(p);
+  }
+  purgerSelection();
+  const dernier = [...liste].reverse().find(p => _sel.has(p)) || [..._sel].pop();
+  _pileSel = dernier ? cle(dernier) : null;
+  const touchees = new Set([...avant, ..._sel].map(cle));
+  if(ancienne) touchees.add(ancienne);
+  if(_pileSel) touchees.add(_pileSel);
+  touchees.forEach(k => rendrePile(k));
+  afficherPile();
+  for(const f of _apresSelection) f();
+}
+
+function deplier(k, oui){
+  const avant = _depliees.has(k);
+  if(oui && pile(k).filter(p => !p.cache).length > 1) _depliees.add(k); else _depliees.delete(k);
+  if(avant !== _depliees.has(k)) rendrePile(k);
+}
+function replierTout(){
+  const l = [..._depliees];
+  _depliees.clear();
+  l.forEach(k => rendrePile(k));
+  return l.length > 0;
 }
 function nouvelUid(){ return String(Date.now()) + String(++_uidSeq); }
 
@@ -6417,7 +6549,13 @@ function creerPion(seg, ordre){
              el, face, sz: Math.round(48 * SC), deleted: false};
   pions.push(p);
   el.addEventListener('pointerdown', e => _pionPointerDown(e, p));
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); cacherSurvol(); ouvrirMenu(p, e.clientX, e.clientY); });
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault(); e.stopPropagation();
+    // Au doigt, c'est l'appui long qui ouvre le menu (Android enverrait
+    // aussi ce contextmenu, iOS jamais).
+    if(_dernierPointeur !== 'mouse') return;
+    cacherSurvol(); ouvrirMenu(p, e.clientX, e.clientY);
+  });
   el.addEventListener('pointerenter', e => { if(e.pointerType === 'mouse' && !e.buttons) survolEntre(p, e); });
   el.addEventListener('pointermove', e => { if(e.pointerType === 'mouse' && !e.buttons) survolEntre(p, e); });
   el.addEventListener('pointerleave', e => { if(e.pointerType === 'mouse') survolSort(); });
@@ -6691,20 +6829,111 @@ function placerLabel(e, sz){
   }
 }
 
-function rendrePile(k){
-  const s = pile(k).filter(p => !p.cache);
+// ═══ EMPILEMENT — StackMetrics de la carte de jeu ═══
+// Écarts en pixels VASL natifs, lus dans le buildFile (unexSep : pile
+// repliée, exSep : pile dépliée). Tant que la base n'est pas chargée, on
+// garde l'ancien décalage de 4 px à l'écran, et les écarts dépliés et les
+// touches par défaut de StackMetrics.
+const METRIQUES_DEFAUT = {unexSepX: 4 / SC, unexSepY: 4 / SC, exSepX: 6, exSepY: 18, disabled: false,
+  top: _touche(38, 0), bottom: _touche(40, 0), up: _touche(39, 0), down: _touche(37, 0)};
+const metriques = () => (_bdd && _bdd.stackMetrics) || METRIQUES_DEFAUT;
+
+// Rectangles des pions visibles d'une pile, à l'écran (pixels de
+// #mapInner), comme StackMetrics.getContents puis nextPosition : chaque
+// pion se cale sur le bord de celui de dessous, décalé de dx vers la
+// droite et de dy vers le HAUT. Les pions de même taille sont donc
+// simplement décalés de (dx, −dy).
+function rectsPile(s, deplie){
+  const m = metriques();
+  const dx = m.disabled ? 0 : (deplie ? m.exSepX : m.unexSepX) * SC;
+  const dy = m.disabled ? 0 : (deplie ? m.exSepY : m.unexSepY) * SC;
+  const out = [];
+  let prec = null;
+  for(const p of s){
+    const w = p.larg || p.sz, h = p.haut || p.sz;
+    let x = p.x * SC - w/2, y = p.y * SC - h/2;
+    if(prec){
+      x = dx > 0 ? prec.x + dx : dx < 0 ? prec.x + prec.w - w + dx : prec.x + prec.w/2 - w/2;
+      y = dy > 0 ? prec.y + prec.h - h - dy : dy < 0 ? prec.y - dy : prec.y + prec.h/2 - h/2;
+    }
+    const r = {x, y, w, h};
+    out.push(r);
+    prec = r;
+  }
+  return out;
+}
+
+function rendrePile(k, tous){
+  const s = (tous || pile(k)).filter(p => !p.cache);
+  const deplie = _depliees.has(k) && s.length > 1;
+  if(!deplie) _depliees.delete(k);
+  const rects = rectsPile(s, deplie);
   s.forEach((p, i) => {
     // Une carte ou un panneau n'est pas carré, et passe sous les pions
     // posés dans ses cases.
-    const w = p.larg || p.sz, h = p.haut || p.sz;
-    p.el.style.width = w + 'px';
-    p.el.style.height = h + 'px';
-    p.el.style.left = (p.x * SC - w/2 + (p.decX || 0) * SC + i*STACK_DX) + 'px';
-    p.el.style.top  = (p.y * SC - h/2 + (p.decY || 0) * SC + i*STACK_DY) + 'px';
-    p.el.style.zIndex = (p.fond ? 2 : 10) + i;
-    p.el.classList.toggle('sel', k === _pileSel);
+    const r = rects[i];
+    p.el.style.width = r.w + 'px';
+    p.el.style.height = r.h + 'px';
+    p.el.style.left = (r.x + (p.decX || 0) * SC) + 'px';
+    p.el.style.top  = (r.y + (p.decY || 0) * SC) + 'px';
+    // Une pile dépliée passe au-dessus de ses voisines.
+    p.el.style.zIndex = (deplie ? 5000 : p.fond ? 2 : 10) + i;
+    p.el.classList.toggle('sel', _sel.has(p));
+    p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
   });
+  _decorPile(k, s, rects, deplie);
+}
+
+// Rendu complet : une passe pour grouper, une pour placer.
+function rendreToutes(){
+  const ix = indexerPiles();
+  purgerSelection();
+  for(const [k, s] of ix) rendrePile(k, s);
+  for(const k of [..._decors.keys()]) if(!ix.has(k)) _decorPile(k, [], [], false);
+  for(const k of [..._depliees]) if(!ix.has(k)) _depliees.delete(k);
+}
+
+// ── Décor d'une pile, hors des données du jeu : la trame d'une pile
+// dépliée, et une pastille « 2/5 » quand la sélection n'en prend qu'une
+// partie (ou, en option, l'effectif d'une pile vue de loin). La pastille
+// garde sa taille à l'écran, quel que soit le zoom.
+const _decors = new Map();       // clé → {fond, pastille}
+// (_lireLocal n'est pas encore défini à ce point du script.)
+function _lirePref(c){ try { return localStorage.getItem(c); } catch(e){ return null; } }
+let _effectifPiles = _lirePref('aslweb.effectifPiles') === '1';
+const _vueDeLoin = () => zoom * 48 * SC < 30;
+
+function _decorPile(k, s, rects, deplie){
+  let d = _decors.get(k);
+  const vus = s.filter(selectionnable);
+  const nSel = vus.filter(p => _sel.has(p)).length;
+  const texte = nSel && nSel < vus.length ? `${nSel}/${vus.length}`
+              : _effectifPiles && vus.length >= 3 && _vueDeLoin() ? String(vus.length) : '';
+  if(!deplie && !texte){
+    if(d){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); _decors.delete(k); }
+    return;
+  }
+  if(!d) _decors.set(k, d = {fond: null, pastille: null});
+  const mi = document.getElementById('mapInner');
+  const x0 = Math.min(...rects.map(r => r.x)), y0 = Math.min(...rects.map(r => r.y));
+  const x1 = Math.max(...rects.map(r => r.x + r.w)), y1 = Math.max(...rects.map(r => r.y + r.h));
+  if(deplie){
+    if(!d.fond){ d.fond = document.createElement('div'); d.fond.className = 'fondPile'; mi.appendChild(d.fond); }
+    Object.assign(d.fond.style, {left: (x0 - 4) + 'px', top: (y0 - 4) + 'px', width: (x1 - x0 + 8) + 'px', height: (y1 - y0 + 8) + 'px'});
+  } else if(d.fond){ d.fond.remove(); d.fond = null; }
+  if(texte){
+    if(!d.pastille){ d.pastille = document.createElement('div'); d.pastille.className = 'pastille'; mi.appendChild(d.pastille); }
+    d.pastille.textContent = texte;
+    d.pastille.classList.toggle('partielle', !!nSel);
+    const haut = rects[rects.length - 1];
+    d.pastille.style.left = (haut.x + haut.w) + 'px';
+    d.pastille.style.top = haut.y + 'px';
+  } else if(d.pastille){ d.pastille.remove(); d.pastille = null; }
+}
+function _viderDecors(){
+  for(const d of _decors.values()){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); }
+  _decors.clear();
 }
 
 // ── Couches de sélection.
@@ -6732,7 +6961,7 @@ function _brancherCouches(){
     c.addEventListener('change', () => {
       COUCHES_SEL[c.dataset.couche] = c.checked;
       try { localStorage.setItem('couchesSel', JSON.stringify(COUCHES_SEL)); } catch(e){}
-      for(const k of new Set(vivants().map(cle))) rendrePile(k);
+      rendreToutes();
     });
   });
 }
@@ -6781,7 +7010,7 @@ function _carteDeJeu(infos){
 
 function importerPions(texte, label, annexes){
   for(const p of pions) p.el.remove();
-  pions = []; _pileSel = null; afficherPile();
+  pions = []; _pileSel = null; _sel = new Set(); _depliees = new Set(); _viderDecors(); afficherPile();
   _histo = []; majUndo();
   const segs = texte.split('\x1b');
   // L'état de la partie précède le premier « LOG » ; la suite, dans un
@@ -6816,7 +7045,7 @@ function importerPions(texte, label, annexes){
   // parcourt ensuite coup par coup.
   preparerRelecture(segs.slice(iLog));
   _etendreCarte();
-  new Set(vivants().map(cle)).forEach(rendrePile);
+  rendreToutes();
   majBoutons();
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
 }
@@ -6913,7 +7142,7 @@ function annuler(){
     ['UNDO\ttrue', ...e.inv, 'UNDO\tfalse'].forEach(_logCmd);
   } finally { _annulation = false; }
   _actionOuverte = false;
-  new Set(pions.map(cle)).forEach(rendrePile);
+  rendreToutes();
   if(_pileSel) afficherPile();
   signalerCoup(photo);
   chatLog(`↶ Coup annulé (${e.inv.length} commande(s))`);
@@ -6954,7 +7183,7 @@ const _idsPile = etat => etat.replace(/\\/g, '').split(';').slice(3).filter(c =>
 function _retirer(id){
   const p = pions.find(q => q.uid === id && (!q.deleted || q.ailleurs));
   if(p){
-    p.deleted = true; p.ailleurs = null; p.el.remove();
+    p.deleted = true; p.ailleurs = null; p.el.remove(); _sel.delete(p);
     return 1;
   }
   const ids = _pilesVassal.get(id);
@@ -7186,8 +7415,7 @@ function avancerLog(muet){
   } finally { _etapeLog = false; }
   _actionOuverte = false;
   _logPos++;
-  new Set(pions.map(cle)).forEach(rendrePile);
-  if(_pileSel) afficherPile();
+  if(!_rendreDiffere){ rendreToutes(); if(_pileSel) afficherPile(); }
   // Les pions touchés par le coup sont signalés, et la vue les rejoint.
   if(!muet) signalerCoup(photo);
   majBarreLog();
@@ -7218,16 +7446,22 @@ function reculerLog(muet){
     }
     majBoutons();
   }
-  new Set(pions.map(cle)).forEach(rendrePile);
-  if(_pileSel) afficherPile();
+  if(!_rendreDiffere){ rendreToutes(); if(_pileSel) afficherPile(); }
   if(!muet) signalerCoup(photo);
   majBarreLog();
   return true;
 }
 
+// Plusieurs coups d'un coup (⏮, ⏭) : un seul rendu, à la fin.
+let _rendreDiffere = false;
 function allerLog(cible){
-  while(_logPos < cible && avancerLog(true));
-  while(_logPos > cible && reculerLog(true));
+  _rendreDiffere = true;
+  try {
+    while(_logPos < cible && avancerLog(true));
+    while(_logPos > cible && reculerLog(true));
+  } finally { _rendreDiffere = false; }
+  rendreToutes();
+  if(_pileSel) afficherPile();
 }
 
 // État visible des pions avant un coup, pour savoir ce qu'il a changé.
@@ -7474,7 +7708,7 @@ function retirer(p, silencieux){
   if(p.deleted || refuser(p)) return;
   _avantAction();
   const k = cle(p);
-  p.deleted = true; p.el.remove();
+  p.deleted = true; p.el.remove(); _sel.delete(p);
   _logCmd('-/' + p.uid);
   ajusterDissimulation(k);
   rendrePile(k); afficherPile();
@@ -8167,7 +8401,7 @@ function envoyer(p, carte, x, y){
   const k = cle(p), sous = _dessous(p), ax = p.x, ay = p.y;
   const te = _typeEtEtat(p.seg);
   if(te) p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, carte, x, y);
-  p.deleted = true; p.ailleurs = carte; p.el.remove();
+  p.deleted = true; p.ailleurs = carte; p.el.remove(); _sel.delete(p);
   _logCmd(`M/${p.uid}/${carte}/${x}/${y}/null/${_carteJeu}/${ax}/${ay}/${sous}/${joueur()}`);
   rendrePile(k); afficherPile();
   chatLog(`📤 ${p.nom} → ${carte}`);
@@ -8515,8 +8749,13 @@ function fermerMenu(){
 
 // ── Geste sur un pion : glisser déplace toute la pile, un simple clic
 // la sélectionne. Un pion seul se tire depuis la liste de la pile.
+// L'événement continue jusqu'à la carte, qui compte le pointeur : un
+// deuxième doigt en fait un pincement.
+let _dernierPointeur = 'mouse';
+document.addEventListener('pointerdown', e => { _dernierPointeur = e.pointerType || 'mouse'; }, true);
+const vibrer = () => { try { if(navigator.vibrate) navigator.vibrate(10); } catch(e){} };
+
 function _pionPointerDown(e, p){
-  e.stopPropagation();
   if(e.button > 0) return;
   cacherSurvol();
   if(e.pointerType !== 'mouse') _appuiLong(e, p);
@@ -8528,14 +8767,45 @@ function _pionPointerDown(e, p){
 }
 
 // Glisser générique avec fantôme : la capture est prise sur le document,
-// faute de quoi le geste se perd en quittant l'élément de départ.
-function glisser(e, src, taille, auLacher, auClic){
-  const x0 = e.clientX, y0 = e.clientY;
-  let fantome = null, cible = null;
+// faute de quoi le geste se perd en quittant l'élément de départ. Seul le
+// pointeur qui a commencé le geste le fait avancer ; un pincement
+// l'abandonne (rien n'est déplacé).
+//   opts.appuiLong : au doigt, dans une liste qui défile, le glissé ne
+//                    part qu'après cet appui maintenu (ms) ; avant, le
+//                    doigt fait défiler la liste.
+let _glisse = null;
+function glisser(e, src, taille, auLacher, auClic, opts = {}){
+  if(_glisse) _glisse.abandonner();
+  const id = e.pointerId, x0 = e.clientX, y0 = e.clientY;
+  const doigt = !!e.pointerType && e.pointerType !== 'mouse';
+  const seuil = doigt ? 12 : 8;
+  let arme = !(doigt && opts.appuiLong), timer = null;
+  let fantome = null, cible = null, rects = null, raf = 0, dernier = null;
+  if(!arme) timer = setTimeout(() => { arme = true; vibrer(); }, opts.appuiLong);
+  const wrap = document.getElementById('mapWrap');
+  const oublierRects = () => { rects = null; };
+  const peindre = () => {
+    raf = 0;
+    const ev = dernier;
+    if(!ev || !fantome) return;
+    // Lectures d'abord (une seule fois par image), écritures ensuite.
+    if(!rects) rects = _rectsCarte();
+    const c = clientVersCarte(ev.clientX, ev.clientY, rects);
+    const a = c && positionDepot(c.x, c.y);
+    const t = Math.max(24, taille);
+    fantome.style.left = (ev.clientX - t/2) + 'px';
+    fantome.style.top  = (ev.clientY - t/2) + 'px';
+    cible.style.display = a ? '' : 'none';
+    if(a){ cible.style.left = a.x*SC + 'px'; cible.style.top = a.y*SC + 'px'; }
+    if(opts.pendant) opts.pendant(ev, a);
+  };
   const bouge = ev => {
-    if(!fantome && Math.hypot(ev.clientX-x0, ev.clientY-y0) < 8) return;
+    if(ev.pointerId !== id) return;
+    if(!fantome && Math.hypot(ev.clientX-x0, ev.clientY-y0) < seuil) return;
+    if(!arme){ abandonner(); return; }
     ev.preventDefault();
     if(!fantome){
+      clearTimeout(timer);
       fantome = document.createElement('img');
       fantome.className = 'fantome';
       if(src) fantome.src = src;
@@ -8544,46 +8814,72 @@ function glisser(e, src, taille, auLacher, auClic){
       cible = document.createElement('div');
       cible.className = 'cible';
       document.getElementById('mapInner').appendChild(cible);
+      if(opts.debut) opts.debut();
     }
-    fantome.style.left = (ev.clientX - fantome.offsetWidth/2) + 'px';
-    fantome.style.top  = (ev.clientY - fantome.offsetHeight/2) + 'px';
-    const c = clientVersCarte(ev.clientX, ev.clientY);
-    const a = c && positionDepot(c.x, c.y);
-    cible.style.display = a ? '' : 'none';
-    if(a){ cible.style.left = a.x*SC + 'px'; cible.style.top = a.y*SC + 'px'; }
+    dernier = ev;
+    if(!raf) raf = requestAnimationFrame(peindre);
   };
-  const fin = ev => {
+  const nettoyer = () => {
     document.removeEventListener('pointermove', bouge);
     document.removeEventListener('pointerup', fin);
     document.removeEventListener('pointercancel', fin);
-    if(fantome){
-      fantome.remove(); cible.remove();
-      if(ev.type === 'pointerup') auLacher(ev.clientX, ev.clientY);
-    } else if(ev.type === 'pointerup' && auClic) auClic();
+    wrap.removeEventListener('scroll', oublierRects);
+    clearTimeout(timer);
+    if(raf) cancelAnimationFrame(raf);
+    if(fantome){ fantome.remove(); cible.remove(); }
+    if(opts.fin) opts.fin();
+    if(_glisse === g) _glisse = null;
   };
+  const fin = ev => {
+    if(ev.pointerId !== id) return;
+    const avait = !!fantome;
+    nettoyer();
+    if(avait){ if(ev.type === 'pointerup') auLacher(ev.clientX, ev.clientY, ev); }
+    else if(ev.type === 'pointerup' && auClic) auClic(ev);
+  };
+  const abandonner = () => { fantome = fantome && (fantome.remove(), cible.remove(), null); nettoyer(); };
+  const g = _glisse = {abandonner, id, actif: () => arme && (!!fantome || !!opts.appuiLong)};
   document.addEventListener('pointermove', bouge);
   document.addEventListener('pointerup', fin);
   document.addEventListener('pointercancel', fin);
+  wrap.addEventListener('scroll', oublierRects);
+  return g;
 }
+// Un glissé armé dans une liste : le doigt ne la fait plus défiler.
+document.addEventListener('touchmove', e => { if(_glisse && _glisse.actif()) e.preventDefault(); }, {passive: false});
 
-// Point de l'écran → pixels VASL natifs, ou null hors de la carte.
-function clientVersCarte(cx, cy){
-  const wr = document.getElementById('mapWrap').getBoundingClientRect();
+const _rectsCarte = () => ({wrap: document.getElementById('mapWrap').getBoundingClientRect(),
+                            inner: document.getElementById('mapInner').getBoundingClientRect()});
+
+// Point de l'écran → pixels VASL natifs, ou null hors de la carte — et
+// null aussi sur un panneau ou une fenêtre qui la recouvre, sauf `libre`.
+function clientVersCarte(cx, cy, rects, libre){
+  const {wrap: wr, inner: mr} = rects || _rectsCarte();
   if(cx < wr.left || cx > wr.right || cy < wr.top || cy > wr.bottom) return null;
-  const mr = document.getElementById('mapInner').getBoundingClientRect();
+  if(!libre){
+    const el = document.elementFromPoint(cx, cy);
+    if(el && !document.getElementById('mapWrap').contains(el)) return null;
+  }
   return {x: (cx - mr.left) / zoom / SC, y: (cy - mr.top) / zoom / SC};
 }
 
 // ── Panneau de la pile sélectionnée, du sommet vers le fond.
+// La pile entière : c'est le clic sur une pile repliée, la dépose, la
+// pose, et la relecture.
 function selectionnerPile(k){
-  const ancien = _pileSel;
-  _pileSel = k;
-  if(ancien) rendrePile(ancien);
-  if(k) rendrePile(k);
-  afficherPile();
+  selectionner(k ? pile(k) : []);
+  if(k && _pileSel !== k){
+    // Pile sans pion sélectionnable (une carte de VASL Tools) : elle reste
+    // la pile courante, comme avant.
+    const ancien = _pileSel;
+    _pileSel = k;
+    if(ancien) rendrePile(ancien);
+    afficherPile();
+  }
 }
 
 function afficherPile(){
+  purgerSelection();
   const box = document.getElementById('pile');
   box.innerHTML = '';
   if(!_pileSel) return;
@@ -8609,7 +8905,7 @@ function afficherPile(){
                                   ['▼', 'Descendre', () => changerRang(p, -1)],
                                   ['✕', 'Retirer de la carte', () => retirer(p)]]){
       const b = document.createElement('button');
-      b.textContent = txt; b.title = titre;
+      b.textContent = txt; b.title = titre; b.setAttribute('aria-label', titre);
       b.addEventListener('pointerdown', e => e.stopPropagation());
       b.addEventListener('click', f);
       l.appendChild(b);
@@ -8617,7 +8913,7 @@ function afficherPile(){
     l.addEventListener('pointerdown', e => glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
       const c = clientVersCarte(cx, cy);
       if(c) deplacer([p], c.x, c.y);
-    }));
+    }, null, {appuiLong: 300}));
     box.appendChild(l);
   }
 }
@@ -8701,26 +8997,27 @@ function _placerSurvol(t, cx, cy){
   t.style.left = x + 'px'; t.style.top = y + 'px';
 }
 
-// Au doigt, pas de survol : un appui maintenu sans bouger affiche
-// l'aperçu, décalé pour ne pas passer sous le doigt, puis il se referme
-// seul peu après le relâché.
+// Au doigt, pas de clic droit : un appui maintenu sans bouger (500 ms)
+// ouvre le menu du pion, comme le clic droit, et vibre. C'est le seul
+// accès au menu sur iOS, qui n'envoie pas de contextmenu.
+const APPUI_LONG = 500;
 function _appuiLong(e, p){
-  const x0 = e.clientX, y0 = e.clientY;
-  let montre = false;
+  const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
   const timer = setTimeout(() => {
-    montre = true;
-    afficherSurvol(cle(p), x0, y0 - 50);
-    if(navigator.vibrate) navigator.vibrate(10);
-  }, 450);
+    if(_glisse) _glisse.abandonner();
+    if(_pointeursCarte.size > 1) return;
+    vibrer();
+    if(!_sel.has(p)) selectionnerPile(cle(p));
+    ouvrirMenu(p, x0, y0);
+  }, APPUI_LONG);
   const bouge = ev => {
-    if(Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) return;
+    if(ev.pointerId !== id || Math.hypot(ev.clientX - x0, ev.clientY - y0) < 12) return;
     clearTimeout(timer);
-    if(montre) cacherSurvol();
     fin();
   };
-  const leve = () => {
+  const leve = ev => {
+    if(ev.pointerId !== id) return;
     clearTimeout(timer);
-    if(montre) _survolCache = setTimeout(cacherSurvol, 2500);
     fin();
   };
   const fin = () => {
@@ -8826,7 +9123,25 @@ async function _chargerBDD(){
       a.pions.push(en.textContent || '');
     }
   }
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, version: mod.getAttribute('version')};
+  // Empilement de la carte de jeu (StackMetrics) : écarts replié et
+  // déplié, en pixels natifs, et touches qui changent le rang d'un pion.
+  let sm = null;
+  for(const e of doc.getElementsByTagName('*')){
+    if(!e.tagName.endsWith('.StackMetrics')) continue;
+    const carte = e.parentElement && e.parentElement.getAttribute('mapName');
+    if(!sm || carte === 'Main Map') sm = e;
+  }
+  const entier = (n, d) => { const v = parseInt(sm.getAttribute(n), 10); return Number.isFinite(v) ? v : d; };
+  const stackMetrics = sm ? {
+    unexSepX: entier('unexSepX', 2), unexSepY: entier('unexSepY', 4),
+    exSepX: entier('exSepX', 6), exSepY: entier('exSepY', 18),
+    disabled: sm.getAttribute('disabled') === 'true',
+    top: lireTouche(sm.getAttribute('top')) || METRIQUES_DEFAUT.top,
+    bottom: lireTouche(sm.getAttribute('bottom')) || METRIQUES_DEFAUT.bottom,
+    up: lireTouche(sm.getAttribute('up')) || METRIQUES_DEFAUT.up,
+    down: lireTouche(sm.getAttribute('down')) || METRIQUES_DEFAUT.down} : null;
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, version: mod.getAttribute('version')};
+  rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
   chatLog(`📚 Base VASL ${_bdd.version} : ${slots.length} pions, ${cats.length} catégories`);
@@ -8966,9 +9281,9 @@ function remplirGrille(liste){
       else chatLog('Lâché hors de la carte : rien posé');
     }, () => {
       const wr = document.getElementById('mapWrap').getBoundingClientRect();
-      const c = clientVersCarte(wr.left + wr.width/2, wr.top + wr.height/2);
+      const c = clientVersCarte(wr.left + wr.width/2, wr.top + wr.height/2, null, true);
       if(c) poserDepuisPalette(x, c.x, c.y);
-    }));
+    }, {appuiLong: 300}));
   }
   return g;
 }
@@ -9939,7 +10254,7 @@ function _netAppliquer(texte){
     rejouerLog(segs);
     segs.forEach(_logCmd);
   } finally { _netReception = false; }
-  new Set(pions.map(cle)).forEach(rendrePile);
+  rendreToutes();
   if(_pileSel) afficherPile();
   signalerCoup(photo);
 }
@@ -10015,7 +10330,7 @@ function ouvrirReseau(){
       <div class="fc">
         <p>${s ? `Salle <b>${_esc(s)}</b>` : 'Connexion en cours…'} — code
           <b id="nwCodeAff" style="font-family:monospace;font-size:15px">${_esc(n.code)}</b>
-          <button id="nwCopier" style="padding:1px 8px;font-size:12px;background:#e4e1d6;color:#111;border-color:#999">Copier</button>
+          <button id="nwCopier" class="petit">Copier</button>
           <br>${n.moyen === 'onglets' ? 'Onglets de ce navigateur' : 'Internet (WebRTC)'}${n.hote ? ', vous hébergez' : ''}.</p>
         <table><tr><th>Joueur</th><th></th></tr>
           ${lignes.map(j => `<tr><td>${_esc(j.name || j.id)}${j.id === n.moi ? ' <b>(vous)</b>' : ''}</td>
@@ -10348,6 +10663,10 @@ document.addEventListener('DOMContentLoaded', () => {
   r.addEventListener('input', () => { _palFiltre = r.value.trim().toLowerCase(); dessinerPalette(); });
   if(window.innerWidth < 700) basculerCote();
   _brancherCommandes();
+  // Libellé des boutons d'icône pour les lecteurs d'écran : leur infobulle.
+  for(const b of document.querySelectorAll('button[title]:not([aria-label])')) b.setAttribute('aria-label', b.title);
+  window.addEventListener('resize', _surRedimension);
+  window.addEventListener('orientationchange', _surRedimension);
   chargerImage('mov.gif').then(u => { if(u) document.getElementById('icUnmoved').src = u; });
   chargerImage('QC/Remove.png').then(u => { if(u) document.getElementById('icRemove').src = u; });
   _brancherFil();
