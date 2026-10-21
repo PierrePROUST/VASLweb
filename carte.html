@@ -221,6 +221,22 @@ body[data-terminal=mobile] #bas:not([hidden]){position:fixed;left:0;right:0;z-in
    dessous de toute façon, s'effacent. */
 body:not([data-terminal=pc]).saisie .navBas,body:not([data-terminal=pc]).saisie .relectureBas{display:none}
 body[data-terminal=mobile].saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
+/* Chat compact : une feuille au-dessus du bas de l'écran, la carte visible. */
+body[data-terminal=mobile] #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
+  border-radius:12px 12px 0 0;border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.55)}
+body[data-terminal=mobile].saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
+body[data-terminal=mobile] #bas[data-etat=compact] #journal{min-height:48px}
+.poigneeChat{display:none}
+body[data-terminal=mobile] #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
+.poigneeChat::after{content:"";position:absolute;left:50%;top:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:#666}
+.apercuChat{display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 10px;background:#232323;
+  border-top:1px solid var(--bord);font-size:12px;color:var(--doux);cursor:pointer}
+.apercuChat .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.apercuChat .ecrire{flex:none;height:26px;min-width:36px;padding:0;background:none;border:none;font-size:15px}
+body.chatOuvert .apercuChat{display:none}
+.badgeAct{background:#c03a3a;color:#fff;border-radius:9px;padding:0 5px;font:600 11px/16px system-ui,sans-serif;flex:none}
+.act.rail{position:relative}
+.act.rail .badgeAct{position:absolute;top:3px;right:calc(50% - 22px)}
 body[data-terminal=mobile] #journal{flex:1;height:auto;font-size:13px}
 body[data-terminal=mobile] #chatIn{font-size:16px;padding:8px}
 body[data-terminal=mobile] #palRech{font-size:16px;padding:8px}
@@ -1594,6 +1610,12 @@ function _doubleAppuiVide(e){
 // restent dépliées, comme dans VASSAL (Échap les replie).
 function _clicVide(e){
   if(_filArme) return;
+  // Le chat ouvert recule d'un cran : un appui qui vient de fermer le
+  // clavier s'arrête là ; sinon le chat compact revient à l'aperçu.
+  if(_etatChat === 'compact'){
+    if(Date.now() - _clavierFermeA > 800) fermerChat();
+    return;
+  }
   if(_modeCarte){ toucherModeCarte(clientVersCarte(e.clientX, e.clientY, null, true)); return; }
   if(e.pointerType && e.pointerType !== 'mouse'){
     // Sélection tolérante : la pile la plus proche, à moins de 30 px.
@@ -8020,14 +8042,18 @@ function cadrerSur(pts){
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const demiL = Math.max((RAYON_COUP + .5) * 2 * HEX_HX, (x1 - x0) / 2 + 2 * HEX_HX);
   const demiH = Math.max((RAYON_COUP + .5) * 2 * HEX_HY, (y1 - y0) / 2 + 2 * HEX_HY);
-  const ajuste = Math.min(wrap.clientWidth / _mapW, wrap.clientHeight / _mapH);
-  const z = Math.max(ajuste, Math.min(wrap.clientWidth / (2 * demiL * SC), wrap.clientHeight / (2 * demiH * SC)));
+  // Seule compte la partie de la carte que le chat ouvert ne couvre pas.
+  const hv = hauteurVisibleCarte();
+  // Le zoom « Ajuster » de la partie visible : une carte plus petite que la
+  // vue ne défile pas, elle doit tenir au-dessus du chat.
+  const ajuste = Math.min(wrap.clientWidth / _mapW, hv / _mapH);
+  const z = Math.max(ajuste, Math.min(wrap.clientWidth / (2 * demiL * SC), hv / (2 * demiH * SC)));
   setZoom(z);
   wrap.scrollLeft = (x0 + x1) / 2 * SC * zoom - wrap.clientWidth / 2;
-  wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - wrap.clientHeight / 2;
+  wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - hv / 2;
 }
 
-function majBarreLog(){ rafraichirActions(['relecture', ...ACTIONS.relecture.groupe]); }
+function majBarreLog(){ rafraichirActions(['relecture', ...ACTIONS.relecture.groupe]); majHautBas(); }
 
 function _dessous(p){
   const s = pile(cle(p));
@@ -12147,6 +12173,12 @@ function _majAction(el, a, id){
     if(ck) ck.textContent = c ? '✓' : '';
     if(forme !== 'menu') el.classList.toggle('actif', c);
   }
+  if(a.badge){
+    const n = a.badge();
+    let bg = el.querySelector('.badgeAct');
+    if(n && !bg){ bg = document.createElement('span'); bg.className = 'badgeAct'; el.appendChild(bg); }
+    if(bg){ bg.textContent = n > 99 ? '99+' : String(n); bg.hidden = !n; }
+  }
   const cl = _v(a.classe);
   if(el._classe !== cl){ if(el._classe) el.classList.remove(el._classe); if(cl) el.classList.add(cl); el._classe = cl; }
   el.hidden = !!(a.visible && !a.visible());
@@ -12369,7 +12401,9 @@ Object.assign(ACTIONS, {
   vueCarte:  {lib: 'Carte', court: 'Carte', ico: '🗺', faire: () => vueMobile('carte'), allume: () => _vue() === 'carte'},
   vuePile:   {lib: 'Pile sélectionnée', court: 'Pile', ico: '▤', faire: () => vueMobile('pile'), allume: () => _vue() === 'pile'},
   vuePions:  {lib: 'Palette des pions', court: 'Pions', ico: '♟', faire: () => vueMobile('pions'), allume: () => _vue() === 'pions'},
-  vueJournal:{lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => vueMobile('journal'), allume: () => _vue() === 'journal'},
+  vueJournal:{lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => vueMobile('journal'), allume: () => _vue() === 'journal',
+              badge: () => _nonLus},
+  apercuChat:{lib: 'Aperçu du chat sur la carte', coche: () => _apercuChat, faire: () => basculerApercuChat()},
   titre:     {etiquette: () => _source ? _nomFichier : 'VASL — Carte', classe: 'titreScen'},
   desMenu:   {lib: 'Dés : un appui DR, un appui long les catégories', court: 'Dés', ico: '🎲',
               faire: () => lancerDR('Other'), menuLong: null},
@@ -12381,7 +12415,7 @@ Object.assign(ACTIONS, {
 // Le reste des actions, dans la feuille « Plus » des profils tactiles.
 const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', 'couche_unite', 'couche_marqueur', 'couche_carte', '-', 'zoomPlus', 'zoomMoins', 'ajuster', '-',
-  'verbeux', 'verrou', 'effectif', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile', '-', 'commandes', 'raccourcis'];
+  'verbeux', 'verrou', 'effectif', 'apercuChat', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile', '-', 'commandes', 'raccourcis'];
 function ouvrirFeuillePlus(){ return ouvrirFeuilleActions('Plus', PLUS, 'feuillePlus'); }
 
 // SAN et pièges : les champs eux-mêmes viennent dans la feuille, et
@@ -12441,6 +12475,7 @@ DISPOSITIONS.mobile = {
     const rl = document.createElement('div');
     rl.className = 'relectureBas';
     rl.appendChild(rendreAction('relecture', 'icone'));
+    b.appendChild(_construireApercuChat());
     const nav = document.createElement('nav');
     nav.className = 'navBas';
     nav.setAttribute('aria-label', 'Vues');
@@ -12462,8 +12497,15 @@ function vueMobile(v){
     _ongletCote = n;
     for(const [k, id] of Object.entries(ONGLETS)) document.getElementById(id).classList.toggle('actif', k === n);
   }
-  document.getElementById('bas').hidden = v !== 'journal';
-  if(v === 'journal'){ const j = document.getElementById('journal'); j.scrollTop = j.scrollHeight; }
+  const bas = document.getElementById('bas');
+  if(v === 'journal'){
+    bas.hidden = false;
+    _poserEtatChat('plein');
+    const j = document.getElementById('journal'); j.scrollTop = j.scrollHeight;
+  } else {
+    if(_etatChat) _poserEtatChat(null);
+    bas.hidden = true;
+  }
   rafraichirActions(['vueCarte', 'vuePile', 'vuePions', 'vueJournal']);
   _surRedimension();
 }
@@ -12567,6 +12609,7 @@ function _defaireProfil(){
   document.getElementById('poigneeJournal').hidden = false;
   delete document.body.dataset.vue;
   document.body.classList.remove('saisie');
+  if(_etatChat) _poserEtatChat(null);
   const champs = document.getElementById('infoScen');
   if(champs.parentElement.id !== 'ongDes') document.getElementById('ongDes').insertBefore(champs, document.getElementById('desAide'));
   for(const id of [..._feuilles.keys()]) fermerFeuille(id);
@@ -12637,10 +12680,183 @@ function _brancherClavier(){
   });
   // Un appui sur la carte ferme le clavier ; le geste continue.
   document.getElementById('mapWrap').addEventListener('pointerdown', () => {
-    if(enSaisie() && _champTexte(document.activeElement)) document.activeElement.blur();
+    if(enSaisie() && _champTexte(document.activeElement)){ _clavierFermeA = Date.now(); document.activeElement.blur(); }
   }, true);
 }
 const _apresSaisie = [];
+let _clavierFermeA = 0;
+
+// ═══ CHAT — SUR LA CARTE DU TÉLÉPHONE ═══
+// Trois états, sans quitter la vue Carte : l'aperçu (une ligne au-dessus
+// de la relecture), le chat compact (une feuille au-dessus de la relecture
+// et de la navigation, la carte visible au-dessus), la saisie (la même,
+// sur le clavier) ; l'onglet Journal reste l'état plein. Retour, glissé
+// vers le bas ou appui sur la carte reculent d'un cran. Non-lus, aperçu et
+// pastilles sont des indications d'interface : rien ne part au log.
+let _etatChat = null;            // null (aperçu), 'compact', 'plein'
+let _nonLus = 0;
+let _apercuChat = _lirePref('aslweb.apercuChat') !== '0';
+
+// Hauteur réelle du bas de l'écran (aperçu, relecture, navigation) : le
+// chat ouvert s'arrête au-dessus, la relecture reste accessible.
+function majHautBas(){
+  const b = document.getElementById('chromeBas');
+  if(b) document.documentElement.style.setProperty('--hautBas', b.offsetHeight + 'px');
+}
+_apresRedimension.push(majHautBas);
+_apresProfil.push(() => { majHautBas(); _majApercuChat(); });
+
+// Sous le chat compact, une marge de la hauteur couverte : la carte peut
+// défiler jusqu'à montrer son bas au-dessus du chat.
+function _majReserveCarte(){
+  const w = document.getElementById('mapWrap');
+  document.getElementById('mapScaler').style.marginBottom = (w.clientHeight - hauteurVisibleCarte()) + 'px';
+}
+_apresRedimension.push(_majReserveCarte);
+
+// Hauteur de la carte que le chat compact ne couvre pas.
+function hauteurVisibleCarte(){
+  const w = document.getElementById('mapWrap'), bas = document.getElementById('bas');
+  if(_etatChat !== 'compact' || bas.hidden) return w.clientHeight;
+  const rw = w.getBoundingClientRect(), rb = bas.getBoundingClientRect();
+  return Math.max(80, Math.min(w.clientHeight, rb.top - rw.top));
+}
+
+function _construireApercuChat(){
+  const ap = document.createElement('div');
+  ap.id = 'apercuChat'; ap.className = 'apercuChat';
+  ap.setAttribute('aria-hidden', 'true');      // il répète le journal, déjà aria-live
+  const t = document.createElement('span');
+  t.className = 'txt';
+  const bg = document.createElement('span');
+  bg.className = 'badgeAct'; bg.hidden = true;
+  const ec = document.createElement('button');
+  ec.type = 'button'; ec.className = 'act ecrire'; ec.tabIndex = -1;
+  ec.textContent = '✏';
+  ec.title = 'Écrire au chat';
+  // iOS n'ouvre le clavier que si le focus part du geste lui-même.
+  ec.addEventListener('click', e => { e.stopPropagation(); ouvrirChat(true); });
+  ap.addEventListener('click', () => ouvrirChat(false));
+  ap.append(t, bg, ec);
+  setTimeout(_majApercuChat, 0);
+  return ap;
+}
+function _majApercuChat(){
+  const ap = document.getElementById('apercuChat');
+  if(!ap) return;
+  ap.hidden = !_apercuChat;
+  const l = [...document.querySelectorAll('#journal > .msg, #journal > .rap')].pop();
+  ap.querySelector('.txt').textContent = l ? l.textContent : 'Chat';
+  const bg = ap.querySelector('.badgeAct');
+  bg.textContent = _nonLus > 99 ? '99+' : String(_nonLus);
+  bg.hidden = !_nonLus;
+  majHautBas();
+}
+function basculerApercuChat(){
+  _apercuChat = !_apercuChat;
+  try { localStorage.setItem('aslweb.apercuChat', _apercuChat ? '1' : '0'); } catch(e){}
+  _majApercuChat();
+  _surRedimension();
+}
+function _majNonLus(){ _majApercuChat(); rafraichirActions(['vueJournal']); }
+
+// Chaque ligne : l'aperçu la montre ; un message d'un autre joueur, reçu
+// ou relu, compte parmi les non-lus tant que le chat est fermé, et un
+// message reçu du réseau fait vibrer.
+_apresLigne.push(el => {
+  if(_profil !== 'mobile') return;
+  if(el.classList.contains('msg') && (_netReception || _relecture)){
+    if(!_etatChat){ _nonLus++; _majNonLus(); }
+    if(_netReception) vibrer();
+  }
+  if(el.classList.contains('msg') || el.classList.contains('rap')) _majApercuChat();
+});
+
+function _poserEtatChat(e, depuisRetour){
+  const bas = document.getElementById('bas');
+  const avant = _etatChat;
+  _etatChat = e;
+  if(e) bas.dataset.etat = e; else delete bas.dataset.etat;
+  document.body.classList.toggle('chatOuvert', !!e);
+  if(e){
+    _nonLus = 0; _majNonLus();
+    if(!avant) _pousserHistorique();
+    fermerEventail();
+  } else if(avant){
+    if(depuisRetour) _histChat = false; else _retirerHistorique();
+  }
+  majHautBas();
+  _majReserveCarte();
+  for(const f of _apresEtatChat) f(e);
+}
+const _apresEtatChat = [];
+
+// Chat compact, depuis la carte ; saisir : le clavier s'ouvre aussitôt.
+function ouvrirChat(saisir){
+  if(_profil !== 'mobile') return;
+  if(_vue() !== 'carte') vueMobile('carte');
+  const bas = document.getElementById('bas');
+  bas.hidden = false;
+  if(_etatChat !== 'compact') _poserEtatChat('compact');
+  else _majReserveCarte();
+  const j = document.getElementById('journal');
+  j.scrollTop = j.scrollHeight;
+  _nouveauxChat = 0; _majNouveauxChat();
+  if(saisir) document.getElementById('chatIn').focus();
+}
+function fermerChat(depuisRetour){
+  if(_etatChat !== 'compact') return;
+  const ci = document.getElementById('chatIn');
+  if(document.activeElement === ci) ci.blur();
+  document.getElementById('bas').hidden = true;
+  _poserEtatChat(null, depuisRetour);
+}
+// Sélectionner une pile ramène le chat compact à l'aperçu.
+_apresSelection.push(() => { if(_etatChat === 'compact' && _sel.size) fermerChat(); });
+
+// ── Bouton Retour d'Android : ouvrir le chat ajoute une entrée à
+// l'historique ; Retour referme le chat au lieu de quitter la page.
+let _histChat = false, _popIgnore = false;
+function _pousserHistorique(){
+  if(_histChat) return;
+  try { history.pushState({chat: true}, ''); _histChat = true; } catch(e){}
+}
+function _retirerHistorique(){
+  if(!_histChat) return;
+  _histChat = false;
+  _popIgnore = true;
+  history.back();
+}
+window.addEventListener('popstate', () => {
+  if(_popIgnore){ _popIgnore = false; return; }
+  if(!_histChat) return;
+  _histChat = false;
+  if(_etatChat === 'plein') vueMobile('carte');
+  else if(_etatChat === 'compact') fermerChat(true);
+});
+
+// Poignée du chat compact : vers le bas, l'aperçu ; vers le haut, le plein.
+function _brancherPoigneeChat(){
+  const bas = document.getElementById('bas');
+  const pg = document.createElement('div');
+  pg.className = 'poigneeChat';
+  pg.setAttribute('aria-hidden', 'true');
+  bas.insertBefore(pg, bas.firstChild);
+  pg.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const id = e.pointerId, y0 = e.clientY;
+    const fin = ev => {
+      if(ev.pointerId !== id) return;
+      document.removeEventListener('pointerup', fin);
+      document.removeEventListener('pointercancel', fin);
+      const dy = ev.clientY - y0;
+      if(dy > 50) fermerChat();
+      else if(dy < -50 || Math.abs(dy) < 6) vueMobile('journal');
+    };
+    document.addEventListener('pointerup', fin);
+    document.addEventListener('pointercancel', fin);
+  });
+}
 
 // ═══ CHAT — CHAMP DE SAISIE ═══
 // Comme le Chatter de VASSAL, une seule ligne, envoyée par Entrée ; au
@@ -12669,6 +12885,7 @@ function _brancherChat(){
   bt.addEventListener('pointerdown', e => e.preventDefault());
   bt.addEventListener('click', () => { if(ci.value.trim()) envoyerSaisie(); });
   _brancherClavier();
+  _brancherPoigneeChat();
   majAideChat();
 }
 _apresProfil.push(majAideChat);
