@@ -374,8 +374,6 @@ body.maj .pion.immob{pointer-events:auto}
   padding:0 5px;border-radius:3px;white-space:nowrap}
 .lasso{position:fixed;z-index:9400;pointer-events:none;border:2px solid var(--accent);background:rgba(217,164,65,.12)}
 .pastille.partielle{background:var(--accent);color:#111;border-color:#111}
-.pastilleMF{background:#12324a;border-color:#4a90c0;color:#fff}
-.pastilleMF.depasse{background:#7a1f1f;border-color:#e05050}
 .pion.coup{animation:coup 1.6s ease-out}
 .pion.retire{pointer-events:none;animation:retire 1.6s ease-out forwards}
 @keyframes retire{0%,40%{opacity:.9;box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{opacity:0;box-shadow:none}}
@@ -7494,12 +7492,11 @@ function _decorPile(k, s, rects, deplie){
   const nSel = vus.filter(p => _sel.has(p)).length;
   const texte = nSel && nSel < vus.length ? `${nSel}/${vus.length}`
               : _effectifPiles && vus.length >= 3 && _vueDeLoin() ? String(vus.length) : '';
-  const texteMF = typeof texteMvtPile === 'function' ? texteMvtPile(s) : '';
-  if(!deplie && !texte && !texteMF){
-    if(d){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); if(d.mf) d.mf.remove(); _decors.delete(k); }
+  if(!deplie && !texte){
+    if(d){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); _decors.delete(k); }
     return;
   }
-  if(!d) _decors.set(k, d = {fond: null, pastille: null, mf: null});
+  if(!d) _decors.set(k, d = {fond: null, pastille: null});
   const mi = document.getElementById('mapInner');
   const x0 = Math.min(...rects.map(r => r.x)), y0 = Math.min(...rects.map(r => r.y));
   const x1 = Math.max(...rects.map(r => r.x + r.w)), y1 = Math.max(...rects.map(r => r.y + r.h));
@@ -7515,19 +7512,9 @@ function _decorPile(k, s, rects, deplie){
     d.pastille.style.left = (haut.x + haut.w) + 'px';
     d.pastille.style.top = haut.y + 'px';
   } else if(d.pastille){ d.pastille.remove(); d.pastille = null; }
-  // MF / MP dépensés pendant la phase, sous la pile ; en rouge au-delà
-  // de l'allocation.
-  if(texteMF){
-    if(!d.mf){ d.mf = document.createElement('div'); d.mf.className = 'pastille pastilleMF'; mi.appendChild(d.mf); }
-    d.mf.textContent = texteMF;
-    const [dep, alloc] = texteMF.replace('½', '.5').split(/[\/ ]/);
-    d.mf.classList.toggle('depasse', /\//.test(texteMF) && parseFloat(dep) > parseFloat(alloc));
-    d.mf.style.left = ((x0 + x1) / 2) + 'px';
-    d.mf.style.top = y1 + 'px';
-  } else if(d.mf){ d.mf.remove(); d.mf = null; }
 }
 function _viderDecors(){
-  for(const d of _decors.values()){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); if(d.mf) d.mf.remove(); }
+  for(const d of _decors.values()){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); }
   _decors.clear();
 }
 
@@ -8384,7 +8371,8 @@ function _mvtTronquer(p, nomHex){
 const _mvtTotal = (p) => p.mvt ? p.mvt.couts.reduce((t, c) => c === 'tout' ? (p.mvt.mf || t) : t + c, 0) : 0;
 const _fmtMF = v => (Math.round(v * 2) / 2).toString().replace(/\.5$/, '½').replace(/^0½$/, '½');
 
-// Après deplacer() : ajoute au chemin de chaque unité le coût du trajet.
+// Après deplacer() : ajoute au chemin de chaque unité le coût du trajet,
+// et annonce le total au chat (donc au log).
 function compterMouvement(avant){
   const m = _losPrete;
   // Carte LOS pas encore construite : le décompte attend qu'elle le soit.
@@ -8405,41 +8393,18 @@ function compterMouvement(avant){
     p.mvt.unite = veh ? 'MP' : 'MF';
     const ch = _coteVers(m, ha, hb) >= 0 ? [Object.assign({hex: hb}, coutEntree(m, ha, hb, veh))]
                                           : cheminMoinsCher(m, ha, hb, veh);
-    if(!ch){ lignes.push(`${p.nom} : aucun chemin praticable jusqu'à ${hb.getName()}`); continue; }
-    const notes = [];
+    // Seul le total va au chat, et donc au log : « 2/4 MF ». Un « ? »
+    // signale un coût que la table ne connaît pas ou ne compte pas.
+    const nom = nomRapport(p), u = p.mvt.unite;
+    if(!ch){ lignes.push(`${nom} ? ${u}`); continue; }
     for(const r of ch){
       p.mvt.hexes.push(r.hex.getName());
       p.mvt.couts.push(r.cout === Infinity ? 0 : r.cout);
-      if(r.cout === Infinity) notes.push(`${r.lib} : infranchissable`);
-      if(r.doute) notes.push(`${r.lib} : coût inconnu, compté 1`);
-      if(r.note) notes.push(r.note);
     }
-    const pas = ch.map(r => r.cout === 'tout' ? 'tout' : _fmtMF(r.cout)).reduce((s, c) => s + (s ? '+' : '') + c, '');
-    const total = _mvtTotal(p), mf = p.mvt.mf;
-    let l = `${p.nom} : +${pas} ${p.mvt.unite} (${ch.map(r => r.lib).join(' → ')})`
-          + (ch.length > 1 ? ` par ${ch.length} hexagones` : '')
-          + ` — ${_fmtMF(total)}${mf ? '/' + mf : ''} ${p.mvt.unite}`;
-    if(mf && total > mf)
-      l += p.mvt.couts.length === 1 ? ' ⚠️ au-delà : mouvement minimum (A4.134)' : ' ⚠️ allocation dépassée';
-    if(notes.length) l += ' — ' + [...new Set(notes)].join(' ; ');
-    lignes.push(l);
+    const doute = ch.some(r => r.doute || r.note || r.cout === Infinity);
+    lignes.push(`${nom} ${_fmtMF(_mvtTotal(p))}${p.mvt.mf ? '/' + p.mvt.mf : ''}${doute ? '?' : ''} ${u}`);
   }
-  for(const l of lignes) chatLog('🦶 ' + l);
-  rendreToutes();
-}
-
-// Texte de la pastille d'une pile : l'unité la plus avancée dans sa
-// dépense, en restant/allocation.
-function texteMvtPile(s){
-  let best = null;
-  for(const p of s){
-    if(!p.mvt || !p.mvt.couts.length || p.cache) continue;
-    const t = _mvtTotal(p), reste = p.mvt.mf ? p.mvt.mf - t : null;
-    if(!best || (reste !== null && (best.reste === null || reste < best.reste))) best = {p, t, reste};
-  }
-  if(!best) return '';
-  const u = best.p.mvt.unite;
-  return best.p.mvt.mf ? `${_fmtMF(best.t)}/${best.p.mvt.mf} ${u}` : `${_fmtMF(best.t)} ${u}`;
+  if(lignes.length) rapport(lignes.join(', '));
 }
 
 // Après Undo : chaque chemin revient à l'hexagone de l'unité.
@@ -8481,7 +8446,6 @@ function leverDeplaces(){
   for(const p of vivants()) if(marquerDeplace(p, false)) n++;
   // Nouvelle phase : les MF / MP repartent de zéro.
   for(const p of pions) delete p.mvt;
-  rendreToutes();
   chatLog(n ? `↩️ Statut Moved levé sur ${n} pion(s)` : 'Aucun pion marqué Moved');
   return n;
 }

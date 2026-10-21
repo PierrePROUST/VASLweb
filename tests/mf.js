@@ -1,6 +1,7 @@
 // Décompte des MF / MP d'après le terrain (A4, chapitre B) : coût
 // d'entrée, mur, chef (+2 MF), chemin sur un saut, Undo, Mark unmoved,
-// route à ½ MP pour un véhicule.
+// route à ½ MP pour un véhicule. Seul le total part au chat et au log ;
+// rien ne s'affiche sur les pions.
 const {ouvrir} = require('./commun.js');
 (async () => {
   const {b, pg, errs} = await ouvrir(process.argv[2] || 'carte.html');
@@ -15,7 +16,8 @@ const {ouvrir} = require('./commun.js');
     const poser = (nom, h) => { const [x, y] = px(h); poserDepuisPalette(_bdd.pions.find(s => s.n === nom), x, y); return vivants().slice(-1)[0]; };
     const aller = (l, h) => { const [x, y] = px(h); deplacer(l, x, y); };
     const etat = p => p.mvt ? {hexes: p.mvt.hexes.join('>'), couts: p.mvt.couts.join('+'), total: _mvtTotal(p), mf: p.mvt.mf} : null;
-    const msgs = () => [...document.querySelectorAll('div.sys')].map(e => e.textContent).filter(t => t.includes('🦶')).slice(-1)[0];
+    // Le total part au log comme un rapport : dernier segment CHAT.
+    const msgs = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT/.test(c)).slice(-1)[0];
     // Un coup par geste : la pose et le déplacement ne doivent pas se
     // fondre dans la même action (Undo les annulerait ensemble).
     const tic = () => new Promise(f => setTimeout(f, 20));
@@ -43,7 +45,7 @@ const {ouvrir} = require('./commun.js');
     const dep = voisins(bat).find(v => v && T(v) === 'Open Ground');
     const sq3 = poser('5-4-8 SSsq', dep), ldr = poser('8-1', dep);
     aller([sq3, ldr], bat);
-    r.chef = {sq: etat(sq3), ldr: etat(ldr), terrain: T(bat)};
+    r.chef = {sq: etat(sq3), ldr: etat(ldr), terrain: T(bat), msg: msgs()};
     // 5. Saut de plusieurs hexagones : chemin le moins cher.
     let loin = null;
     for(const h of hexes) for(let d = 0; d < 6 && !loin; d++){
@@ -65,11 +67,11 @@ const {ouvrir} = require('./commun.js');
     haut.getBaseLevelofHex = () => 1;
     r.montee = coutEntree(m, bas, haut, false);
     haut.getBaseLevelofHex = niv;
-    // 7. Pastille sous la pile, puis Mark unmoved.
-    r.pastilles = [...document.querySelectorAll('.pastilleMF')].map(e => e.textContent + (e.classList.contains('depasse') ? '!' : ''));
+    r.msgRoute = msgs();
+    // 7. Rien d'affiché sur les pions, puis Mark unmoved.
+    r.pastilles = [...document.querySelectorAll('.pastille')].map(e => e.textContent);
     leverDeplaces();
-    r.apresUnmoved = [sq, sq2, sq3, ldr, sq4, tk].map(etat).filter(Boolean).length + ' chemin(s), '
-      + document.querySelectorAll('.pastilleMF').length + ' pastille(s)';
+    r.apresUnmoved = [sq, sq2, sq3, ldr, sq4, tk].map(etat).filter(Boolean).length + ' chemin(s)';
     return r;
   });
   console.log(JSON.stringify(r, null, 1), errs.length ? errs : 'sans erreur');
