@@ -8123,8 +8123,13 @@ function deplacer(liste, x, y){
   if(!liste.length) return;
   _avantAction();
   const pos = positionDepot(x, y);
-  const avant = liste.map(p => ({p, x: p.x, y: p.y, sous: _dessous(p), k: cle(p)}));
   const kArr = pos.x + ',' + pos.y;
+  // Une unité dissimulée sortie de sa pile emporte sa dissimulation
+  // (A12.15) : le « ? » qui ne couvrirait plus rien la suit, et entre
+  // dans la liste pour se poser au sommet, avec son propre « M/ ».
+  const sousQ = _qmarkDesPartants(liste, kArr);
+  liste = liste.concat(_qmarkQuiSuivent(liste, kArr, sousQ));
+  const avant = liste.map(p => ({p, x: p.x, y: p.y, sous: _dessous(p), k: cle(p)}));
   let haut = Math.max(-1, ...pile(kArr).filter(q => !liste.includes(q)).map(q => q.ordre));
   for(const p of liste){ p.x = pos.x; p.y = pos.y; p.ordre = ++haut; }
   for(const a of avant){
@@ -8142,6 +8147,10 @@ function deplacer(liste, x, y){
     marquerDeplace(a.p, true);
     executerTouche(a.p, TOUCHE_MOUVEMENT);
   }
+  // Sinon, l'ancien « ? » coiffe encore d'autres unités : les partants
+  // reçoivent un « ? » neuf, faute de quoi la pile d'arrivée les
+  // démasquerait.
+  _qmarkPourPartants(liste, kArr, sousQ);
   new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
   selectionnerPile(kArr);
   chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
@@ -9149,6 +9158,78 @@ function ajusterDissimulation(k){
       else if(!doit && m.proprio) fixerMasque(s[i], null);
     }
   } finally { _ajustEnCours = false; }
+}
+
+// ── « ? » qui suivent les unités sorties d'une pile (A12.15).
+// Le « ? » de nationalité `nation` le plus proche au-dessus de s[i].
+function _qmarkAuDessus(s, i, nation){
+  for(let j = i + 1; j < s.length; j++){
+    const c = infoDissimulation(s[j]);
+    if(c.compteur && c.nation === nation) return s[j];
+  }
+  return null;
+}
+
+// Une unité non dissimulée du joueur, de cette nationalité, déjà dans la
+// pile d'arrivée : un « ? » posé au sommet la masquerait aussi. On n'en
+// pose alors aucun.
+function _arriveeDecouverte(kArr, liste, nation){
+  return pile(kArr).some(q => {
+    if(liste.includes(q)) return false;
+    const m = infoDissimulation(q);
+    return m.unite && !m.proprio && m.nation === nation;
+  });
+}
+
+// Avant le déplacement : pour chaque unité dissimulée qui quitte sa pile,
+// le « ? » qui la coiffe.
+function _qmarkDesPartants(liste, kArr){
+  const r = new Map();
+  for(const p of liste){
+    const k = cle(p);
+    if(k === kArr) continue;
+    const m = infoDissimulation(p);
+    if(!m.unite || !m.proprio) continue;
+    const s = pile(k);
+    const q = _qmarkAuDessus(s, s.indexOf(p), m.nation);
+    if(q && !liste.includes(q)) r.set(p, q);
+  }
+  return r;
+}
+
+// Les « ? » dont toutes les unités partent ensemble : ils les suivent.
+function _qmarkQuiSuivent(liste, kArr, sousQ){
+  const r = [];
+  for(const q of new Set(sousQ.values())){
+    const nation = infoDissimulation(q).nation;
+    if(_arriveeDecouverte(kArr, liste, nation)) continue;
+    const s = pile(cle(q));
+    const couverts = s.filter((z, i) => {
+      const m = infoDissimulation(z);
+      return m.unite && m.proprio && m.nation === nation && _qmarkAuDessus(s, i, nation) === q;
+    });
+    if(couverts.every(z => liste.includes(z))){
+      r.push(q);
+      chatLog(`❔ le « ? » suit ${couverts.length > 1 ? couverts.length + ' unités' : couverts[0].nom}`);
+    }
+  }
+  return r;
+}
+
+// Après le déplacement : un « ? » neuf pour les partants qu'aucun « ? »
+// ne coiffe à l'arrivée, posé au-dessus du plus haut d'entre eux.
+function _qmarkPourPartants(liste, kArr, sousQ){
+  const s = pile(kArr);
+  const parNation = new Map();
+  s.forEach((p, i) => {
+    if(!sousQ.has(p)) return;
+    const m = infoDissimulation(p);
+    if(!m.unite || !m.proprio || _qmarkAuDessus(s, i, m.nation)) return;
+    if(_arriveeDecouverte(kArr, liste, m.nation)) return;
+    parNation.set(m.nation, {p, m});           // le dernier est le plus haut
+  });
+  for(const {p, m} of parNation.values())
+    if(poserConcealment(p, m)) chatLog(`❔ « ? » posé sur ${p.nom}`);
 }
 
 function cloner(p){

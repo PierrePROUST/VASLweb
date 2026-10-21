@@ -38,6 +38,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `log500.js` | « ⏭ Fin du log » sur 500 coups : un seul rendu |
 | `p3.js` | Téléphone 360×740 : éventail, 3ᵉ pion d'une pile de 6, commande, sommet, déplacement seul |
 | `l3.js` | Tablette : fil LOS ancré, mode pose, feuille de commandes |
+| `qmark.js` | Unités dissimulées sorties d'une pile : « ? » neuf si l'ancien coiffe encore d'autres unités, sinon l'ancien suit |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
