@@ -3,7 +3,8 @@
 Sources lues (branche `develop` de `vasl-developers/vasl`) :
 `VASL.LOS.Map` (`Map`, `Hex`, `Location`, `Terrain`, `LOSResult`, `Bridge`),
 `VASLThread`, `ASLMap.buildVASLMap`, `BoardArchive.addLOSDatatoVASLMap`,
-`VASLBoard.applyColorSSRules…`, `LOSDataEditor`, `SharedBoardMetadata`.
+`VASLBoard.applyColorSSRules…`, `LOSDataEditor`, `SharedBoardMetadata`,
+`VASLGameInterface`, `VASL.LOS.counters`, `dist/CounterMetadata.xml`.
 
 ## Ce qui est porté
 
@@ -17,6 +18,7 @@ Sources lues (branche `develop` de `vasl-developers/vasl`) :
 | SSR de terrain (terrainMap, elevationMap, …, customCode) | `_ssrGrilles`, `_ssrHexagones` |
 | Pentes, remblais RB, vergers partiels (`BoardMetadata.xml`) | `_cotesSpeciaux` |
 | Overlays d'hexagones (`ASLMap.adjustLOSForOverlays`) : terrain et niveau tirés des couleurs de l'overlay, puis terrain inhérent étendu à l'hexagone, côtés et niveau du point central | `LosOverlay` (`passeGrilles`, `passeHexagones`), `lireCouleursLOS` |
+| Pions (`VASLGameInterface.updatePieces`, `CounterMetadata.xml`) : fumée et incendies, fumée d'OBA (FFE, barrages, bombardements navals), OBA, épaves et véhicules (pièces à propriété `Hindrance` non déplacées), terrains de pion (décombres, vergers, neige… avec niveau), pions de côté (haies, murs, bocage, congères, brèches, barres de rangées), retranchements, ponts et crêtes (lieux ajoutés à l'hexagone) | `LosPions`, `lireMetaPions` ; règles `checkSameHexSmokeRule`, `checkHexSmokeRule`, `checkVehicleHindranceRule`, `checkOBAHindranceRule`, pions de côté dans `applyLOSRules`, `isIgnorableHexsideTerrain`, `checkRowhouseFactoryWallAndBreach` |
 | `VASLThread` : fil, couleurs, étiquettes, niveaux ↑/↓, Ctrl, rapport, `VASLLOSCommand` | bouton **LOS**, F10, `commencerFil`, `dessinerFil`, `filDistant` |
 
 ## Validation
@@ -35,10 +37,35 @@ quel dans l'oracle, avec les mêmes pixels d'overlay que la page : sur
 hd, ow, rr, sr, wr, be, oc, v, ef, 1), 2 000 lignes de vue chacun, grilles,
 hexagones et résultats sont identiques.
 
+Pour les pions, le vrai `VASLGameInterface` est compilé dans l'oracle
+(pièces VASSAL remplacées par une liste nom, position, `Hindrance`,
+déplacé, `overlay`) : sur 25 boards, avec de 12 à 80 pions tirés au hasard
+dans `CounterMetadata.xml` (et des véhicules, piles, noms à étiquettes),
+1 500 à 2 000 lignes de vue chacun, les résultats sont identiques ; les
+pions en changent de 6 à 76 %.
+
 ## Différences et limites
 
-- **Pions** : fumée, véhicules, OBA, terrains de pion et éclairage de nuit
-  ne sont pas lus (`VASLGameInterface` vide, jamais de nuit).
+- **Nuit** : jamais de nuit (`checkNVRRule`, éclairage et lueurs de tir
+  non lus).
+- **Pions** : comme VASL, l'instantané est pris au lancement du fil. Les
+  pions de l'adversaire dissimulés (« ? ») ou en HIP ne comptent pas.
+  - VASL lit la couleur du pixel de l'image d'un pion overlay
+    (`getTerrainFromOverlayCounterImage`) ; ici on prend le terrain du pion
+    sur son côté (haie, mur, brèche…) ou dans l'hexagone (décombres à
+    étages), et le terrain de la carte ailleurs. Comme VASL, sans pièce
+    dans l'hexagone traversé, le terrain est dégagé.
+  - VASL partage un même objet entre tous les pions de côté de même nom
+    (deux haies déplaçables : la dernière posée impose son côté aux deux) ;
+    ici chaque pion garde le sien.
+  - VASL garde les lieux ajoutés par un retranchement, un pont ou une
+    crête retirés jusqu'au rechargement de la carte ; ici ils disparaissent
+    avec le pion.
+  - Une fumée de bombardement naval trop près du bord fait échouer VASL
+    (NPE) et arrête la lecture des pions ; ici seul ce pion est ignoré.
+  - L'ordre des fumées d'un même hexagone (`HashSet` en Java) n'est pas
+    celui de VASL : seul l'incendie d'épave (« Blaze » sur un véhicule) en
+    dépend.
 - **Overlays** : comme dans VASL, un overlay hors de la liste que
   `VASLThread` sait lire, ou un overlay déplaçable (pion « overlay »), arrête
   la vérification : « LOS Check Disabled - Overlay nearby », overlay encadré.

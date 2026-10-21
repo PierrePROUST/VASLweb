@@ -250,6 +250,8 @@ const VASL_BOARDS_URL =
   'https://raw.githubusercontent.com/vasl-developers/vasl/develop/boards/bdFiles/';
 const VASL_BOARDDATA_URL =          // métadonnées et motifs partagés
   'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/boardData/';
+const VASL_DIST_URL =               // CounterMetadata.xml (pions et ligne de vue)
+  'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/';
 const BOARD_W = 1800, BOARD_H = 645;  // board géomorphique standard
 const HEX_COLS = 33, HEX_ROWS = 10;
 
@@ -1398,8 +1400,8 @@ function ancragePlusProche(x, y){
 // règles, méthode par méthode, noms Java conservés pour qu'on retrouve
 // le code d'origine. Repère : pixels des boards sans marge ni loupe,
 // (0,0) au coin haut gauche du premier board.
-// Les pions ne sont pas lus (VASLGameInterface vide : ni fumée, ni
-// véhicule, ni OBA, ni contre-terrain) et la partie n'est jamais de nuit.
+// Les pions sont lus par LosPions (VASLGameInterface, plus bas) ; la
+// partie n'est jamais de nuit (ni éclairage, ni lueur de tir).
 // ═══════════════════════════════════════════════════════════════
 
 // a.equals(b) de Java : lève une erreur si a est nul, comme le NPE que
@@ -2065,25 +2067,43 @@ class LosHex {
 
 // ── LOSResult (VASL.LOS.Map.LOSResult)
 class LosResult {
-  constructor(){ this.mapHindrances = new Map(); this.reset(); }
+  constructor(){
+    this.mapHindrances = new Map(); this.smokeHindrances = new Map();
+    this.vehicleHindrances = new Map(); this.obaHindrances = new Set();
+    this.reset();
+  }
   isBlocked(){ return this.blocked; }
   getBlockedAtPoint(){ return this.blockedAtPoint; }
   firstHindranceAt(){ return this.firstHindranceAtPt; }
   getReason(){ return this.reason; }
   isLOSisHorizontal(){ return this.LOSisHorizontal; }
   isLOSis60Degree(){ return this.LOSis60Degree; }
-  hasHindrance(){ return this.mapHindrances.size > 0; }
+  hasHindrance(){
+    return this.mapHindrances.size + this.smokeHindrances.size + this.vehicleHindrances.size + this.obaHindrances.size > 0;
+  }
   getHindrance(){
     let h = 0;
     for(const v of this.mapHindrances.values()) h += v;
+    for(const v of this.smokeHindrances.values()) h += v;
+    for(const v of this.vehicleHindrances.values()) h += v;
+    h += this.obaHindrances.size;
     return Math.floor(h);
   }
-  addMapHindrance(h, hindrance, x, y){
+  // Une gêne par portée : la plus forte l'emporte.
+  _ajouterGene(liste, h, hindrance, x, y){
     if(this.firstHindranceAtPt == null) this.firstHindranceAtPt = {x, y};
     const src = this.sourceLocation.getHex();
     const range = LosMap.range(src, h, src.getMap().getMapConfiguration());
-    if(!this.mapHindrances.has(range) || hindrance > this.mapHindrances.get(range))
-      this.mapHindrances.set(range, hindrance);
+    if(!liste.has(range) || hindrance > liste.get(range)) liste.set(range, hindrance);
+    if(this.getHindrance() > 5) this.setBlocked(x, y, 'Hindrance total of six or more (B.10)');
+  }
+  addMapHindrance(h, hindrance, x, y){ this._ajouterGene(this.mapHindrances, h, hindrance, x, y); }
+  addSmokeHindrance(h, hindrance, x, y){ this._ajouterGene(this.smokeHindrances, h, hindrance, x, y); }
+  addVehicleHindrance(h, hindrance, x, y){ this._ajouterGene(this.vehicleHindrances, h, hindrance, x, y); }
+  checkHindranceExistsAtThisRange(range){ return this.vehicleHindrances.has(range); }
+  addOBAHindrance(oba, x, y){
+    if(this.firstHindranceAtPt == null) this.firstHindranceAtPt = {x, y};
+    this.obaHindrances.add(oba);
     if(this.getHindrance() > 5) this.setBlocked(x, y, 'Hindrance total of six or more (B.10)');
   }
   setSourceLocation(l){ this.sourceLocation = l; }
@@ -2102,7 +2122,8 @@ class LosResult {
     this.blocked = false; this.blockedAtPoint = null; this.firstHindranceAtPt = null;
     this.range = 0; this.reason = ''; this.continuousSlope = false; this.LOSis60Degree = false;
     this.LOSisHorizontal = false;
-    this.mapHindrances.clear();
+    this.mapHindrances.clear(); this.smokeHindrances.clear();
+    this.vehicleHindrances.clear(); this.obaHindrances.clear();
     this.sourceLocation = null; this.targetLocation = null;
     this.sourceExitHexspine = -1; this.targetEnterHexspine = -1;
   }
@@ -2111,7 +2132,9 @@ class LosResult {
 
 // VASLGameInterface sans pion : aucun terrain de pion, aucun niveau imposé.
 const LOS_SANS_PIONS = {
-  getTerrain: () => null, getHexside: () => null, getLevel: () => -99
+  getTerrain: () => null, getHexside: () => null, getLevel: () => -99, getSmoke: () => null,
+  getVehicles: () => null, getOBA: () => null, getExtraNobaHexes: () => [null, null], pieceOverlay: () => null,
+  aDesCotes: false
 };
 // ── Map (VASL.LOS.Map.Map) : grilles terrain/niveau par pixel et grille
 // d'hexagones [colonne][rangée], A1 en (0,0).
@@ -2454,7 +2477,47 @@ class LosMap {
       status.setHillockStatus();
     } else insamehex = true;
 
-    // Terrain de côté porté par un pion (mur, haie, barricade…) : aucun ici.
+    // Terrain de côté porté par un pion (haie, mur, congère, brèche…).
+    let usehexside = -1;
+    for(const hexside of hexsides){
+      let counter = null;
+      if(gi.getHexside(status.currentHex) != null){
+        counter = gi.getHexside(status.currentHex);
+        usehexside = counter.getHexside();
+      } else if(gi.getHexside(status.previousHex) != null){
+        counter = gi.getHexside(status.previousHex);
+        usehexside = status.previousHex.getOppositeHexside(counter.getHexside());
+      } else if(gi.aDesCotes){
+        for(let hside = 0; hside < 6; hside++){
+          if(status.currentHex.isPointOnHexside(status.currentCol, status.currentRow, hside, 2, 3)){
+            const testhex = this.getAdjacentHex(status.currentHex, hside);
+            if(gi.getHexside(testhex) != null){
+              counter = gi.getHexside(testhex);
+              if(counter.getHexside() === testhex.getOppositeHexside(hside)) usehexside = hside;
+              else counter = null;
+              break;
+            }
+          }
+        }
+      }
+      if(counter != null){
+        const ca = counter.getCoverArch();
+        if(counter.getName().includes('Overlay')){
+          if(usehexside === -1) status.currentTerrain = this.getTerrainFromOverlayCounterImage(status, counter, counter.getCoverArch());
+          else if(status.currentHex.isPointOnHexside(status.currentCol, status.currentRow, usehexside, 2, 3))
+            status.currentTerrain = this.getTerrainFromOverlayCounterImage(status, counter, usehexside);
+        } else if(hexside === ca) status.currentTerrain = this.getTerrain(counter.getTerrain());
+        else if(status.LOSis60Degree || status.LOSisHorizontal){
+          // getNearestLocation(rangée, colonne) : arguments inversés, comme VASL.
+          if(status.sourceExitHexsides[0] === ca || status.sourceExitHexsides[1] === ca
+             || status.targetEnterHexsides[0] === ca || status.targetEnterHexsides[1] === ca
+             || status.currentHex.getLocationHexside(status.currentHex.getNearestLocation(status.currentRow, status.currentCol)) === ca)
+            status.currentTerrain = this.getTerrain(counter.getTerrain());
+        }
+        status.currentTerrainHgt = status.currentTerrain.getHeight();
+        break;
+      }
+    }
 
     if(this.checkNVRRule(status, result)) return true;
     if(this.checkDepressionRule(status, result)) return true;
@@ -2464,8 +2527,9 @@ class LosMap {
     }
     if(this.checkRBrrembankments(status, result, hexsides)) return true;
     if(this.checkPartialOrchards(status, result, hexsides)) return true;
-    // checkHexSmokeRule, checkVehicleHindranceRule, checkOBAHindranceRule :
-    // sans pion, rien à ajouter.
+    if(this.checkHexSmokeRule(status, result)) return true;
+    if(this.checkVehicleHindranceRule(status, result, insamehex)) return true;
+    if(this.checkOBAHindranceRule(status, result)) return true;
 
     let test1 = false, test2 = false, test3 = false, test4 = false, test5 = false;
     if(!_eqJ(status.currentHex, status.sourceHex)
@@ -2508,9 +2572,13 @@ class LosMap {
   }
 
   applyInterveningCounterValues(status){
-    const t = this.getTerrain(status.vaslGameInterface.getTerrain(status.tempHex));
+    const gi = status.vaslGameInterface;
+    const t = this.getTerrain(gi.getTerrain(status.tempHex));
     if(t.isInherentTerrain() || t.isOpen()) status.currentTerrain = t;
-    else return;
+    else {
+      if(gi.pieceOverlay(status.currentHex) == null) return;
+      status.currentTerrain = this.getTerrainFromOverlayCounterImage(status, null, -1);
+    }
     status.currentTerrainfromCounter = true;
     const lv = status.vaslGameInterface.getLevel(status.tempHex);
     if(lv !== -99) status.groundLevel = lv;
@@ -2537,7 +2605,202 @@ class LosMap {
     return false;
   }
 
-  checkSameHexSmokeRule(status, result){ return result.isBlocked(); }
+  // VASL lit le pixel de l'image du pion overlay posé dans l'hexagone
+  // courant. Ici : le terrain du pion sur son côté, ailleurs celui de la
+  // carte ; sans pièce dans l'hexagone, terrain dégagé (image absente).
+  getTerrainFromOverlayCounterImage(status, counter, cote){
+    const gi = status.vaslGameInterface;
+    if(gi.pieceOverlay(status.currentHex) == null) return this.getTerrain('Open Ground');
+    let t = null;
+    if(counter == null) t = this.getTerrain(gi.getTerrain(status.tempHex));
+    else if(cote >= 0 && cote < 6 && status.currentHex.isPointOnHexside(status.currentCol, status.currentRow, cote, 2, 3))
+      t = this.getTerrain(counter.getTerrain());
+    else t = this.getGridTerrain(status.currentCol, status.currentRow);
+    return t || this.getTerrain('Open Ground');
+  }
+
+  checkSameHexSmokeRule(status, result){
+    if(_eqJ(status.source.getHex(), status.target.getHex())){
+      const fumees = status.vaslGameInterface.getSmoke(status.source.getHex());
+      if(fumees != null && fumees.size){
+        let h = 0;
+        for(const s of fumees){
+          if(LosMap.locationInSmoke(status.source, s)) h += s.getHindrance() + 1;
+          if(LosMap.locationInSmoke(status.target, s)) h += s.getHindrance();
+        }
+        if(h > 5) result.setBlocked(status.sourceX, status.sourceY, 'Hindrance total of six or more (B.10)');
+        else result.addSmokeHindrance(status.sourceHex, h, status.sourceX, status.sourceY);
+      }
+    }
+    return result.isBlocked();
+  }
+
+  static locationInSmoke(l, s){
+    return l.getLevelInHex() >= s.getLocation().getLevelInHex() && l.getLevelInHex() < s.getLocation().getLevelInHex() + s.getHeight();
+  }
+
+  checkHexSmokeRule(status, result){
+    const gi = status.vaslGameInterface, hex = status.currentHex;
+    const fumees = gi.getSmoke(hex);
+    if(fumees == null || !fumees.size) return false;
+    let h = 0, sourceInSmoke = false;
+    const sH = status.source.getAbsoluteHeight(), tH = status.target.getAbsoluteHeight();
+    for(const s of fumees){
+      const bas = s.getLocation().getAbsoluteHeight(), haut = bas + s.getHeight();
+      if(_eqJ(hex, status.sourceHex)){
+        if(LosMap.locationInSmoke(status.source, s)){ h += s.getHindrance() + 1; sourceInSmoke = true; }
+        else if(sH === haut && tH < sH) h += s.getHindrance();
+      } else if(_eqJ(hex, status.targetHex)){
+        if(LosMap.locationInSmoke(status.source, s)) h += s.getHindrance();
+        else if(tH === haut && sH < tH) h += s.getHindrance();
+      } else {
+        if(sH >= bas && sH <= haut && tH >= bas && tH <= haut) h += s.getHindrance();
+        else if(LosMap.isBlindHex(status, s.getHeight())) h += s.getHindrance();
+      }
+      // Incendie d'épave : gêne de 2.
+      if(s.getName() === 'Blaze' && gi.getVehicles(hex) != null && gi.getVehicles(hex).size) h = 2;
+    }
+    if(h > 0){
+      h = sourceInSmoke ? Math.min(h, 4) : Math.min(h, 3);
+      result.addSmokeHindrance(hex, h, status.currentCol, status.currentRow);
+      if(result.isBlocked()) return true;
+    }
+    return false;
+  }
+
+  checkVehicleHindranceRule(status, result, insamehex){
+    const gi = status.vaslGameInterface, hex = status.currentHex;
+    const vehicules = gi.getVehicles(hex);
+    if(vehicules == null || !vehicules.size) return false;
+    if(result.checkHindranceExistsAtThisRange(status.rangeToSource)) return false;
+    let h = 0;
+    for(const v of vehicules){
+      if(!_eqJ(hex, status.sourceHex) && !_eqJ(hex, status.targetHex)){
+        if(status.source.getAbsoluteHeight() === status.target.getAbsoluteHeight()
+           && status.source.getAbsoluteHeight() === v.getLocation().getAbsoluteHeight()){
+          if(status.slopes || (status.startsOnHillock && status.endsOnHillock && status.crossingHillock == null)) return false;
+          if(v.getLocation().isCenterLocation() || v.getLocation() === hex.getNearestLocation(status.currentCol, status.currentRow)){
+            // La source et la cible doivent voir le véhicule (une fois par hexagone).
+            if(!insamehex){
+              const r1 = new LosResult(), r2 = new LosResult();
+              this.LOS(status.source, status.useAuxSourceLOSPoint, v.getLocation(), false, r1, gi);
+              this.LOS(status.target, status.useAuxTargetLOSPoint, v.getLocation(), false, r2, gi);
+              if(!r1.isBlocked() && !r2.isBlocked()) h++;
+            }
+          }
+        }
+      }
+      if(h > 0){
+        const fumees = gi.getSmoke(hex);
+        if(fumees != null) for(const s of fumees) if(s.getName() === 'Blaze') h = 0;
+      }
+    }
+    if(h > 0){
+      result.addVehicleHindrance(hex, h, status.currentCol, status.currentRow);
+      if(result.isBlocked()) return true;
+    }
+    return false;
+  }
+
+  checkOBAHindranceRule(status, result){
+    const gi = status.vaslGameInterface, obas = gi.getOBA();
+    if(obas == null || !obas.size) return false;
+    const cfg = this.getMapConfiguration();
+    const ajoute = oba => { result.addOBAHindrance(oba, status.currentCol, status.currentRow); return result.isBlocked(); };
+    for(const oba of obas){
+      if(oba.getName().includes('Sm ') || oba.getName().includes('WP')) continue;
+      if(oba.getisBarrage()){
+        const bh = this.getBarrageHexes(oba);
+        for(let x = 0; x < 9; x++){
+          if(bh[x] == null) continue;
+          if(_eqJ(this.getHexParNom(bh[x]), status.currentHex)){
+            if(ajoute(oba)) return true;
+            break;
+          }
+        }
+      } else {
+        const c = oba.getHex().getCenterLocation().getAbsoluteHeight(), haut = c + oba.getBlastHeight();
+        const sH = status.source.getAbsoluteHeight(), tH = status.target.getAbsoluteHeight();
+        if(LosMap.range(status.currentHex, oba.getHex(), cfg) <= oba.getBlastAreaRadius()){
+          if(this.locationInOBA(status.source, oba) || this.locationInOBA(status.target, oba)){ if(ajoute(oba)) return true; }
+          else if(sH >= c && sH < haut && tH >= c && tH < haut){ if(ajoute(oba)) return true; }
+          else if(LosMap.isBlindHex(status, oba.getBlastHeight())){ if(ajoute(oba)) return true; }
+        } else if(oba.getName().includes('Naval')){
+          const n = gi.getExtraNobaHexes(oba.getRotation(), this.getAllAdjacentHexes(oba.getHex()));
+          if(status.currentHex === n[0] || status.currentHex === n[1]){ if(ajoute(oba)) return true; }
+        }
+      }
+    }
+    return false;
+  }
+
+  locationInOBA(l, oba){
+    const c = oba.getHex().getCenterLocation().getLevelInHex();
+    return LosMap.range(oba.getHex(), l.getHex(), this.getMapConfiguration()) <= oba.getBlastAreaRadius()
+      && l.getLevelInHex() >= c && l.getLevelInHex() < c + oba.getBlastHeight();
+  }
+
+  // Map.getHex(String) : le premier hexagone de ce nom.
+  getHexParNom(nom){
+    if(nom == null) return null;
+    const n = nom.toLowerCase();
+    for(const c of this.hexGrid) for(const h of c) if(h.getName().toLowerCase() === n) return h;
+    return null;
+  }
+
+  getAllAdjacentHexes(h){
+    const r = [h.getName()];
+    for(let x = 0; x < 6; x++){
+      const a = this.getAdjacentHex(h, x);
+      r.push(a ? a.getName() : 'offboard');
+    }
+    return r;
+  }
+
+  // Barrage : neuf hexagones, deux bras de quatre selon la rotation (1 à 6).
+  getBarrageHexes(oba){
+    const r = new Array(9).fill(null);
+    r[0] = oba.getHex().getName();
+    const rot = oba.getRotation(), alt = oba.getName().includes('alt');
+    let bras;
+    if(rot === 1 || rot === 3 || rot === 5){
+      const s = rot === 1 ? 0 : rot === 3 ? 1 : 2;
+      bras = () => [s, LosHex.getOppositeHexside(s)];
+    } else if(rot === 2 || rot === 4 || rot === 6){
+      const paires = {2: [[0, 4], [1, 3]], 4: [[1, 5], [2, 4]], 6: [[3, 5], [2, 0]]}[rot];
+      const [a, b] = alt ? [paires[1], paires[0]] : paires;
+      bras = x => (x === 1 || x === 3) ? a : b;
+    } else return r;
+    let h1 = oba.getHex(), h2 = oba.getHex();
+    for(let x = 1; x < 5; x++){
+      const [c1, c2] = bras(x);
+      const a1 = this.getAdjacentHex(h1, c1);
+      if(a1 != null){ r[x] = a1.getName(); h1 = a1; }
+      const a2 = this.getAdjacentHex(h2, c2);
+      if(a2 != null){ r[x + 4] = a2.getName(); h2 = a2; }
+    }
+    return r;
+  }
+
+  // Map.getAllHexesInRadiusOf : de proche en proche, par les noms. Près
+  // du bord, le tableau n'est pas rempli et VASL échoue (NPE) : le pion
+  // est alors ignoré.
+  getAllHexesInRadiusOf(origine, rayon){
+    const max = Math.trunc((rayon / 2) * (1 + rayon) * 6) + 1;
+    const hexes = new Array(max).fill(null);
+    hexes[0] = origine.getName();
+    let x = 0;
+    for(let i = 0; i < max; i++){
+      const h = this.getHexParNom(hexes[i]);
+      if(!h) throw new TypeError('NPE');
+      for(const n of this.getAllAdjacentHexes(h)){
+        if(n === 'offboard' || hexes.includes(n)) continue;
+        const a = this.getHexParNom(n);
+        if(a && LosMap.range(a, origine, this.getMapConfiguration()) <= rayon && x + 1 < max) hexes[++x] = n;
+      }
+    }
+    return hexes;
+  }
 
   checkBuildingRestrictionRule(status, result, previousTerrain){
     let rooftopadj = 0, rangehex = null;
@@ -3314,6 +3577,21 @@ class LosMap {
     if(lht == null){
       if(!status.currentTerrain.isHexsideTerrain()) return true;
     } else if(status.currentTerrain.isHexsideTerrain() && lht !== status.currentTerrain) return true;
+    // Terrain de côté porté par un pion : il prime sur celui de la carte.
+    const gi = status.vaslGameInterface;
+    if(gi != null && gi.getHexside(status.currentHex) != null){
+      const counter = gi.getHexside(status.currentHex), ca = counter.getCoverArch();
+      if(counter.getTerrain() === status.currentTerrain.getName()) return this.isAdjacentHexside(h, l);
+      else if(locationHexside === ca) return this.isAdjacentHexside(h, l);
+      else if(status.LOSis60Degree || status.LOSisHorizontal){
+        if(status.sourceExitHexsides[0] === ca || status.sourceExitHexsides[1] === ca
+           || status.targetEnterHexsides[0] === ca || status.targetEnterHexsides[1] === ca){
+          const a = this.getAdjacentHex(status.currentHex, ca);
+          return _eqJ(a, status.sourceHex) || _eqJ(a, status.targetHex)
+            || _eqJ(status.currentHex, status.sourceHex) || _eqJ(status.currentHex, status.targetHex);
+        }
+      }
+    }
     const cfg = this.getMapConfiguration();
     if(LosMap.range(h, locationHex, cfg) > 2) return false;
     if(_eqJ(status.currentHex, status.targetHex) || _eqJ(status.currentHex, status.sourceHex)) return true;
@@ -3491,11 +3769,19 @@ class LosMap {
   }
 
   checkRowhouseFactoryWallAndBreach(status, result){
-    const ct = status.currentTerrain, ch = status.currentHex;
+    let ct = status.currentTerrain;
+    const ch = status.currentHex;
     let sourceadj = 0, targetadj = 0;
     if(ct.getName().includes('Gutted Building Wall') && (ch === status.sourceHex || ch === status.targetHex)) return false;
     if(status.source.getTerrain().isRooftop() && status.source.getLevelInHex() !== 1) sourceadj = -1;
     if(status.target.getTerrain().isRooftop() && status.target.getLevelInHex() !== 1) targetadj = -1;
+    // Pion de brèche sur ce côté.
+    if(ct.getName().includes('Interior Factory Wall') || ct.getName().includes('Rowhouse Wall')){
+      const counter = status.vaslGameInterface.getHexside(ch);
+      if(counter != null && counter.getName().includes('Breach')
+         && counter.getHexside() === ch.getLocationHexside(ch.getNearestLocation(status.currentCol, status.currentRow)))
+        ct = status.currentTerrain = this.getTerrain('Breach');
+    }
     if(ct.getName().includes('Breach')){
       if(this.checkBreachApplies(status, result, ch.getNearestLocation(status.currentCol, status.currentRow))) return false;
     }
@@ -4547,6 +4833,268 @@ async function construireCarteLOS(boards, terrainsXML, archiveDe, opts = {}){
   return m;
 }
 // ═══════════════════════════════════════════════════════════════
+// PIONS DANS LA LIGNE DE VUE — VASLGameInterface et CounterMetadata.xml
+// Fumée, épaves et véhicules, OBA, terrains de pion (décombres, vergers
+// de niveau, brèches, haies, murs, congères…), retranchements, ponts et
+// crêtes, lus à chaque fil comme le fait VASL au lancement du fil.
+// ═══════════════════════════════════════════════════════════════
+// CounterMetadata.xml : une entrée par nom de pion (le dernier l'emporte).
+function lireMetaPions(texte){
+  const sans = texte.replace(/<!--[\s\S]*?-->/g, '');
+  const types = {smoke: 'SMOKE', terrain: 'TERRAIN', hexside: 'HEXSIDE', OBA: 'OBA', wreck: 'WRECK', ignore: 'IGNORE',
+    bridge: 'BRIDGE', buildingLevel: 'BUILDING_LEVEL', roof: 'ROOF', entrenchment: 'ENTRENCHMENT', crest: 'CREST', climb: 'CLIMB'};
+  const ent = v => v == null ? 0 : parseInt(v, 10) || 0;
+  const meta = new Map();
+  for(const m of sans.matchAll(/<(\w+)\b([^>]*)>/g)){
+    if(m[1] === 'counterMetadata') continue;
+    const a = _attrsXML(m[2]), type = types[m[1]] || null;
+    meta.set(a.name, type && new LosPion(a.name, type, {
+      terrain: type === 'ENTRENCHMENT' ? 'Foxholes' : a.terrain,
+      height: ent(a.height), hindrance: ent(a.hindrance), level: ent(a.level), ca: ent(a.ca),
+      hside: ent(a.hside), rotation: ent(a.rotation), isBarrage: a.isBarrage === 'true'
+    }));
+  }
+  return meta;
+}
+
+// CounterMetadata (VASL.LOS.counters) : niveau 0 par défaut, comme l'int Java.
+class LosPion {
+  constructor(name, type, a){ this.name = name; this.type = type; Object.assign(this, a); }
+  getName(){ return this.name; }
+  getType(){ return this.type; }
+  getTerrain(){ return this.terrain; }
+  getHeight(){ return this.height; }
+  getHindrance(){ return this.hindrance; }
+  getLevel(){ return this.level; }
+  getCoverArch(){ return this.ca - 1; }   // pions de 1 à 6, code de 0 à 5
+  getRotation(){ return this.rotation; }
+  getIsBarrage(){ return this.isBarrage; }
+  getHexside(){ return this.hside; }
+  setHexside(h){ this.hside = h; }
+}
+class LosFumee {
+  constructor(name, location, height, hindrance){ this.name = name; this.location = location; this.height = height; this.hindrance = hindrance; }
+  getName(){ return this.name; }
+  getLocation(){ return this.location; }
+  getHeight(){ return this.height; }
+  getHindrance(){ return this.hindrance; }
+}
+class LosVehicule {
+  constructor(name, location){ this.name = name; this.location = location; }
+  getName(){ return this.name; }
+  getLocation(){ return this.location; }
+}
+class LosOBA {
+  constructor(name, hex, rotation, isBarrage){
+    this.name = name; this.hex = hex; this.rotation = rotation; this.isBarrage = isBarrage;
+    this.blastHeight = 2;
+    this.blastAreaRadius = name.includes('Bombardment') ? (name.includes('Small') ? 2 : 3) : 1;
+  }
+  getName(){ return this.name; }
+  getHex(){ return this.hex; }
+  getRotation(){ return this.rotation; }
+  getisBarrage(){ return this.isBarrage; }
+  getBlastHeight(){ return this.blastHeight; }
+  getBlastAreaRadius(){ return this.blastAreaRadius; }
+}
+
+// VASLGameInterface. Les pièces sont données par
+// {nom, x, y (coordonnées LOS), hindrance, deplace, overlay, pile}.
+class LosPions {
+  constructor(map, meta){
+    this.map = map; this.meta = meta;
+    this.ignores = [...meta.values()].filter(c => c && c.type === 'IGNORE').map(c => c.name);
+    this._origines = new Map();   // hex → lieux d'origine, avant les pions
+    this.updatePieces([]);
+  }
+
+  // Nouvel instantané. VASL garde les lieux créés par les pions retirés
+  // jusqu'au rechargement de la carte ; ici on repart de la carte.
+  updatePieces(pieces){
+    for(const [h, o] of this._origines){
+      const c = h.getCenterLocation();
+      c.setUpLocation(o.up); c.setDownLocation(o.down); h.setBridge(o.bridge);
+    }
+    this._origines.clear();
+    this.smokeList = new Map(); this.terrainList = new Map(); this.hexsideList = new Map();
+    this.OBAList = new Map(); this.vehicleList = new Map();
+    this.pieces = pieces;
+    for(const p of pieces){
+      try { this.updatePiece(p); } catch(e){ /* pièce ignorée */ }
+    }
+    this.aDesCotes = this.hexsideList.size > 0;
+  }
+
+  static _sansEtiquette(n){
+    for(;;){
+      const a = n.indexOf('('), b = n.lastIndexOf(')');
+      if(a === -1 || b === -1 || a > b + 1) return n;
+      n = n.split(n.substring(a, b + 1)).join('');
+    }
+  }
+
+  _ajouter(liste, objet, h){
+    if(!liste.has(h)) liste.set(h, new Set());
+    liste.get(h).add(objet);
+  }
+
+  _garder(h){
+    if(this._origines.has(h)) return;
+    const c = h.getCenterLocation();
+    this._origines.set(h, {up: c.getUpLocation(), down: c.getDownLocation(), bridge: h.getBridge()});
+  }
+
+  updatePiece(piece){
+    const m = this.map;
+    if(/Control|Blank|Perimeter|perimeter|Fortified|Hex Grid/.test(piece.nom)) return;
+    const x = piece.x, y = piece.y;
+    if(!m.onMap(x, y) || m.gridToHex(x, y) == null) return;
+    const h = m.gridToHex(x, y);
+    const hexloc = h.getNearestLocation(x, y);
+    const hexside = h.getLocationHexside(hexloc);
+    let name = LosPions._sansEtiquette(piece.nom.trim()).trim();
+    for(const i of this.ignores) if(name.startsWith(i)) return;
+    let counter = this.meta.get(name) || null;
+    if(counter == null){
+      if(name.includes('Hedge Overlay')) name = 'Hedge Overlay';
+      else if(name.includes('Wall Overlay')) name = 'Wall Overlay';
+      else if(name.includes('Bocage Overlay')) name = 'Bocage Overlay';
+      else if(name.includes('Road')) name = 'Road';
+      else if(name.includes('Foot') || name.includes('Pontoon')) name = '';
+      else if(name.includes('Bridge')) name = 'Bridge';
+      else if(name.includes('Rowhouse Bar')) name = 'Rowhouse Bar Overlay';
+      else if(name.includes('StoneBreach')) name = 'StoneBreach Rowhouse Overlay';
+      else if(name.includes('Wood Breach')) name = 'Wood Breach Rowhouse Overlay';
+      if(hexside !== -1) name += ' ' + hexside;
+      counter = this.meta.get(name) || null;
+    }
+    if(counter != null){
+      const cn = counter.getName();
+      switch(counter.getType()){
+        case 'OBA': {
+          if(cn.includes('Har')) break;
+          const oba = new LosOBA(cn, h, counter.getRotation(), counter.getIsBarrage());
+          let hindrance = 0, height = 0;
+          const fumee = sh => {
+            if(cn.includes('+3')){ hindrance = 3; height = 2; }
+            else if(cn.includes('+1')){ hindrance = 1; height = 4; }
+            else { hindrance = 2; height = cn.includes('Sm') ? 2 : 4; }
+            this._ajouter(this.smokeList, new LosFumee(cn, sh.getCenterLocation(), height, hindrance), sh);
+          };
+          if(cn.includes('Sm ') || cn.includes('WP')){
+            if(oba.getisBarrage()){
+              for(const n of m.getBarrageHexes(oba)){ const sh = m.getHexParNom(n); if(sh) fumee(sh); }
+            } else {
+              const ffe = m.getAllAdjacentHexes(oba.getHex());
+              for(const n of ffe){ if(n.toLowerCase() === 'offboard') continue; const sh = m.getHexParNom(n); if(sh) fumee(sh); }
+              if(cn.includes('Naval')){
+                for(const nh of this.getExtraNobaHexes(counter.getRotation(), ffe))
+                  if(nh) this._ajouter(this.smokeList, new LosFumee(cn, nh.getCenterLocation(), height, hindrance), nh);
+              }
+            }
+          }
+          if(cn.includes('Bombardment') && (cn.includes('Smoke') || cn.includes('Dispersed'))){
+            height = 2;
+            for(const n of m.getAllHexesInRadiusOf(oba.getHex(), cn.includes('Small') ? 2 : 3)){
+              const sh = m.getHexParNom(n);
+              if(sh) this._ajouter(this.smokeList, new LosFumee(cn, sh.getCenterLocation(), height, cn.includes('Dispersed') ? 2 : 3), sh);
+            }
+          } else this._ajouter(this.OBAList, oba, h);
+          break;
+        }
+        case 'TERRAIN': this.terrainList.set(h, counter); break;
+        case 'HEXSIDE': {
+          // VASL partage l'objet entre tous les pions du même nom.
+          const c = Object.assign(Object.create(LosPion.prototype), counter);
+          c.setHexside(hexside);
+          this.hexsideList.set(h, c);
+          break;
+        }
+        case 'ENTRENCHMENT': this.terrainList.set(h, counter); this._lieuRetranchement(h); break;
+        case 'BRIDGE': this.terrainList.set(h, counter); this._lieuPont(h); break;
+        case 'CREST': this.terrainList.set(h, counter); this._lieuCrete(h); break;
+        case 'SMOKE':
+          this._ajouter(this.smokeList, new LosFumee(cn, h.getNearestLocation(x, y), counter.getHeight(), counter.getHindrance()), h);
+          break;
+        case 'WRECK': this._ajouter(this.vehicleList, new LosVehicule(name, h.getCenterLocation()), h); break;
+      }
+    } else if(piece.hindrance && !piece.deplace){
+      // Toute pièce à gêne sans règle est un véhicule.
+      this._ajouter(this.vehicleList, new LosVehicule(name, h.getNearestLocation(x, y)), h);
+    }
+  }
+
+  _lieuRetranchement(h){
+    this._garder(h);
+    const c = h.getCenterLocation(), n = LosLocation.copie(c);
+    n.setUpLocation(c);
+    n.setTerrain(this.map.getTerrain('Foxholes'));
+    c.setDownLocation(n);
+  }
+  _lieuPont(h){
+    if(h.hasBridge()) return;
+    this._garder(h);
+    const c = h.getCenterLocation(), n = LosLocation.copie(c);
+    n.setLevelInHex(h.getBridgeLocationAbsoluteLevel() - n.getHex().getBaseLevelofHex());
+    n.setDownLocation(c);
+    n.setTerrain(this.map.getTerrain('Stone Bridge'));
+    c.setUpLocation(n);
+    h.setBridge(new LosBridge(n.getTerrain(), n.getLevelInHex(), n, true, h.getHexCenter()));
+  }
+  _lieuCrete(h){
+    this._garder(h);
+    const c = h.getCenterLocation(), n = LosLocation.copie(c);
+    n.setLevelInHex(h.getBridgeLocationAbsoluteLevel() - n.getHex().getBaseLevelofHex());
+    n.setDownLocation(c);
+    n.setTerrain(this.map.getTerrain('Crest'));
+    c.setUpLocation(n);
+  }
+
+  getVehicles(h){ return this.vehicleList.get(h) || null; }
+  getSmoke(h){ return this.smokeList.get(h) || null; }
+  getTerrain(h){ const c = this.terrainList.get(h); return c ? c.getTerrain() : null; }
+  getHexside(h){ return this.hexsideList.get(h) || null; }
+  getLevel(h){
+    const c = this.terrainList.get(h);
+    if(c){
+      if(c.getName().includes('Bridge')) return h.getBridgeLocationAbsoluteLevel();
+      if(c.getLevel() !== -99) return c.getLevel();
+    }
+    return -99;
+  }
+  getOBA(){
+    const r = new Set();
+    for(const s of this.OBAList.values()) for(const o of s) r.add(o);
+    return r;
+  }
+
+  // Deux hexagones de plus au bout de la zone d'un OBA naval.
+  getExtraNobaHexes(rotation, ffe){
+    const m = this.map, r = [null, null];
+    const paires = {1: [[1, 1], [4, 4]], 2: [[2, 1], [5, 4]], 3: [[2, 2], [5, 5]],
+      4: [[3, 2], [6, 5]], 5: [[3, 3], [6, 0]], 6: [[4, 3], [1, 0]]}[rotation];
+    if(!paires) return r;
+    paires.forEach(([i, cote], k) => {
+      if(ffe[i].toLowerCase() === 'offboard') return;
+      const a = m.getAdjacentHex(m.getHexParNom(ffe[i]), cote);
+      if(a != null) r[k] = a;
+    });
+    return r;
+  }
+
+  // Map.getOverlayPiece : la première pièce posée dans l'hexagone — dans
+  // une pile, la première qui a la propriété « overlay ».
+  pieceOverlay(h){
+    if(h == null) return null;
+    for(const p of this.pieces){
+      if(!h.containsExtended(p.x, p.y)) continue;
+      if(!p.pile) return p;
+      for(const q of p.pile) if(q.overlay) return q;
+    }
+    return null;
+  }
+}
+// ═══════════════════════════════════════════════════════════════
 // FIL DE VISÉE — VASLThread (bouton LOS, F10 ; silencieux Ctrl+Maj+F10)
 // Le bouton arme le fil et rend les pions transparents ; l'appui sur la
 // carte fixe la source, le glisser la cible. Pendant le geste : flèches
@@ -4561,6 +5109,7 @@ const LOS_COUL_FIL = '#ff0000', LOS_COUL_GENE = '#ff0000', LOS_COUL_BLOC = '#000
 const LOS_POLICE = 14, LOS_DESCENTE = 3;   // hauteur et descente de RANGE_FONT, en px
 let _losBoards = null;      // disposition de la carte affichée
 let _losCarte = null;       // Promise<{map, complet}> ou null
+let _metaPions = null;      // Promise<Map> de CounterMetadata.xml
 let _filArme = null;        // null, 'L' (fil « LOS ») ou 'l' (fil silencieux)
 let _fil = null;            // fil en cours de tracé
 // « Verbose LOS mode » : nom des lieux, raison du blocage, gênes.
@@ -4590,6 +5139,8 @@ function carteLOS(){
       const xml = await textePartage();
       try {
         const m = await construireCarteLOS(boards, xml, _archive);
+        try { m.pions = new LosPions(m, await metaPions()); }
+        catch(e){ chatLog('⚠️ CounterMetadata.xml information did not load properly. LOS results may be incorrect.'); }
         chatLog('👁️ VASL LOS Enabled');
         return {map: m, complet: true};
       } catch(e){
@@ -4604,6 +5155,49 @@ function carteLOS(){
     });
   }
   return _losCarte || Promise.resolve({map: null, complet: false});
+}
+
+function metaPions(){
+  if(!_metaPions){
+    _metaPions = fetch(VASL_DIST_URL + 'CounterMetadata.xml').then(r => {
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(lireMetaPions);
+    _metaPions.catch(() => { _metaPions = null; });
+  }
+  return _metaPions;
+}
+
+// Les pièces de la carte telles que VASLGameInterface les voit : ni HIP
+// ni pion dissimulé de l'adversaire. Une pile est la liste des pièces
+// posées au même point.
+function _piecesLOS(){
+  const piles = new Map(), out = [];
+  for(const p of vivants()){
+    if(p.cache || p.outil) continue;
+    if(p.masqueProprio && !_admin && p.masqueProprio !== idJoueur()) continue;
+    if(p._losSeg !== p.seg){
+      const ts = _developperPrototypes(_splitTypeState(p.seg), 0), pr = _proprietes(ts);
+      p._losSeg = p.seg;
+      p._losPr = {hindrance: 'Hindrance' in pr, overlay: 'overlay' in pr, deplace: !!_deplace(ts)};
+    }
+    const c = _versLOS(p), d = Object.assign({nom: p.nom || '', x: c.x, y: c.y, ordre: p.ordre}, p._losPr);
+    const k = cle(p);
+    if(!piles.has(k)) piles.set(k, []);
+    piles.get(k).push(d);
+    out.push(d);
+  }
+  for(const l of piles.values()) if(l.length > 1){
+    l.sort((a, b) => a.ordre - b.ordre);
+    for(const d of l) d.pile = l;
+  }
+  return out;
+}
+// VASLThread.initializeMap : instantané des pions au lancement du fil.
+function _pionsDuFil(map){
+  if(!map || !map.pions) return LOS_SANS_PIONS;
+  map.pions.updatePieces(_piecesLOS());
+  return map.pions;
 }
 
 function armerFil(mode){
@@ -4693,6 +5287,7 @@ function commencerFil(e){
   carteLOS().then(({map, complet}) => {
     if(_fil !== f) return;
     f.m = map; f.complet = complet; f.pret = true;
+    f.gi = _pionsDuFil(map);
     if(map) _poserSource(f);
     if(map && (f.c1.x !== f.c0.x || f.c1.y !== f.c0.y)) _poserCible(f);
     dessinerFil();
@@ -4751,6 +5346,7 @@ function filDistant(cmd){
   carteLOS().then(({map, complet}) => {
     if(_fil !== f) return;
     f.m = map; f.complet = complet;
+    f.gi = _pionsDuFil(map);
     if(map) _poserSource(f);
     const c = map && f.src && _lieuAuPoint(map, f.c1);
     if(c){
@@ -4822,7 +5418,7 @@ function _faireLOS(f){
   f.surOverlay = _overlayCoupe(f);
   if(f.surOverlay) return;
   const r = new LosResult();
-  try { f.m.LOS(f.src, f.auxS, f.tgt, f.auxT, r, null); } catch(e){ /* VASL ignore l'erreur */ }
+  try { f.m.LOS(f.src, f.auxS, f.tgt, f.auxT, r, f.gi || LOS_SANS_PIONS); } catch(e){ /* VASL ignore l'erreur */ }
   f.res = r;
   f.texte = 'Range: ' + r.getRange();
   if(_losVerbeux && f.complet){
@@ -5240,11 +5836,13 @@ function _nomAvecLabels(ts, nom){
     if(/^emb2;/.test(ts.typ[i])){
       const v = parseInt((ts.eta[i] || '').replace(/\\+$/, ''), 10);
       if(!(v > 0)) continue;
-      const noms = (ts.typ[i].split(';')[17] || '').split(/(?<!\\),/).map(x => x.replace(/\\(.)/g, '$1'));
+      // « \+ » est un « + » littéral : « White \+3 Smoke » reste entier.
+      const noms = (ts.typ[i].split(';')[17] || '').split(/(?<!\\),/);
       const n = noms[v - 1];
       if(!n) continue;
-      const k = n.indexOf('+');
-      nom = k < 0 ? n : (k === 0 ? nom + n.substring(1) : n.substring(0, k) + nom);
+      const net = x => x.replace(/\\(.)/g, '$1');
+      const k = n.search(/(?<!\\)\+/);
+      nom = k < 0 ? net(n) : (k === 0 ? nom + net(n.substring(1)) : net(n.substring(0, k)) + nom);
       continue;
     }
     if(!/^label;/.test(ts.typ[i])) continue;
