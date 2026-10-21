@@ -139,6 +139,73 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
   line-height:26px;background:#1e1e1e}
 .inserEv{position:absolute;width:3px;background:var(--accent);border-radius:2px;pointer-events:none}
 .actionsEv{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--bord)}
+/* ── Profils tactiles : boutons plus grands. */
+body:not([data-terminal=pc]) .act.ico{min-width:var(--cible);height:var(--cible)}
+.fermeCote{flex:none!important;min-width:var(--cible);font-size:16px}
+.act.rail{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex:none;
+  width:52px;min-height:52px;padding:3px 2px;margin:2px;font-size:10px;line-height:1.1;background:none;
+  border-color:transparent;white-space:nowrap;overflow:hidden}
+.act.rail .ic{font-size:20px;line-height:24px}
+.act.rail img{height:22px}
+.act.rail .lb{max-width:50px;overflow:hidden;text-overflow:ellipsis}
+.act.rail.actif{background:#333;border-color:var(--accent)}
+.desBoutons.grand .act.bouton{min-height:56px;font-size:17px}
+/* Tablette : rail à gauche, tiroir à droite, journal replié. */
+body[data-terminal=tablette] #chromeGauche{width:58px;display:flex;flex-direction:column;background:var(--barre);
+  border-right:1px solid var(--bord);padding-top:var(--marge-h);padding-left:var(--marge-g);overflow-y:auto}
+.rail{display:flex;flex-direction:column;align-items:center}
+body[data-terminal=tablette] #poigneeCote{display:none}
+body[data-terminal=tablette] #cote{position:absolute;right:0;top:0;bottom:0;z-index:70;width:min(360px,85vw);
+  box-shadow:-6px 0 20px rgba(0,0,0,.5);padding-right:var(--marge-d)}
+@media (min-width:1000px) and (orientation:landscape){
+  body[data-terminal=tablette] #cote{position:static;box-shadow:none;width:var(--largeurCote,340px)} }
+body[data-terminal=tablette] #bas.replie #journal{height:24px;overflow:hidden;cursor:pointer}
+body[data-terminal=tablette] #bas.replie #chatBarre{display:none}
+body[data-terminal=tablette] #bas:not(.replie) #journal{height:40vh}
+body[data-terminal=tablette] #poigneeJournal{height:14px;background:var(--barre);position:relative;cursor:pointer}
+body[data-terminal=tablette] #poigneeJournal::after{content:"";position:absolute;left:50%;top:4px;width:44px;height:5px;
+  margin-left:-22px;border-radius:3px;background:#666}
+body[data-terminal=tablette] #bas{padding-bottom:var(--marge-b)}
+.relectureVolante{position:absolute;top:8px;z-index:60;transform:translateX(-50%);display:flex;
+  background:rgba(30,30,30,.92);border:1px solid var(--bord);border-radius:6px;padding:4px}
+.relectureVolante:has(.groupeAct[hidden]){display:none}
+.fabDes{position:absolute;z-index:65;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.fab{width:60px;height:60px;border-radius:30px;font-size:28px;background:#3a3a3a;border:2px solid var(--accent);
+  box-shadow:0 4px 14px rgba(0,0,0,.6);touch-action:none}
+.fabCats{display:grid;grid-template-columns:repeat(4,56px);gap:6px;padding:8px;background:rgba(30,30,30,.95);
+  border:1px solid var(--bord);border-radius:8px}
+.fabCats .act.bouton{min-height:44px;padding:2px}
+.fabReg{width:44px;height:44px;border-radius:22px}
+.boutonVerrou{position:absolute;z-index:65;width:44px;height:44px;border-radius:22px;background:rgba(40,40,40,.9)}
+.boutonVerrou.actif{background:#3a2e14}
+body.avecBarrePile .boutonVerrou{display:none}
+/* Téléphone : barre du haut, navigation en bas, une vue à la fois. */
+.barreHaut{display:flex;align-items:center;gap:6px;height:calc(48px + var(--marge-h));padding:var(--marge-h) 8px 0;
+  background:var(--barre);border-bottom:1px solid var(--bord)}
+.barreHaut .titreScen{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--texte);
+  font-weight:600;text-align:center}
+.barreHaut .act.ico{min-width:44px;height:40px;font-size:18px}
+.navBas{display:flex;justify-content:space-around;background:var(--barre);border-top:1px solid var(--bord);
+  padding:0 var(--marge-d) var(--marge-b) var(--marge-g)}
+.navBas .act.rail{flex:1;width:auto;min-height:54px;font-size:11px}
+.relectureBas{display:flex;justify-content:center;background:#202020}
+.relectureBas:has(.groupeAct[hidden]){display:none}
+.relectureBas .act.ico{height:34px;min-width:40px}
+body[data-terminal=mobile] #poigneeCote,body[data-terminal=mobile] #poigneeJournal,
+body[data-terminal=mobile] #coteOnglets button[data-onglet]{display:none}
+body[data-terminal=mobile] #coteOnglets{justify-content:flex-end}
+body[data-terminal=mobile] #couches{display:none}
+body[data-terminal=mobile] #cote{position:absolute;left:0;right:0;bottom:0;z-index:70;width:auto;border-left:none;
+  border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.5)}
+body[data-terminal=mobile][data-vue=pile] #cote{height:58%;border-radius:12px 12px 0 0}
+body[data-terminal=mobile][data-vue=pions] #cote{top:0}
+body[data-terminal=mobile] #bas:not([hidden]){position:fixed;left:0;right:0;z-index:80;display:flex;flex-direction:column;
+  top:calc(48px + var(--marge-h));bottom:calc(55px + var(--marge-b) + var(--clavier,0px));background:var(--barre)}
+body[data-terminal=mobile] #journal{flex:1;height:auto;font-size:13px}
+body[data-terminal=mobile] #chatIn{font-size:16px;padding:8px}
+body[data-terminal=mobile] #palRech{font-size:16px;padding:8px}
+body[data-terminal=mobile] .vig{width:56px;height:56px}
+body[data-terminal=mobile] .vig .mini{transform:scale(1.25)}
 #mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
   user-select:none;-webkit-user-select:none}
 /* Couche de sélection décochée : ses pièces laissent passer le clic vers
@@ -7967,6 +8034,19 @@ async function ouvrirMassRemover(bt){
   let bdd;
   try { bdd = await chargerBDD(); } catch(e){ return; }
   if(!bdd.massRemover.length){ chatLog('⚠️ Le module VASL ne déclare aucun MassRemover'); return; }
+  if(_profil && _profil !== 'pc'){
+    const f = ouvrirFeuille({id: 'feuilleAll', titre: 'Remove all counters of a given type'});
+    for(const a of bdd.massRemover){
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'act ligne';
+      b.innerHTML = '<span class="lb"></span>';
+      b.querySelector('.lb').textContent = a.nom;
+      b.title = a.pions.join(', ');
+      b.addEventListener('click', () => { f.fermer(); retirerTous(a); });
+      f.corps.appendChild(b);
+    }
+    return;
+  }
   const m = document.createElement('div');
   m.id = 'ctx';
   for(const a of bdd.massRemover){
@@ -9733,7 +9813,8 @@ function retirerSelection(){
 function majBarrePile(){
   let b = document.getElementById('barrePile');
   const montrer = _profil && _profil !== 'pc' && (_sel.size || _pileSel) && !_eventail && !_modeCarte;
-  if(!montrer){ if(b) b.remove(); return; }
+  document.body.classList.toggle('avecBarrePile', !!montrer);
+  if(!montrer){ if(b) b.remove(); if(typeof _placerVolants === 'function') _placerVolants(); return; }
   if(!b){
     b = document.createElement('div');
     b.id = 'barrePile'; b.className = 'barrePile';
@@ -9758,6 +9839,7 @@ function majBarrePile(){
   b.appendChild(mini);
   _rangeeCommandes(b, true);
   _placerBarrePile();
+  _placerVolants();
 }
 function _placerBarrePile(){
   const b = document.getElementById('barrePile');
@@ -9997,8 +10079,8 @@ function armerPose(x){
   armerModeCarte({texte: `♟ ${x.n} — touchez la carte pour poser`, optionMultiple: true,
     multiple: _lirePref('aslweb.posesMultiples') === '1',
     toucher: c => poserDepuisPalette(x, c.x, c.y)});
-  // Sur téléphone, le panneau se ferme pour montrer la carte.
-  if(_profil === 'mobile') basculerCote(false);
+  // Sur téléphone, la palette se ferme pour montrer la carte.
+  if(_profil === 'mobile') vueMobile('carte');
 }
 
 // ── Verrou des pions : un glissé déplace toujours la carte, jamais une
@@ -11911,6 +11993,7 @@ function appliquerProfil(p){
   _profil = p;
   document.body.dataset.terminal = p;
   fermerDeroulants(); fermerMenu();
+  _defaireProfil();
   const d = disposition(p);
   const haut = document.getElementById('chromeHaut'), gauche = document.getElementById('chromeGauche'),
         bas = document.getElementById('chromeBas');
@@ -11919,8 +12002,10 @@ function appliquerProfil(p){
   if(d.barre) haut.appendChild(construireBarre(d.barre, 'barreIcones'));
   construireOnglets(d.panneau || ['pile', 'palette', 'des']);
   if(d.construire) d.construire();
-  // Une première fois : sur un téléphone, la carte avant le panneau.
-  if(!ancien && window.innerWidth < 700) basculerCote(false);
+  // Le tiroir de la tablette et les vues du téléphone partent fermés ; au
+  // PC, le panneau est ouvert, sauf d'abord sur un petit écran.
+  if(p === 'tablette') basculerCote(window.innerWidth >= 1000 && window.innerWidth > window.innerHeight);
+  else if(p === 'pc') basculerCote(ancien ? true : window.innerWidth >= 700);
   rafraichirActions();
   for(const f of _apresProfil) f(p, ancien);
   _surRedimension();
@@ -11952,10 +12037,20 @@ function construireOnglets(liste){
     b.addEventListener('click', () => montrerOnglet(n));
     o.appendChild(b);
   }
+  if(_profil !== 'pc'){
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'fermeCote';
+    x.textContent = '✕'; x.setAttribute('aria-label', 'Fermer le panneau');
+    x.addEventListener('click', () => _profil === 'mobile' ? vueMobile('carte') : basculerCote(false));
+    o.appendChild(x);
+  }
   if(!liste.includes(_ongletCote)) _ongletCote = liste[0];
   montrerOnglet(_ongletCote, true);
 }
 function montrerOnglet(n, sansOuvrir){
+  // Pas d'onglet Dés sur tablette ni sur téléphone : SAN et dés ont leur feuille.
+  if(n === 'des' && _profil !== 'pc' && !sansOuvrir){ ouvrirFeuilleDes(); return; }
+  if(_profil === 'mobile' && !sansOuvrir){ vueMobile(n === 'palette' ? 'pions' : 'pile'); return; }
   _ongletCote = n;
   try { localStorage.setItem('aslweb.onglet', n); } catch(e){}
   for(const [k, id] of Object.entries(ONGLETS)) document.getElementById(id).classList.toggle('actif', k === n);
@@ -12044,6 +12139,261 @@ function _brancherPoignees(){
     () => ({v: document.getElementById('cote').offsetWidth, sens: dx => -dx}));
   brancher(document.getElementById('poigneeJournal'), 'aslweb.hautJournal', '--hautJournal', 48, 300,
     () => ({v: document.getElementById('journal').offsetHeight, sens: (dx, dy) => -dy}));
+}
+
+// ═══ INTERFACE — PROFILS TABLETTE ET TÉLÉPHONE ═══
+// Tablette : rail d'icônes à gauche, tiroir Pile | Palette à droite
+// (panneau fixe en paysage au-delà de 1000 px), bouton flottant des dés,
+// journal replié en bas, relecture flottante en haut de la carte.
+// Téléphone : barre du haut (☰, scénario, Undo, 🎲), navigation en bas
+// (Carte, Pile, Pions, Journal, Plus), une vue à la fois.
+const _vue = () => document.body.dataset.vue || 'carte';
+
+Object.assign(ACTIONS, {
+  plus:      {lib: 'Plus…', court: 'Plus', ico: '☰', faire: () => ouvrirFeuillePlus()},
+  vueCarte:  {lib: 'Carte', court: 'Carte', ico: '🗺', faire: () => vueMobile('carte'), allume: () => _vue() === 'carte'},
+  vuePile:   {lib: 'Pile sélectionnée', court: 'Pile', ico: '▤', faire: () => vueMobile('pile'), allume: () => _vue() === 'pile'},
+  vuePions:  {lib: 'Palette des pions', court: 'Pions', ico: '♟', faire: () => vueMobile('pions'), allume: () => _vue() === 'pions'},
+  vueJournal:{lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => vueMobile('journal'), allume: () => _vue() === 'journal'},
+  titre:     {etiquette: () => _source ? _nomFichier : 'VASL — Carte', classe: 'titreScen'},
+  desMenu:   {lib: 'Dés : un appui DR, un appui long les catégories', court: 'Dés', ico: '🎲',
+              faire: () => lancerDR('Other'), menuLong: null},
+  sanPieges: {lib: 'SAN et pièges…', court: 'SAN', ico: '🎯', faire: () => ouvrirFeuilleSan()},
+  tiroir:    {lib: 'Pile et palette', court: 'Pions', ico: '♟', faire: () => basculerCote(),
+              allume: () => !document.getElementById('cote').classList.contains('ferme')}
+});
+
+// Le reste des actions, dans la feuille « Plus » des profils tactiles.
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', '-', 'reseau', 'utilisateur', '-',
+  'sanPieges', 'couche_unite', 'couche_marqueur', 'couche_carte', '-', 'zoomPlus', 'zoomMoins', 'ajuster', '-',
+  'verbeux', 'verrou', 'effectif', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile', '-', 'commandes', 'raccourcis'];
+function ouvrirFeuillePlus(){ return ouvrirFeuilleActions('Plus', PLUS, 'feuillePlus'); }
+
+// SAN et pièges : les champs eux-mêmes viennent dans la feuille, et
+// retournent à l'onglet Dés quand elle se ferme.
+function ouvrirFeuilleSan(){
+  const champs = document.getElementById('infoScen');
+  const f = ouvrirFeuille({id: 'feuilleSan', titre: 'SAN et pièges', fermer: () => document.getElementById('ongDes').insertBefore(champs, document.getElementById('desAide'))});
+  f.corps.appendChild(champs);
+  return f;
+}
+// Toutes les catégories de dés, en gros boutons.
+function ouvrirFeuilleDes(){
+  const f = ouvrirFeuille({id: 'feuilleDes', titre: 'Dés'});
+  const g = document.createElement('div');
+  g.className = 'desBoutons grand';
+  for(const d of DES){
+    if(d.id === 'dr_Other'){ const s = document.createElement('div'); s.className = 'sepDes'; g.appendChild(s); }
+    const b = rendreAction(d.id, 'bouton');
+    b.addEventListener('click', () => f.fermer());
+    g.appendChild(b);
+  }
+  const san = document.createElement('div');
+  san.className = 'desBoutons';
+  san.appendChild(rendreAction('sanPieges', 'ligne'));
+  f.corps.append(g, san);
+  return f;
+}
+
+DISPOSITIONS.tablette = {
+  rail: ['ouvrir', 'undo', 'los', 'unmoved', 'all', 'reseau', 'tiroir', 'plus'],
+  panneau: ['pile', 'palette'],
+  construire(){
+    const g = document.getElementById('chromeGauche');
+    const r = document.createElement('div');
+    r.className = 'rail';
+    r.setAttribute('role', 'toolbar');
+    r.setAttribute('aria-orientation', 'vertical');
+    for(const id of this.rail) r.appendChild(rendreAction(id, 'rail'));
+    g.appendChild(r);
+    _relectureVolante();
+    _fabDes();
+    document.getElementById('bas').classList.add('replie');
+    _boutonVerrou();
+  }
+};
+
+DISPOSITIONS.mobile = {
+  panneau: ['pile', 'palette'],
+  construire(){
+    const h = document.getElementById('chromeHaut'), b = document.getElementById('chromeBas');
+    const barre = document.createElement('div');
+    barre.className = 'barreHaut';
+    barre.setAttribute('role', 'toolbar');
+    for(const id of ['plus', 'titre', 'undo', 'desMenu']) barre.appendChild(rendreAction(id, 'icone'));
+    _desAppuiLong(barre.querySelector('[data-action="desMenu"]'));
+    h.appendChild(barre);
+    const rl = document.createElement('div');
+    rl.className = 'relectureBas';
+    rl.appendChild(rendreAction('relecture', 'icone'));
+    const nav = document.createElement('nav');
+    nav.className = 'navBas';
+    nav.setAttribute('aria-label', 'Vues');
+    for(const id of ['vueCarte', 'vuePile', 'vuePions', 'vueJournal', 'plus']) nav.appendChild(rendreAction(id, 'rail'));
+    b.append(rl, nav);
+    vueMobile('carte');
+    _boutonVerrou();
+  }
+};
+
+// Vue du téléphone : la carte seule, ou une vue par-dessus elle.
+function vueMobile(v){
+  if(_profil !== 'mobile') return;
+  document.body.dataset.vue = v;
+  const cote = document.getElementById('cote');
+  cote.classList.toggle('ferme', v !== 'pile' && v !== 'pions');
+  if(v === 'pile' || v === 'pions'){
+    const n = v === 'pile' ? 'pile' : 'palette';
+    _ongletCote = n;
+    for(const [k, id] of Object.entries(ONGLETS)) document.getElementById(id).classList.toggle('actif', k === n);
+  }
+  document.getElementById('bas').hidden = v !== 'journal';
+  if(v === 'journal'){ const j = document.getElementById('journal'); j.scrollTop = j.scrollHeight; }
+  rafraichirActions(['vueCarte', 'vuePile', 'vuePions', 'vueJournal']);
+  _surRedimension();
+}
+
+// Relecture en barre flottante, en haut de la carte (tablette).
+function _relectureVolante(){
+  const d = document.createElement('div');
+  d.className = 'relectureVolante chromeVolant';
+  d.appendChild(rendreAction('relecture', 'icone'));
+  document.getElementById('corps').appendChild(d);
+}
+
+// Bouton flottant des dés (tablette) : un appui lance un DR « Other » ;
+// un appui long ou un glissé vers le haut déplie les catégories ; ⚙ ouvre
+// SAN et pièges.
+function _fabDes(){
+  const box = document.createElement('div');
+  box.className = 'fabDes chromeVolant';
+  const cats = document.createElement('div');
+  cats.className = 'fabCats';
+  cats.hidden = true;
+  for(const d of DES){
+    const b = rendreAction(d.id, 'bouton');
+    b.addEventListener('click', () => { cats.hidden = true; });
+    cats.appendChild(b);
+  }
+  const reg = document.createElement('button');
+  reg.type = 'button'; reg.className = 'act bouton fabReg';
+  reg.textContent = '⚙'; reg.title = 'SAN et pièges'; reg.setAttribute('aria-label', 'SAN et pièges');
+  reg.addEventListener('click', () => { cats.hidden = true; ouvrirFeuilleSan(); });
+  const fab = document.createElement('button');
+  fab.type = 'button'; fab.className = 'fab';
+  fab.textContent = '🎲';
+  fab.title = 'DR [F2] — appui long ou glissé vers le haut : toutes les catégories';
+  fab.setAttribute('aria-label', 'Lancer un DR ; appui long : catégories de dés');
+  let long = false;
+  fab.addEventListener('pointerdown', e => {
+    long = false;
+    const y0 = e.clientY, id = e.pointerId;
+    const t = setTimeout(() => { long = true; vibrer(); cats.hidden = false; }, APPUI_LONG);
+    const bouge = ev => { if(ev.pointerId === id && y0 - ev.clientY > 30){ clearTimeout(t); long = true; cats.hidden = false; } };
+    const fin = ev => {
+      if(ev.pointerId !== id) return;
+      clearTimeout(t);
+      document.removeEventListener('pointermove', bouge);
+      document.removeEventListener('pointerup', fin);
+      document.removeEventListener('pointercancel', fin);
+    };
+    document.addEventListener('pointermove', bouge);
+    document.addEventListener('pointerup', fin);
+    document.addEventListener('pointercancel', fin);
+  });
+  fab.addEventListener('click', () => { if(long){ long = false; return; } if(!cats.hidden){ cats.hidden = true; return; } lancerDR('Other'); });
+  fab.addEventListener('contextmenu', e => e.preventDefault());
+  box.addEventListener('pointerdown', e => e.stopPropagation());
+  box.append(cats, reg, fab);
+  document.getElementById('corps').appendChild(box);
+  _placerVolants();
+}
+
+// 🎲 du téléphone : appui long, la feuille des catégories.
+function _desAppuiLong(b){
+  if(!b) return;
+  let long = false;
+  b.addEventListener('pointerdown', () => {
+    long = false;
+    const t = setTimeout(() => { long = true; vibrer(); ouvrirFeuilleDes(); }, APPUI_LONG);
+    const fin = () => { clearTimeout(t); b.removeEventListener('pointerup', fin); b.removeEventListener('pointercancel', fin); b.removeEventListener('pointerleave', fin); };
+    b.addEventListener('pointerup', fin); b.addEventListener('pointercancel', fin); b.addEventListener('pointerleave', fin);
+  });
+  b.addEventListener('click', e => { if(long){ e.stopImmediatePropagation(); long = false; } }, true);
+  b.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+// Verrou des pions : un bouton sur la carte, aux profils tactiles.
+function _boutonVerrou(){
+  const b = rendreAction('verrou', 'icone');
+  b.classList.add('boutonVerrou', 'chromeVolant');
+  document.getElementById('corps').appendChild(b);
+  _placerVolants();
+}
+
+// Les éléments flottants suivent la carte (le tiroir peut la réduire).
+function _placerVolants(){
+  const w = document.getElementById('mapWrap'), corps = document.getElementById('corps');
+  const droite = corps.clientWidth - (w.offsetLeft + w.clientWidth);
+  const barre = document.getElementById('barrePile');
+  const bas = barre ? barre.offsetHeight : 0;
+  for(const el of corps.querySelectorAll('.fabDes')){ el.style.right = (droite + 14) + 'px'; el.style.bottom = (bas + 14) + 'px'; }
+  for(const el of corps.querySelectorAll('.boutonVerrou')){ el.style.left = (w.offsetLeft + 10) + 'px'; el.style.bottom = (bas + 14) + 'px'; }
+  for(const el of corps.querySelectorAll('.relectureVolante')){ el.style.left = (w.offsetLeft + w.clientWidth / 2) + 'px'; }
+}
+_apresRedimension.push(_placerVolants);
+
+// Ce qu'un profil a posé ailleurs revient à sa place quand on en change.
+function _defaireProfil(){
+  document.querySelectorAll('.chromeVolant').forEach(e => e.remove());
+  const bas = document.getElementById('bas');
+  bas.classList.remove('replie');
+  bas.hidden = false;
+  document.getElementById('poigneeJournal').hidden = false;
+  delete document.body.dataset.vue;
+  const champs = document.getElementById('infoScen');
+  if(champs.parentElement.id !== 'ongDes') document.getElementById('ongDes').insertBefore(champs, document.getElementById('desAide'));
+  for(const id of [..._feuilles.keys()]) fermerFeuille(id);
+  annulerModeCarte();
+}
+
+// Tablette : un glissé depuis le bord droit de la carte ouvre le tiroir ;
+// le journal replié s'ouvre ou se replie d'un appui sur sa poignée.
+function _brancherProfilsTactiles(){
+  const w = document.getElementById('mapWrap');
+  w.addEventListener('pointerdown', e => {
+    if(_profil !== 'tablette' || e.pointerType === 'mouse') return;
+    const r = w.getBoundingClientRect();
+    if(r.right - e.clientX > 20) return;
+    const id = e.pointerId, x0 = e.clientX;
+    const bouge = ev => { if(ev.pointerId === id && x0 - ev.clientX > 40){ fin(ev); basculerCote(true); } };
+    const fin = ev => { if(ev.pointerId !== id) return; document.removeEventListener('pointermove', bouge); document.removeEventListener('pointerup', fin); document.removeEventListener('pointercancel', fin); };
+    document.addEventListener('pointermove', bouge);
+    document.addEventListener('pointerup', fin);
+    document.addEventListener('pointercancel', fin);
+  }, true);
+  const pj = document.getElementById('poigneeJournal');
+  let x0 = 0, y0 = 0;
+  pj.addEventListener('pointerdown', e => { x0 = e.clientX; y0 = e.clientY; }, true);
+  pj.addEventListener('click', e => {
+    if(_profil !== 'tablette' || Math.hypot(e.clientX - x0, e.clientY - y0) > 6) return;
+    document.getElementById('bas').classList.toggle('replie');
+    _surRedimension();
+  });
+  document.getElementById('journal').addEventListener('click', () => {
+    const b = document.getElementById('bas');
+    if(_profil === 'tablette' && b.classList.contains('replie')){ b.classList.remove('replie'); _surRedimension(); }
+  });
+  // Téléphone : le champ du chat reste collé au clavier virtuel.
+  const vv = window.visualViewport;
+  if(vv){
+    const suivre = () => {
+      const clavier = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty('--clavier', clavier + 'px');
+    };
+    vv.addEventListener('resize', suivre);
+    vv.addEventListener('scroll', suivre);
+  }
 }
 
 // ═══ INTERFACE — BARRE DE MENUS (profil PC) ═══
@@ -12301,6 +12651,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _brancherMenus();
   _brancherInterface();
   _brancherPoignees();
+  _brancherProfilsTactiles();
   construireDes();
   appliquerProfil(detecterProfil());
   // Libellé des boutons d'icône pour les lecteurs d'écran : leur infobulle.
