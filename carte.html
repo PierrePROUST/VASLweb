@@ -216,7 +216,11 @@ body[data-terminal=mobile] #cote{position:absolute;left:0;right:0;bottom:0;z-ind
 body[data-terminal=mobile][data-vue=pile] #cote{height:58%;border-radius:12px 12px 0 0}
 body[data-terminal=mobile][data-vue=pions] #cote{top:0}
 body[data-terminal=mobile] #bas:not([hidden]){position:fixed;left:0;right:0;z-index:80;display:flex;flex-direction:column;
-  top:calc(48px + var(--marge-h));bottom:calc(55px + var(--marge-b) + var(--clavier,0px));background:var(--barre)}
+  top:calc(var(--vv-haut,0px) + 48px + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
+/* Saisie au doigt : le chat touche le clavier ; navigation et relecture,
+   dessous de toute façon, s'effacent. */
+body:not([data-terminal=pc]).saisie .navBas,body:not([data-terminal=pc]).saisie .relectureBas{display:none}
+body[data-terminal=mobile].saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
 body[data-terminal=mobile] #journal{flex:1;height:auto;font-size:13px}
 body[data-terminal=mobile] #chatIn{font-size:16px;padding:8px}
 body[data-terminal=mobile] #palRech{font-size:16px;padding:8px}
@@ -243,6 +247,11 @@ body[data-terminal=mobile] .vig .mini{transform:scale(1.25)}
 #journal .rap{color:#c9c2a8;font-style:italic}
 #journal .msg{color:var(--texte)}
 #chatBarre{display:flex;gap:6px;padding:3px 10px 5px;background:var(--barre)}
+#bas{position:relative}
+.nouveauxChat{position:absolute;left:50%;transform:translateX(-50%);z-index:5;padding:2px 12px;border-radius:12px;
+  background:var(--accent);color:#111;border:none;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+#chatEnvoi{display:none;flex:none}
+body:not([data-terminal=pc]) #chatEnvoi{display:block;min-width:44px;min-height:44px;font-size:18px;padding:0}
 #chatIn{flex:1;background:#2a2a2a;color:var(--texte);border:1px solid var(--bord);border-radius:4px;padding:3px 6px;font:inherit;font-size:12px}
 /* Fenêtres d'identification et de gestion des utilisateurs. */
 .fenetre{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9800;
@@ -427,7 +436,11 @@ body.maj .pion.immob{pointer-events:auto}
 <div id="poigneeJournal" class="poignee horizontale" title="Glisser pour régler la hauteur du journal"></div>
 <div id="bas">
   <div id="journal" role="log" aria-live="polite"></div>
-  <div id="chatBarre"><input id="chatIn" placeholder="Message au chat (Entrée pour envoyer)" autocomplete="off" aria-label="Message au chat"></div>
+  <div id="chatBarre">
+    <input id="chatIn" autocomplete="off" enterkeyhint="send" autocapitalize="sentences"
+           aria-label="Message au chat" placeholder="Message au chat (Entrée pour envoyer)">
+    <button id="chatEnvoi" type="button" class="act bouton" aria-label="Envoyer" title="Envoyer" disabled>➤</button>
+  </div>
 </div>
 <div id="chromeBas"></div>
 <input type="file" id="fileImport" style="display:none" onchange="handleFileImport(this)">
@@ -454,12 +467,45 @@ const HEX_COLS = 33, HEX_ROWS = 10;
 let zoom = 1, _mapW = 0, _mapH = 0;
 
 // ── Journal
+// Lignes de la page elle-même : « sys », et « alerte » pour un
+// avertissement, une erreur ou un refus, que les filtres ne cachent jamais.
 function chatLog(msg){
-  const j = document.getElementById('journal');
   const d = document.createElement('div');
+  d.className = /^(⚠️|❌|🔒)/u.test(msg) ? 'sys alerte' : 'sys';
   d.textContent = msg;
-  j.appendChild(d);
-  j.scrollTop = j.scrollHeight;
+  ajouterLigne(d);
+}
+
+// Une ligne au journal. Il ne redescend que si l'on était déjà en bas (à
+// 40 px près) ; sinon, la lecture n'est pas interrompue et une pastille
+// « ↓ n nouveaux » y ramène.
+let _nouveauxChat = 0;
+const _apresLigne = [];           // fonctions appelées pour chaque ligne ajoutée
+function ajouterLigne(el){
+  const j = document.getElementById('journal');
+  const enBas = j.scrollHeight - j.scrollTop - j.clientHeight < 40;
+  j.appendChild(el);
+  if(enBas) j.scrollTop = j.scrollHeight;
+  else if(el.offsetHeight){
+    _nouveauxChat++;
+    _majNouveauxChat();
+  }
+  for(const f of _apresLigne) f(el);
+}
+function _majNouveauxChat(){
+  let b = document.getElementById('nouveauxChat');
+  if(!_nouveauxChat){ if(b) b.hidden = true; return; }
+  if(!b){
+    b = document.createElement('button');
+    b.type = 'button'; b.id = 'nouveauxChat'; b.className = 'nouveauxChat';
+    b.addEventListener('pointerdown', e => e.preventDefault());
+    b.addEventListener('click', () => { const j = document.getElementById('journal'); j.scrollTop = j.scrollHeight; _nouveauxChat = 0; _majNouveauxChat(); });
+    document.getElementById('bas').appendChild(b);
+  }
+  b.hidden = false;
+  b.textContent = `↓ ${_nouveauxChat} nouveau${_nouveauxChat > 1 ? 'x' : ''}`;
+  const j = document.getElementById('journal');
+  b.style.bottom = (document.getElementById('bas').getBoundingClientRect().bottom - j.getBoundingClientRect().bottom + 8) + 'px';
 }
 
 // ═══ ZIP natif (DecompressionStream) ═══
@@ -10636,6 +10682,7 @@ function seConnecter(u, admin){
   _utilisateur = admin ? null : u;
   _admin = !!admin;
   majUtilisateur();
+  if(typeof majAideChat === 'function') majAideChat();
   _netMajInfo();
   // Ce qu'on voit d'une unité dissimulée ou en HIP dépend de qui l'on est.
   vivants().forEach(p => majApparence(p));
@@ -10958,9 +11005,7 @@ function afficherChat(msg){
     const l = document.createElement('div');
     l.className = /^\*/.test(msg) ? 'rap' : 'msg';
     l.textContent = msg;
-    const j = document.getElementById('journal');
-    j.appendChild(l);
-    j.scrollTop = j.scrollHeight;
+    ajouterLigne(l);
     return;
   }
   const [, catBrute, type, des, qui, reste] = m;
@@ -11000,9 +11045,7 @@ function afficherChat(msg){
       ligne.appendChild(s);
     }
   }
-  const j = document.getElementById('journal');
-  j.appendChild(ligne);
-  j.scrollTop = j.scrollHeight;
+  ajouterLigne(ligne);
 }
 
 function _annoncesDR(cat, a, b){
@@ -12523,6 +12566,7 @@ function _defaireProfil(){
   bas.hidden = false;
   document.getElementById('poigneeJournal').hidden = false;
   delete document.body.dataset.vue;
+  document.body.classList.remove('saisie');
   const champs = document.getElementById('infoScen');
   if(champs.parentElement.id !== 'ongDes') document.getElementById('ongDes').insertBefore(champs, document.getElementById('desAide'));
   for(const id of [..._feuilles.keys()]) fermerFeuille(id);
@@ -12556,17 +12600,78 @@ function _brancherProfilsTactiles(){
     const b = document.getElementById('bas');
     if(_profil === 'tablette' && b.classList.contains('replie')){ b.classList.remove('replie'); _surRedimension(); }
   });
-  // Téléphone : le champ du chat reste collé au clavier virtuel.
-  const vv = window.visualViewport;
-  if(vv){
-    const suivre = () => {
-      const clavier = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty('--clavier', clavier + 'px');
-    };
-    vv.addEventListener('resize', suivre);
-    vv.addEventListener('scroll', suivre);
-  }
 }
+
+// ═══ CHAT — CLAVIER VIRTUEL ═══
+// Au doigt, tant qu'un champ texte a le focus, body.saisie : la navigation
+// et la relecture s'effacent, et le chat se cale sur le bord haut du
+// clavier d'après visualViewport, qu'il recouvre la page (iOS, Chrome
+// Android) ou qu'il la réduise. Ni recadrage ni changement de profil avant
+// que le clavier se ferme ; alors, un seul.
+const enSaisie = () => document.body.classList.contains('saisie');
+const _champTexte = el => !!el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]), textarea');
+function _brancherClavier(){
+  const vv = window.visualViewport, r = document.documentElement.style;
+  const suivre = () => {
+    if(!vv) return;
+    r.setProperty('--clavier', Math.max(0, innerHeight - vv.height - vv.offsetTop) + 'px');
+    r.setProperty('--vv-haut', vv.offsetTop + 'px');   // défilement imposé par iOS
+    r.setProperty('--vv-h', vv.height + 'px');          // hauteur réellement visible
+  };
+  if(vv){ vv.addEventListener('resize', suivre); vv.addEventListener('scroll', suivre); suivre(); }
+  document.addEventListener('focusin', e => {
+    if(!_profil || _profil === 'pc' || !_champTexte(e.target)) return;
+    document.body.classList.add('saisie');
+    suivre();
+  });
+  document.addEventListener('focusout', () => {
+    // Le focus peut passer d'un champ à l'autre : on regarde après coup.
+    setTimeout(() => {
+      if(_champTexte(document.activeElement) || !enSaisie()) return;
+      document.body.classList.remove('saisie');
+      suivre();
+      _surRedimension();
+      reevaluerProfil();
+      for(const f of _apresSaisie) f();
+    }, 0);
+  });
+  // Un appui sur la carte ferme le clavier ; le geste continue.
+  document.getElementById('mapWrap').addEventListener('pointerdown', () => {
+    if(enSaisie() && _champTexte(document.activeElement)) document.activeElement.blur();
+  }, true);
+}
+const _apresSaisie = [];
+
+// ═══ CHAT — CHAMP DE SAISIE ═══
+// Comme le Chatter de VASSAL, une seule ligne, envoyée par Entrée ; au
+// doigt, un bouton ➤ et la touche « Envoyer » du clavier, qui reste ouvert
+// pour enchaîner. Une seule voie d'envoi : envoyerSaisie().
+function envoyerSaisie(){
+  const ci = document.getElementById('chatIn');
+  envoyerChat(ci.value);
+  ci.value = '';
+  _majEnvoi();
+}
+function _majEnvoi(){
+  document.getElementById('chatEnvoi').disabled = !document.getElementById('chatIn').value.trim();
+}
+// Texte d'aide : sur PC, celui d'avant ; au doigt, le nom sous lequel le
+// message partira (« web » pour un observateur).
+function majAideChat(){
+  document.getElementById('chatIn').placeholder = !_profil || _profil === 'pc'
+    ? 'Message au chat (Entrée pour envoyer)' : `Message en tant que ${joueur()}`;
+}
+function _brancherChat(){
+  const ci = document.getElementById('chatIn'), bt = document.getElementById('chatEnvoi');
+  ci.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); envoyerSaisie(); } });
+  ci.addEventListener('input', _majEnvoi);
+  // Le bouton ne prend pas le focus : le clavier reste ouvert.
+  bt.addEventListener('pointerdown', e => e.preventDefault());
+  bt.addEventListener('click', () => { if(ci.value.trim()) envoyerSaisie(); });
+  _brancherClavier();
+  majAideChat();
+}
+_apresProfil.push(majAideChat);
 
 // ═══ INTERFACE — BARRE DE MENUS (profil PC) ═══
 // Menus déroulants ; Alt seul ouvre le premier (F10 reste la LOS de VASL),
@@ -12795,16 +12900,17 @@ function _brancherInterface(){
       ouvrirPaletteCommandes();
     }
   });
-  let t = null;
-  const reevaluer = () => {
-    clearTimeout(t);
-    t = setTimeout(() => { const p = detecterProfil(); if(p !== _profil) appliquerProfil(p); }, 200);
-  };
-  window.addEventListener('resize', reevaluer);
+  window.addEventListener('resize', reevaluerProfil);
   for(const q of ['(pointer: coarse)', '(hover: hover)']){
     const mq = matchMedia(q);
-    if(mq.addEventListener) mq.addEventListener('change', reevaluer);
+    if(mq.addEventListener) mq.addEventListener('change', reevaluerProfil);
   }
+}
+let _reevaluation = null;
+function reevaluerProfil(){
+  clearTimeout(_reevaluation);
+  if(enSaisie()) return;
+  _reevaluation = setTimeout(() => { if(enSaisie()) return; const p = detecterProfil(); if(p !== _profil) appliquerProfil(p); }, 200);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -12828,13 +12934,14 @@ document.addEventListener('DOMContentLoaded', () => {
   appliquerProfil(detecterProfil());
   // Libellé des boutons d'icône pour les lecteurs d'écran : leur infobulle.
   for(const b of document.querySelectorAll('button[title]:not([aria-label])')) b.setAttribute('aria-label', b.title);
-  window.addEventListener('resize', () => { _redim = _redim || -1; _surRedimension(); });
-  window.addEventListener('orientationchange', _surRedimension);
+  // Pendant la saisie au doigt, le clavier change la taille de la fenêtre :
+  // rien ne bouge avant qu'il se ferme (voir CHAT — CLAVIER VIRTUEL).
+  window.addEventListener('resize', () => { if(enSaisie()) return; _redim = _redim || -1; _surRedimension(); });
+  window.addEventListener('orientationchange', () => { if(!enSaisie()) _surRedimension(); });
   _brancherFil();
   majUtilisateur();
   _brancherDes();
-  const ci = document.getElementById('chatIn');
-  ci.addEventListener('keydown', e => { if(e.key === 'Enter'){ envoyerChat(ci.value); ci.value = ''; } });
+  _brancherChat();
   // La carte qui défile ou zoome emporte la pile survolée : on referme.
   const w = document.getElementById('mapWrap');
   w.addEventListener('scroll', cacherSurvol);
