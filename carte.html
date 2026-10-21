@@ -120,6 +120,7 @@ button:disabled{opacity:.4;cursor:default}
 .pastille{position:absolute;z-index:6000;pointer-events:none;transform:translate(-50%,-50%) scale(var(--zinv,1));
   background:#1e1e1e;color:var(--texte);border:1px solid var(--bord);border-radius:9px;padding:0 5px;
   font:600 11px/16px system-ui,sans-serif;white-space:nowrap}
+.lasso{position:fixed;z-index:9400;pointer-events:none;border:2px solid var(--accent);background:rgba(217,164,65,.12)}
 .pastille.partielle{background:var(--accent);color:#111;border-color:#111}
 .pion.coup{animation:coup 1.6s ease-out}
 .pion.retire{pointer-events:none;animation:retire 1.6s ease-out forwards}
@@ -1341,6 +1342,60 @@ function _surRedimension(){
 }
 const _apresRedimension = [];
 
+// Clic dans le vide de la carte : comme KeyBufferer, la sélection se vide.
+// Au doigt, les piles dépliées se replient aussi ; à la souris, elles
+// restent dépliées, comme dans VASSAL (Échap les replie).
+function _clicVide(e){
+  if(_filArme) return;
+  if(e.pointerType && e.pointerType !== 'mouse') replierTout();
+  if(_sel.size || _pileSel) selectionnerPile(null);
+}
+
+// Rectangle de sélection (Maj + glissé dans le vide). Dans VASSAL, c'est
+// un simple glissé ; ici, le glissé déplace la carte, d'où la touche Maj.
+// Comme KBDeckVisitor : une pile repliée entre tout entière si son point
+// est dans le rectangle ; d'une pile dépliée, chaque pion dont le point est
+// dedans. Ctrl + Maj retire de la sélection au lieu d'y ajouter.
+function _lasso(e){
+  e.preventDefault();
+  const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+  const r = document.createElement('div');
+  r.className = 'lasso';
+  document.body.appendChild(r);
+  const peindre = ev => {
+    Object.assign(r.style, {left: Math.min(x0, ev.clientX) + 'px', top: Math.min(y0, ev.clientY) + 'px',
+      width: Math.abs(ev.clientX - x0) + 'px', height: Math.abs(ev.clientY - y0) + 'px'});
+  };
+  peindre(e);
+  const bouge = ev => { if(ev.pointerId === id){ ev.preventDefault(); peindre(ev); } };
+  const fin = ev => {
+    if(ev.pointerId !== id) return;
+    document.removeEventListener('pointermove', bouge);
+    document.removeEventListener('pointerup', fin);
+    document.removeEventListener('pointercancel', fin);
+    r.remove();
+    if(ev.type !== 'pointerup') return;
+    const a = clientVersCarte(Math.min(x0, ev.clientX), Math.min(y0, ev.clientY), null, true);
+    const b = clientVersCarte(Math.max(x0, ev.clientX), Math.max(y0, ev.clientY), null, true);
+    if(!a || !b) return;
+    const dedans = (x, y) => x >= a.x && x <= b.x && y >= a.y && y <= b.y;
+    const pris = [];
+    for(const [k, l] of indexerPiles()){
+      const vus = l.filter(p => !p.cache);
+      if(_depliees.has(k)){
+        rectsPile(vus, true).forEach((q, i) => {
+          if(dedans((q.x + q.w/2) / SC, (q.y + q.h/2) / SC)) pris.push(vus[i]);
+        });
+      } else if(dedans(l[0].x, l[0].y)) pris.push(...vus);
+    }
+    const choisis = pris.filter(p => selectionnable(p) && COUCHES_SEL[p.couche || 'unite']);
+    selectionner(choisis, _basculeSel(ev) ? 'retirer' : 'ajouter');
+  };
+  document.addEventListener('pointermove', bouge);
+  document.addEventListener('pointerup', fin);
+  document.addEventListener('pointercancel', fin);
+}
+
 // Les pointeurs posés sur la carte, pions compris : un pincement qui
 // commence sur un pion zoome, et abandonne le glissé du pion.
 const _pointeursCarte = new Map();
@@ -1352,7 +1407,9 @@ function _setupPanZoom(){
     // Un pion garde son geste (sélection, glissé) : seul, son doigt ne
     // déplace pas la carte.
     const pion = !!(e.target.closest && e.target.closest('.pion'));
-    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, pion});
+    // Maj + glissé dans le vide, à la souris : rectangle de sélection.
+    if(!pion && e.shiftKey && e.button === 0 && (e.pointerType === 'mouse' || !e.pointerType)){ _lasso(e); return; }
+    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, pion, x0: e.clientX, y0: e.clientY, t0: Date.now(), btn: e.button});
     if(!pion){ try { wrap.setPointerCapture(e.pointerId); } catch(err){} }
     if(!pion || pts.size > 1) wrap.classList.add('pan');
     if(pts.size === 2){
@@ -1376,10 +1433,17 @@ function _setupPanZoom(){
       if(pinch.d > 0) setZoom(pinch.z * d / pinch.d, (a.x+b.x)/2, (a.y+b.y)/2);
     }
   });
+  let pince = false;
   const fin = e => {
+    const p = pts.get(e.pointerId);
+    if(pts.size > 1) pince = true;
     pts.delete(e.pointerId);
     if(pts.size < 2) pinch = null;
     if(!pts.size) wrap.classList.remove('pan');
+    // Un appui bref dans le vide, sans glisser ni pincer : clic sur la carte.
+    if(p && !p.pion && e.type === 'pointerup' && !pince && p.btn === 0
+       && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 6) _clicVide(e);
+    if(!pts.size) pince = false;
   };
   window.addEventListener('pointerup', fin);
   window.addEventListener('pointercancel', fin);
@@ -5662,7 +5726,7 @@ function _brancherFil(){
       armerFil(e.ctrlKey && e.shiftKey ? 'l' : 'L');
       return;
     }
-    if(e.key === 'Escape' && _filArme){ desarmerFil(); return; }
+    if(e.key === 'Escape' && _filArme){ e.stopImmediatePropagation(); desarmerFil(); return; }
     const f = _fil;
     if(!f || !f.src || !f.m) return;
     const sens = (e.key === 'ArrowUp' || e.key === 'Up') ? 'up' : (e.key === 'ArrowDown' || e.key === 'Down') ? 'down' : '';
@@ -6511,6 +6575,24 @@ function selectionner(liste, mode = 'remplacer'){
   for(const f of _apresSelection) f();
 }
 
+// Pions rangés par pile (de haut en bas, puis de gauche à droite sur la
+// carte) puis du fond vers le sommet : l'ordre de leurs M/ garde ainsi
+// l'ordre relatif de chaque pile.
+const trierParPile = l => l.slice().sort((a, b) => a.y - b.y || a.x - b.x || a.ordre - b.ordre);
+
+// Ce que déplace un glissé de la sélection. Une pile repliée sélectionnée
+// en entier part tout entière, comme aujourd'hui (pions HIP compris) ;
+// ailleurs, seuls les pions sélectionnés.
+function piecesADeplacer(){
+  const cles = [...new Set(trierParPile([..._sel]).map(cle))];
+  const out = [];
+  for(const k of cles){
+    if(pileEntiereSel(k) && !_depliees.has(k)) out.push(...pile(k));
+    else out.push(...selDans(k));
+  }
+  return out;
+}
+
 function deplier(k, oui){
   const avant = _depliees.has(k);
   if(oui && pile(k).filter(p => !p.cache).length > 1) _depliees.add(k); else _depliees.delete(k);
@@ -6554,7 +6636,23 @@ function creerPion(seg, ordre){
     // Au doigt, c'est l'appui long qui ouvre le menu (Android enverrait
     // aussi ce contextmenu, iOS jamais).
     if(_dernierPointeur !== 'mouse') return;
-    cacherSurvol(); ouvrirMenu(p, e.clientX, e.clientY);
+    cacherSurvol();
+    // KeyBufferer : le clic droit sur un pion non sélectionné le
+    // sélectionne seul (Maj : en plus de la sélection).
+    if(!_sel.has(p) && selectionnable(p)) selectionner([p], e.shiftKey ? 'ajouter' : 'remplacer');
+    ouvrirMenu(p, e.clientX, e.clientY);
+  });
+  // StackExpander : le double-clic déplie ou replie une pile d'au moins
+  // deux pions visibles, et ne sélectionne que son pion du sommet.
+  el.addEventListener('dblclick', e => {
+    e.preventDefault(); e.stopPropagation();
+    // Au doigt, le double appui a son propre geste (l'éventail de la pile).
+    if(_dernierPointeur !== 'mouse') return;
+    const k = cle(p), vus = pile(k).filter(q => !q.cache);
+    if(vus.length < 2 || _filArme) return;
+    deplier(k, !_depliees.has(k));
+    const haut = [...vus].reverse().find(selectionnable);
+    selectionner(haut ? [haut] : []);
   });
   el.addEventListener('pointerenter', e => { if(e.pointerType === 'mouse' && !e.buttons) survolEntre(p, e); });
   el.addEventListener('pointermove', e => { if(e.pointerType === 'mouse' && !e.buttons) survolEntre(p, e); });
@@ -7715,18 +7813,53 @@ function retirer(p, silencieux){
   if(!silencieux) chatLog(`✖️ ${p.nom} retiré`);
 }
 
-// Monte (+1) ou descend (-1) un pion dans sa pile.
-function changerRang(p, sens){
+// Place un pion au rang i de sa pile (0 = fond), en un seul M/ qui donne
+// l'ancien et le nouveau « dessous ».
+function deplacerDansPile(p, i){
   const s = pile(cle(p));
-  const i = s.indexOf(p), j = i + sens;
-  if(j < 0 || j >= s.length) return;
+  const j = s.indexOf(p);
+  i = Math.max(0, Math.min(s.length - 1, i));
+  if(j < 0 || i === j) return false;
   _avantAction();
   const avant = _dessous(p);
-  [s[i], s[j]] = [s[j], s[i]];
+  s.splice(j, 1); s.splice(i, 0, p);
   s.forEach((q, k) => { q.ordre = k; });
   _logCmd(`M/${p.uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/${_carteJeu}/${p.x}/${p.y}/${avant}/${joueur()}`);
   ajusterDissimulation(cle(p));
   rendrePile(cle(p)); afficherPile();
+  for(const f of _apresSelection) f();
+  return true;
+}
+
+// Monte (+1) ou descend (-1) un pion dans sa pile.
+function changerRang(p, sens){
+  return deplacerDansPile(p, pile(cle(p)).indexOf(p) + sens);
+}
+
+// Touches de rang du StackMetrics (BasicPiece.keyEvent) : sommet, fond,
+// un cran plus haut, un cran plus bas, pour chaque pion sélectionné.
+// Comme KeyBuffer.keyCommand, l'ordre de traitement garde l'ordre relatif
+// des pions sélectionnés d'une même pile.
+function rangerSelection(quoi){
+  const l = trierParPile([..._sel]);
+  if(!l.length) return false;
+  const montant = quoi === 'top' || quoi === 'down';      // traités du fond vers le sommet
+  const ordre = montant ? l : l.slice().reverse();
+  // Piles dont les pions sélectionnés forment déjà le haut (ou le bas) :
+  // rien à faire, plutôt que de les reposer un à un.
+  const enPlace = new Set();
+  if(quoi === 'top' || quoi === 'bottom') for(const k of new Set(l.map(cle))){
+    const s = pile(k), n = s.filter(q => _sel.has(q)).length;
+    if((quoi === 'top' ? s.slice(s.length - n) : s.slice(0, n)).every(q => _sel.has(q))) enPlace.add(k);
+  }
+  for(const p of ordre){
+    if(enPlace.has(cle(p))) continue;
+    const s = pile(cle(p)), i = s.indexOf(p);
+    // Un cran : bloqué par un pion sélectionné resté en place au bord.
+    if((quoi === 'up' && _sel.has(s[i + 1])) || (quoi === 'down' && _sel.has(s[i - 1]))) continue;
+    deplacerDansPile(p, quoi === 'top' ? s.length - 1 : quoi === 'bottom' ? 0 : i + (quoi === 'up' ? 1 : -1));
+  }
+  return true;
 }
 
 // Pose un pion de la palette : le type VASSAL vient du PieceSlot, l'état
@@ -8151,12 +8284,12 @@ function commandesDe(type){
       // Déplacement d'un hexagone dans une direction. Comme Translate de
       // VASSAL, la distance verticale se compte vers le HAUT.
       const dx = parseFloat(ch[3]) || 0, dy = -(parseFloat(ch[4]) || 0);
-      // Comme ASLTranslate, toute la sélection se déplace : la pile entière
-      // si elle est sélectionnée, et une seule fois par touche.
+      // Comme ASLTranslate, toute la sélection se déplace, une seule fois
+      // par touche ; un pion hors de la sélection se déplace seul.
       ajouter(i, ch[1], lireTouche(ch[2]), ({p, effets, lot}) => effets.push(() => {
         if(lot.deplace) return;
         lot.deplace = true;
-        const groupe = _pileSel === cle(p) ? pile(cle(p)).filter(q => !q.cache) : [p];
+        const groupe = _sel.has(p) ? trierParPile([..._sel].filter(q => !q.cache)) : [p];
         deplacer(groupe, p.x + dx, p.y + dy);
       }));
     } else if(id === 'moved'){
@@ -8609,7 +8742,9 @@ function ouvrirMenu(p, cx, cy){
         } else it.addEventListener('click', e => {
           e.stopPropagation();
           fermerMenu();
-          if(c.touche) commander([p], c.touche); else commander([p], null, c);
+          // Pion sélectionné : la commande part à toute la sélection.
+          if(c.touche && _sel.has(p) && _sel.size > 1) commanderSelection(c.touche);
+          else if(c.touche) commander([p], c.touche); else commander([p], null, c);
         });
       }
       conteneur.appendChild(it);
@@ -8646,7 +8781,13 @@ function _brancherCommandes(){
   }, true);
   document.getElementById('mapWrap').addEventListener('scroll', fermerMenu);
   document.addEventListener('keydown', e => {
-    if(e.key === 'Escape'){ fermerMenu(); return; }
+    if(e.key === 'Escape'){
+      // Le menu d'abord, puis les piles dépliées, puis la sélection.
+      if(document.getElementById('ctx')){ fermerMenu(); return; }
+      if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if(!replierTout() && (_sel.size || _pileSel)) selectionnerPile(null);
+      return;
+    }
     // Begin Logfile [Alt+W], End Logfile [Alt+Maj+W], comme VASSAL.
     if(e.altKey && !e.ctrlKey && e.code === 'KeyW'){
       e.preventDefault();
@@ -8659,20 +8800,43 @@ function _brancherCommandes(){
       if(e.key === 'PageDown') avancerLog(); else reculerLog();
       return;
     }
-    if(!_pileSel || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if((!_pileSel && !_sel.size) || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if(['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
     const k = toucheClavier(e);
-    const tous = pile(_pileSel).filter(p => !p.cache && commandesDe((_typeEtEtat(p.seg) || {}).type || '')
-                                                        .cmds.some(c => c.touche === k));
-    if(!tous.length) return;
-    e.preventDefault(); e.stopImmediatePropagation();
-    fermerMenu();
-    // Les pions masqués par un autre joueur ne reçoivent pas la touche ;
-    // un seul avertissement pour la pile.
-    const cibles = tous.filter(p => !accesRefuse(p));
-    if(!cibles.length) refuser(tous[0]);
-    if(cibles.length) commander(cibles, k);
+    if(ciblesTouche(k).length){
+      e.preventDefault(); e.stopImmediatePropagation();
+      fermerMenu();
+      commanderSelection(k);
+      return;
+    }
+    // Touches de rang du module (StackMetrics), si aucun trait ne les prend.
+    const m = metriques();
+    const rang = ['top', 'bottom', 'up', 'down'].find(n => m[n] === k);
+    if(rang && _sel.size){
+      e.preventDefault(); e.stopImmediatePropagation();
+      fermerMenu();
+      rangerSelection(rang);
+    }
   }, true);
+}
+
+// Les pions visés par une touche : la sélection si elle existe, sinon la
+// pile courante. Ceux qui n'ont pas la touche sont écartés.
+function ciblesTouche(touche){
+  const base = _sel.size ? [..._sel] : (_pileSel ? pile(_pileSel).filter(p => !p.cache) : []);
+  return trierParPile(base.filter(p => !p.cache && commandesDe((_typeEtEtat(p.seg) || {}).type || '')
+                                              .cmds.some(c => c.touche === touche)));
+}
+// Comme un raccourci clavier de VASSAL : la touche part à toute la
+// sélection. Les pions masqués par un autre joueur ne la reçoivent pas ;
+// un seul avertissement pour tous.
+function commanderSelection(touche, cmd){
+  const tous = ciblesTouche(touche);
+  if(!tous.length) return false;
+  const cibles = tous.filter(p => !accesRefuse(p));
+  if(!cibles.length){ refuser(tous[0]); return true; }
+  commander(cibles, touche, cmd);
+  return true;
 }
 
 // Envoie une commande à des pions. Si elle demande un choix (propriété
@@ -8755,15 +8919,49 @@ let _dernierPointeur = 'mouse';
 document.addEventListener('pointerdown', e => { _dernierPointeur = e.pointerType || 'mouse'; }, true);
 const vibrer = () => { try { if(navigator.vibrate) navigator.vibrate(10); } catch(e){} };
 
+// À la souris, comme KeyBufferer.mousePressed : l'appui sélectionne.
+//   · pion hors de la sélection : elle est remplacée (Maj : complétée) par
+//     sa pile entière si elle est repliée, par lui seul si elle est
+//     dépliée ou avec Ctrl (Cmd sur Mac), qui ajoute ou retire ;
+//   · pion déjà sélectionné : Ctrl le retire (sa pile, si elle est
+//     repliée) ; un simple clic sans glisser ne garde que lui (sa pile).
+// Le glissé emporte ensuite toute la sélection.
+// Au doigt, la sélection se fait au relâché, et le glissé emporte la
+// sélection si le pion en fait partie, sinon sa pile (ou lui seul, dans
+// une pile dépliée).
+const _basculeSel = e => e.ctrlKey || e.metaKey;
 function _pionPointerDown(e, p){
   if(e.button > 0) return;
   cacherSurvol();
-  if(e.pointerType !== 'mouse') _appuiLong(e, p);
-  const k = cle(p);
+  const k = cle(p), souris = e.pointerType === 'mouse' || !e.pointerType;
+  const deplie = () => _depliees.has(k);
+  const pileOuLui = () => deplie() ? [p] : pile(k).filter(selectionnable);
+  if(!souris) _appuiLong(e, p);
+  let reduire = false;
+  if(souris && selectionnable(p)){
+    if(!_sel.has(p)){
+      if(_basculeSel(e)) selectionner([p], 'basculer');
+      else selectionner(pileOuLui(), e.shiftKey ? 'ajouter' : 'remplacer');
+    } else if(_basculeSel(e)) selectionner(pileOuLui(), 'retirer');
+    else reduire = !e.shiftKey;
+  }
+  const aDeplacer = () => {
+    if(_sel.has(p)) return piecesADeplacer();
+    if(!souris && deplie() && selectionnable(p)) return [p];
+    return pile(k);
+  };
   glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
-    if(c) deplacer(pile(k), c.x, c.y);
-  }, () => selectionnerPile(k));
+    const l = aDeplacer();
+    if(c && l.length) deplacer(l, c.x, c.y);
+  }, () => {
+    if(souris){
+      if(!selectionnable(p)) selectionnerPile(k);
+      else if(reduire) selectionner(pileOuLui());
+    }
+    else if(deplie() && selectionnable(p)) selectionner([p]);
+    else selectionnerPile(k);
+  });
 }
 
 // Glisser générique avec fantôme : la capture est prise sur le document,
