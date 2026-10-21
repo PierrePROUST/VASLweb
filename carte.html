@@ -374,6 +374,8 @@ body.maj .pion.immob{pointer-events:auto}
   padding:0 5px;border-radius:3px;white-space:nowrap}
 .lasso{position:fixed;z-index:9400;pointer-events:none;border:2px solid var(--accent);background:rgba(217,164,65,.12)}
 .pastille.partielle{background:var(--accent);color:#111;border-color:#111}
+.pastilleMF{background:#12324a;border-color:#4a90c0;color:#fff}
+.pastilleMF.depasse{background:#7a1f1f;border-color:#e05050}
 .pion.coup{animation:coup 1.6s ease-out}
 .pion.retire{pointer-events:none;animation:retire 1.6s ease-out forwards}
 @keyframes retire{0%,40%{opacity:.9;box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{opacity:0;box-shadow:none}}
@@ -5570,6 +5572,7 @@ const LOS_COUL_FIL = '#ff0000', LOS_COUL_GENE = '#ff0000', LOS_COUL_BLOC = '#000
 const LOS_POLICE = 14, LOS_DESCENTE = 3;   // hauteur et descente de RANGE_FONT, en px
 let _losBoards = null;      // disposition de la carte affichée
 let _losCarte = null;       // Promise<{map, complet}> ou null
+let _losPrete = null;       // la même, une fois construite (décompte des MF)
 let _metaPions = null;      // Promise<Map> de CounterMetadata.xml
 let _filArme = null;        // null, 'L' (fil « LOS ») ou 'l' (fil silencieux)
 let _fil = null;            // fil en cours de tracé
@@ -5587,7 +5590,7 @@ async function _gunzip(octets){
 // Nouvelle carte affichée : la carte LOS sera reconstruite à la demande.
 function oublierCarteLOS(boards){
   if(_filArme) desarmerFil();
-  _losBoards = boards; _losCarte = null;
+  _losBoards = boards; _losCarte = null; _losPrete = null;
 }
 
 // Carte LOS de la disposition courante (construite une fois). Sans les
@@ -5603,6 +5606,7 @@ function carteLOS(){
         try { m.pions = new LosPions(m, await metaPions()); }
         catch(e){ chatLog('⚠️ CounterMetadata.xml information did not load properly. LOS results may be incorrect.'); }
         chatLog('👁️ VASL LOS Enabled');
+        _losPrete = m;               // pour le décompte des MF, synchrone
         return {map: m, complet: true};
       } catch(e){
         chatLog(`⚠️ VASL LOS disabled — ${e.message}. Fil sans vérification de la ligne de vue.`);
@@ -7490,11 +7494,12 @@ function _decorPile(k, s, rects, deplie){
   const nSel = vus.filter(p => _sel.has(p)).length;
   const texte = nSel && nSel < vus.length ? `${nSel}/${vus.length}`
               : _effectifPiles && vus.length >= 3 && _vueDeLoin() ? String(vus.length) : '';
-  if(!deplie && !texte){
-    if(d){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); _decors.delete(k); }
+  const texteMF = typeof texteMvtPile === 'function' ? texteMvtPile(s) : '';
+  if(!deplie && !texte && !texteMF){
+    if(d){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); if(d.mf) d.mf.remove(); _decors.delete(k); }
     return;
   }
-  if(!d) _decors.set(k, d = {fond: null, pastille: null});
+  if(!d) _decors.set(k, d = {fond: null, pastille: null, mf: null});
   const mi = document.getElementById('mapInner');
   const x0 = Math.min(...rects.map(r => r.x)), y0 = Math.min(...rects.map(r => r.y));
   const x1 = Math.max(...rects.map(r => r.x + r.w)), y1 = Math.max(...rects.map(r => r.y + r.h));
@@ -7510,9 +7515,19 @@ function _decorPile(k, s, rects, deplie){
     d.pastille.style.left = (haut.x + haut.w) + 'px';
     d.pastille.style.top = haut.y + 'px';
   } else if(d.pastille){ d.pastille.remove(); d.pastille = null; }
+  // MF / MP dépensés pendant la phase, sous la pile ; en rouge au-delà
+  // de l'allocation.
+  if(texteMF){
+    if(!d.mf){ d.mf = document.createElement('div'); d.mf.className = 'pastille pastilleMF'; mi.appendChild(d.mf); }
+    d.mf.textContent = texteMF;
+    const [dep, alloc] = texteMF.replace('½', '.5').split(/[\/ ]/);
+    d.mf.classList.toggle('depasse', /\//.test(texteMF) && parseFloat(dep) > parseFloat(alloc));
+    d.mf.style.left = ((x0 + x1) / 2) + 'px';
+    d.mf.style.top = y1 + 'px';
+  } else if(d.mf){ d.mf.remove(); d.mf = null; }
 }
 function _viderDecors(){
-  for(const d of _decors.values()){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); }
+  for(const d of _decors.values()){ if(d.fond) d.fond.remove(); if(d.pastille) d.pastille.remove(); if(d.mf) d.mf.remove(); }
   _decors.clear();
 }
 
@@ -7720,6 +7735,7 @@ function annuler(){
     ['UNDO\ttrue', ...e.inv, 'UNDO\tfalse'].forEach(_logCmd);
   } finally { _annulation = false; }
   _actionOuverte = false;
+  recalerMouvements();
   rendreToutes();
   if(_pileSel) afficherPile();
   signalerCoup(photo);
@@ -8153,6 +8169,8 @@ function deplacer(liste, x, y){
   _qmarkPourPartants(liste, kArr, sousQ);
   new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
   selectionnerPile(kArr);
+  // MF / MP dépensés, d'après le terrain traversé.
+  compterMouvement(avant);
   chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
 }
 
@@ -8231,6 +8249,210 @@ function fixerTrait(p, i, valeur){
   return true;
 }
 
+// ═══ DÉCOMPTE DES MF / MP — mouvement selon le terrain (A4, chapitre B) ═══
+// Chaque unité qui bouge pendant la phase garde son chemin : les
+// hexagones traversés et le coût d'entrée de chacun, lu sur la carte LOS
+// (terrain du centre, côté franchi, niveau). Un saut de plusieurs
+// hexagones suit le chemin le moins cher. Undo ramène l'unité sur un
+// hexagone déjà parcouru : le chemin est tronqué là, le décompte suit.
+// « Mark unmoved » remet tout à zéro, comme la nouvelle phase.
+//
+// Coûts d'entrée de l'infanterie, en MF (TEC et chapitre B). Absent de
+// la table : 1 MF en terrain ouvert ou route, sinon coût inconnu,
+// compté 1 et signalé « ? ». 'tout' : toute l'allocation restante.
+const COUTS_MF = {
+  'Open Ground': 1, 'Plowed Field': 1, 'Dirt Road': 1, 'Paved Road': 1, 'Elevated Road': 1,
+  'Path': 1, 'Track': 1, 'Runway': 1, 'Ford': 1,
+  'Orchard': 1, 'Orchard, Out of Season': 1, 'Olive Grove': 1,     // B14
+  'Grain': 1.5, 'Rice Paddy, In Season': 1.5,                        // B15 (en saison)
+  'Shellholes': 2,                                                   // B2 : COT + 1
+  'Brush': 2, 'Woods': 2, 'Pine Woods': 2, 'Forest': 2,              // B12, B13
+  'Lumberyard': 2, 'Graveyard': 2, 'Marsh': 2,                       // B23, B18, B16
+  'Stone Rubble': 3, 'Wooden Rubble': 3,                             // B24
+  'Shallow Stream': 2, 'Deep Stream': 'tout',                        // B20
+  'Water': Infinity, 'River': Infinity, 'Canal': Infinity, 'Ocean': Infinity
+};
+// Côtés d'hexagone : MF ajoutés au coût d'entrée (B9) ; Infinity : infranchissable.
+const COUTS_COTE_MF = {'Wall': 1, 'Hedge': 1, 'Bocage': 1, 'Cactus Hedge': 1, 'Cliff': Infinity};
+// Véhicules, en MP (table des chenillés). null : coût propre à la règle
+// (moitié des MP, Bog…), signalé sans être compté.
+const COUTS_MP = {
+  'Open Ground': 1, 'Plowed Field': 1, 'Dirt Road': 1, 'Paved Road': 1, 'Elevated Road': 1,
+  'Path': 1, 'Track': 1, 'Runway': 1, 'Grain': 1, 'Orchard': 1, 'Orchard, Out of Season': 1,
+  'Shellholes': 1, 'Brush': 2,
+  'Woods': null, 'Pine Woods': null, 'Forest': null, 'Stone Rubble': null, 'Wooden Rubble': null,
+  'Graveyard': null, 'Lumberyard': null, 'Crags': null,
+  'Marsh': Infinity, 'Water': Infinity, 'River': Infinity, 'Canal': Infinity, 'Ocean': Infinity
+};
+const COUTS_COTE_MP = {'Wall': 1, 'Hedge': 1, 'Cliff': Infinity};
+
+// Ce qui bouge, et son allocation : escouade, demi-escouade, équipage
+// 4 MF (A4.1), chef et héros 6 MF ; véhicule en MP, allocation inconnue.
+function natureMouvement(p){
+  if(p._natMvt && p._natMvt.seg === p.seg) return p._natMvt.n;
+  let pr = {};
+  try { pr = _proprietes(_developperPrototypes(_splitTypeState(p.seg), 0)) || {}; } catch(e){}
+  const nom = (lirePiece(p.seg).nomBase || p.nom || '').trim();
+  let n = null;
+  if(pr.vehicleType) n = {genre: 'veh', mf: null, vt: pr.vehicleType};
+  else if(pr.CounterType === 'unit'){
+    if(/^\d{1,2}[-+]\d$/.test(nom) || /\bhero\b/i.test(nom)) n = {genre: 'chef', mf: 6};
+    else if(/^\d+-\d+-\d+/.test(nom)) n = {genre: 'inf', mf: 4};
+  }
+  p._natMvt = {seg: p.seg, n};
+  return n;
+}
+
+function _hexDe(m, x, y){
+  const q = _versLOS({x, y});
+  return m.onMap(q.x, q.y) ? m.gridToHex(q.x, q.y) : null;
+}
+function _coteVers(m, a, b){
+  for(let s = 0; s < 6; s++) if(m.getAdjacentHex(a, s) === b) return s;
+  return -1;
+}
+
+// Coût d'entrée dans b depuis a, voisins : {cout, lib, doute, note}.
+function coutEntree(m, a, b, veh){
+  const s = _coteVers(m, a, b);
+  const c = b.getCenterLocation().getTerrain();
+  const nom = c ? c.getName() : 'Open Ground';
+  const table = veh ? COUTS_MP : COUTS_MF;
+  let cout, lib = nom, doute = false, note = '';
+  const dep = b.isDepressionTerrain() ? b.getCenterLocation().getDepressionTerrain() : null;
+  if(dep && (dep.getName() in table)){ cout = table[dep.getName()]; lib = dep.getName(); }
+  else if(nom in table) cout = table[nom];
+  else if(c && c.isBuilding()) cout = veh ? null : 2;          // B23
+  else if(!c || c.isOpen()) cout = 1;
+  else { cout = 1; doute = true; }
+  // Route : ½ MP au véhicule qui la suit, d'un hexagone de route à
+  // l'autre par un côté de route (B3.4).
+  if(veh && s >= 0 && c && c.isRoad() && a.getCenterLocation().getTerrain()
+     && a.getCenterLocation().getTerrain().isRoad()
+     && a.getHexsideLocation(s).getTerrain() && a.getHexsideLocation(s).getTerrain().isRoad()) cout = 0.5;
+  if(cout === null){ note = `${lib} : coût propre au véhicule (½ MP, Bog…), non compté`; cout = 0; }
+  // Monter d'un niveau : coût du terrain doublé pour l'infanterie
+  // (B10.4). Sortir d'une dépression aussi, sauf par la route.
+  const monte = b.getBaseLevelofHex() > a.getBaseLevelofHex()
+    || (a.isDepressionTerrain() && !b.isDepressionTerrain() && !(c && c.isRoad()));
+  if(monte && typeof cout === 'number' && isFinite(cout)){
+    if(veh) note = (note ? note + ' ; ' : '') + 'changement de niveau non compté';
+    else { cout *= 2; lib += ', en montée'; }
+  }
+  if(s >= 0){
+    const t = a.getHexsideTerrain(s) || b.getHexsideTerrain((s + 3) % 6);
+    const ct = veh ? COUTS_COTE_MP : COUTS_COTE_MF;
+    if(t && (t.getName() in ct) && cout !== 'tout'){ cout += ct[t.getName()]; lib += ' + ' + t.getName(); }
+  }
+  return {cout, lib, doute, note};
+}
+
+// Chemin le moins cher de a à b (Dijkstra borné) : [{hex, cout, lib…}].
+function cheminMoinsCher(m, a, b, veh){
+  const poids = r => r.cout === 'tout' ? 50 : r.cout;
+  const dist = new Map([[a, 0]]), prec = new Map(), fait = new Set();
+  const file = [a];
+  while(file.length && fait.size < 3000){
+    file.sort((x, y) => dist.get(x) - dist.get(y));
+    const h = file.shift();
+    if(fait.has(h)) continue;
+    fait.add(h);
+    if(h === b) break;
+    if(dist.get(h) > 60) break;
+    for(let s = 0; s < 6; s++){
+      const v = m.getAdjacentHex(h, s);
+      if(!v || fait.has(v)) continue;
+      const r = coutEntree(m, h, v, veh), w = poids(r);
+      if(!isFinite(w)) continue;
+      const d = dist.get(h) + w;
+      if(!dist.has(v) || d < dist.get(v)){ dist.set(v, d); prec.set(v, {h, r}); file.push(v); }
+    }
+  }
+  if(!prec.has(b)) return null;
+  const out = [];
+  for(let v = b; v !== a; v = prec.get(v).h) out.unshift(Object.assign({hex: v}, prec.get(v).r));
+  return out;
+}
+
+// Ramène le chemin d'une unité à l'hexagone où elle se trouve (Undo).
+function _mvtTronquer(p, nomHex){
+  if(!p.mvt) return;
+  const i = p.mvt.hexes.lastIndexOf(nomHex);
+  if(i < 0){ delete p.mvt; return; }
+  p.mvt.hexes.length = i + 1; p.mvt.couts.length = i;
+}
+const _mvtTotal = (p) => p.mvt ? p.mvt.couts.reduce((t, c) => c === 'tout' ? (p.mvt.mf || t) : t + c, 0) : 0;
+const _fmtMF = v => (Math.round(v * 2) / 2).toString().replace(/\.5$/, '½').replace(/^0½$/, '½');
+
+// Après deplacer() : ajoute au chemin de chaque unité le coût du trajet.
+function compterMouvement(avant){
+  const m = _losPrete;
+  // Carte LOS pas encore construite : le décompte attend qu'elle le soit.
+  // Sans données de terrain (board inconnu), rien n'est compté.
+  if(!m){ carteLOS().then(r => { if(_losPrete) compterMouvement(avant); }); return; }
+  const unites = avant.filter(a => !a.p.deleted && natureMouvement(a.p));
+  if(!unites.length) return;
+  const chef = unites.some(a => natureMouvement(a.p).genre === 'chef');
+  const lignes = [];
+  for(const a of unites){
+    const p = a.p, n = natureMouvement(p), veh = n.genre === 'veh';
+    const ha = _hexDe(m, a.x, a.y), hb = _hexDe(m, p.x, p.y);
+    if(!ha || !hb || ha === hb) continue;
+    if(!p.mvt || p.mvt.hexes[p.mvt.hexes.length - 1] !== ha.getName()) _mvtTronquer(p, ha.getName());
+    if(!p.mvt) p.mvt = {hexes: [ha.getName()], couts: []};
+    // Escouade accompagnée d'un chef : +2 MF (A4.12).
+    p.mvt.mf = n.mf && n.genre === 'inf' && chef ? n.mf + 2 : n.mf;
+    p.mvt.unite = veh ? 'MP' : 'MF';
+    const ch = _coteVers(m, ha, hb) >= 0 ? [Object.assign({hex: hb}, coutEntree(m, ha, hb, veh))]
+                                          : cheminMoinsCher(m, ha, hb, veh);
+    if(!ch){ lignes.push(`${p.nom} : aucun chemin praticable jusqu'à ${hb.getName()}`); continue; }
+    const notes = [];
+    for(const r of ch){
+      p.mvt.hexes.push(r.hex.getName());
+      p.mvt.couts.push(r.cout === Infinity ? 0 : r.cout);
+      if(r.cout === Infinity) notes.push(`${r.lib} : infranchissable`);
+      if(r.doute) notes.push(`${r.lib} : coût inconnu, compté 1`);
+      if(r.note) notes.push(r.note);
+    }
+    const pas = ch.map(r => r.cout === 'tout' ? 'tout' : _fmtMF(r.cout)).reduce((s, c) => s + (s ? '+' : '') + c, '');
+    const total = _mvtTotal(p), mf = p.mvt.mf;
+    let l = `${p.nom} : +${pas} ${p.mvt.unite} (${ch.map(r => r.lib).join(' → ')})`
+          + (ch.length > 1 ? ` par ${ch.length} hexagones` : '')
+          + ` — ${_fmtMF(total)}${mf ? '/' + mf : ''} ${p.mvt.unite}`;
+    if(mf && total > mf)
+      l += p.mvt.couts.length === 1 ? ' ⚠️ au-delà : mouvement minimum (A4.134)' : ' ⚠️ allocation dépassée';
+    if(notes.length) l += ' — ' + [...new Set(notes)].join(' ; ');
+    lignes.push(l);
+  }
+  for(const l of lignes) chatLog('🦶 ' + l);
+  rendreToutes();
+}
+
+// Texte de la pastille d'une pile : l'unité la plus avancée dans sa
+// dépense, en restant/allocation.
+function texteMvtPile(s){
+  let best = null;
+  for(const p of s){
+    if(!p.mvt || !p.mvt.couts.length || p.cache) continue;
+    const t = _mvtTotal(p), reste = p.mvt.mf ? p.mvt.mf - t : null;
+    if(!best || (reste !== null && (best.reste === null || reste < best.reste))) best = {p, t, reste};
+  }
+  if(!best) return '';
+  const u = best.p.mvt.unite;
+  return best.p.mvt.mf ? `${_fmtMF(best.t)}/${best.p.mvt.mf} ${u}` : `${_fmtMF(best.t)} ${u}`;
+}
+
+// Après Undo : chaque chemin revient à l'hexagone de l'unité.
+function recalerMouvements(){
+  const m = _losPrete;
+  if(!m) return;
+  for(const p of pions){
+    if(!p.mvt) continue;
+    const h = p.deleted ? null : _hexDe(m, p.x, p.y);
+    if(!h) delete p.mvt; else _mvtTronquer(p, h.getName());
+  }
+}
+
 // ── Statut « moved » (traits moved de VASL et markmoved de VASSAL).
 const TOUCHE_MOUVEMENT = _touche(77, 650);     // moveKey de la carte VASL
 
@@ -8257,6 +8479,9 @@ function marquerDeplace(p, oui){
 function leverDeplaces(){
   let n = 0;
   for(const p of vivants()) if(marquerDeplace(p, false)) n++;
+  // Nouvelle phase : les MF / MP repartent de zéro.
+  for(const p of pions) delete p.mvt;
+  rendreToutes();
   chatLog(n ? `↩️ Statut Moved levé sur ${n} pion(s)` : 'Aucun pion marqué Moved');
   return n;
 }
