@@ -93,6 +93,52 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
 #cmdListe .it.off{opacity:.45}
 #cmdListe .rc{opacity:.65;font-size:12px;white-space:nowrap}
 .fenetre th[colspan]{padding-top:8px;color:var(--accent)}
+/* ── Composants tactiles. */
+.voile{position:fixed;inset:0;z-index:9690;background:rgba(0,0,0,.45)}
+.voile.transparent{background:transparent}
+.feuille{position:fixed;left:0;right:0;bottom:0;z-index:9700;display:flex;flex-direction:column;
+  max-height:70vh;background:var(--menu-fond);color:var(--menu-texte);border-top:1px solid var(--menu-bord);
+  border-radius:12px 12px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.6);padding-bottom:var(--marge-b);
+  transition:transform .18s ease-out;margin:0 auto;max-width:720px}
+.feuille.moitie{max-height:55vh}
+.feuille.plein{top:var(--marge-h);max-height:none;border-radius:0;max-width:none}
+.poigneeFeuille{width:44px;height:5px;border-radius:3px;background:#666;margin:7px auto 2px;flex:none}
+.teteFeuille{display:flex;align-items:center;gap:8px;padding:2px 6px 6px 14px;flex:none;touch-action:none}
+.teteFeuille .tt{flex:1;font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.teteFeuille .ferme{min-width:var(--cible);min-height:var(--cible);background:none;border:none;font-size:18px}
+.corpsFeuille{overflow:auto;flex:1;min-height:0;overscroll-behavior:contain}
+.corpsFeuille .act.ligne:disabled{opacity:.4}
+.videFeuille{padding:14px;color:var(--menu-doux);font-style:italic}
+.sepFeuille{height:6px;background:#262626}
+.act.danger{color:#ff8a8a}
+.act.prim{background:#2f5f9e;border-color:#2f5f9e;color:#fff}
+.barrePile,.bandeauMode,.panneauFil{position:absolute;z-index:60;display:flex;align-items:center;gap:6px;
+  padding:6px 8px;background:rgba(30,30,30,.94);border-top:1px solid var(--bord);overflow-x:auto;scrollbar-width:none}
+.barrePile{bottom:0}
+.barrePile .act.bouton,.actionsEv .act.bouton,.panneauFil .act.bouton{flex:none;white-space:nowrap;min-height:40px}
+.miniPile{position:relative;flex:none;width:46px;height:40px;padding:2px;display:flex;align-items:center;justify-content:center}
+.miniPile .nb{position:absolute;right:-2px;bottom:-2px;background:var(--accent);color:#111;border-radius:8px;
+  font:600 11px/15px system-ui,sans-serif;padding:0 4px}
+.copiePion{position:relative;overflow:hidden;flex:none;pointer-events:none}
+.bandeauMode{top:8px;border:1px solid var(--accent);border-radius:6px;font-size:14px}
+.bandeauMode label{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--doux);white-space:nowrap}
+.bandeauMode button{flex:none;min-width:36px;min-height:36px}
+.panneauFil{top:8px;border:1px solid var(--accent);border-radius:6px;flex-wrap:wrap}
+.panneauFil .libFil{font-size:12px;color:var(--doux);white-space:nowrap;margin-left:4px}
+.eventail{position:fixed;z-index:9550;background:rgba(28,28,28,.97);border:1px solid var(--accent);border-radius:8px;
+  box-shadow:0 6px 22px rgba(0,0,0,.65);padding:6px;max-width:calc(100vw - 16px)}
+.bandeEv{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-height:45vh;overflow:auto}
+.bandeEv .tout{flex:none;align-self:stretch;min-width:44px}
+.sommetEv{font-size:11px;color:var(--doux);flex:none}
+.vigEv{position:relative;flex:none;padding:2px;border:2px solid transparent;border-radius:5px;touch-action:none}
+.vigEv.sel{border-color:var(--accent);background:rgba(217,164,65,.18)}
+.vigEv.horsCouche{opacity:.35}
+.vigEv.masque .copiePion{opacity:.6}
+.vigEv .cadenas{position:absolute;left:2px;bottom:2px;font-size:14px}
+.ckEv{position:absolute;right:-6px;top:-6px;width:28px;height:28px;padding:0;border-radius:14px;font-size:16px;
+  line-height:26px;background:#1e1e1e}
+.inserEv{position:absolute;width:3px;background:var(--accent);border-radius:2px;pointer-events:none}
+.actionsEv{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--bord)}
 #mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
   user-select:none;-webkit-user-select:none}
 /* Couche de sélection décochée : ses pièces laissent passer le clic vers
@@ -206,6 +252,9 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
 #ctx .vide{padding:4px 10px;color:var(--menu-doux);font-style:italic}
 #ctx .it.off,#ctx .it.off:hover{color:#777;background:none;cursor:default}
 .editLabel.choix{flex-direction:column;align-items:stretch}
+.editLabel.auClavier{right:8px;font-size:15px;padding:8px}
+.editLabel.auClavier input{flex:1;width:auto;font-size:16px;padding:6px}
+.editLabel.auClavier button,.editLabel.auClavier select{min-height:40px;font-size:15px}
 .editLabel.choix label{display:flex;justify-content:space-between;gap:8px;align-items:center}
 .editLabel select{padding:2px 4px;font:inherit;font-size:13px;max-width:220px;background:var(--champ);color:var(--menu-texte);
   border:1px solid var(--menu-bord)}
@@ -1329,6 +1378,7 @@ function setZoom(z, fx, fy){
   wrap.scrollTop  = wy*zoom - (fy - wr.top);
   rafraichirActions(['zoomTxt']);
   if(_fil) dessinerFil();
+  if(_eventail) placerEventail();
   // L'effectif des piles ne se montre que de loin.
   if(_effectifPiles && loin !== _vueDeLoin()) rendreToutes();
 }
@@ -1370,13 +1420,21 @@ function _surRedimension(){
   }, 200);
 }
 const _apresRedimension = [];
+const _apresProfil = [];          // (p, ancien) après un changement de profil
 
 // Clic dans le vide de la carte : comme KeyBufferer, la sélection se vide.
 // Au doigt, les piles dépliées se replient aussi ; à la souris, elles
 // restent dépliées, comme dans VASSAL (Échap les replie).
 function _clicVide(e){
   if(_filArme) return;
-  if(e.pointerType && e.pointerType !== 'mouse') replierTout();
+  if(_modeCarte){ toucherModeCarte(clientVersCarte(e.clientX, e.clientY, null, true)); return; }
+  if(e.pointerType && e.pointerType !== 'mouse'){
+    // Sélection tolérante : la pile la plus proche, à moins de 30 px.
+    const k = pileProche(e.clientX, e.clientY);
+    if(k){ appuiSurPile(k); return; }
+    replierTout();
+    fermerEventail();
+  }
   if(_sel.size || _pileSel) selectionnerPile(null);
 }
 
@@ -1435,7 +1493,8 @@ function _setupPanZoom(){
   wrap.addEventListener('pointerdown', e => {
     // Un pion garde son geste (sélection, glissé) : seul, son doigt ne
     // déplace pas la carte.
-    const pion = !!(e.target.closest && e.target.closest('.pion'));
+    const pion = !!(e.target.closest && e.target.closest('.pion'))
+      && !(_verrouPions && e.pointerType && e.pointerType !== 'mouse');
     // Maj + glissé dans le vide, à la souris : rectangle de sélection.
     if(!pion && e.shiftKey && e.button === 0 && (e.pointerType === 'mouse' || !e.pointerType)){ _lasso(e); return; }
     pts.set(e.pointerId, {x:e.clientX, y:e.clientY, pion, x0: e.clientX, y0: e.clientY, t0: Date.now(), btn: e.button});
@@ -5419,12 +5478,17 @@ const _nouveauFil = (mode, c0, c1) => ({mode, c0, c1, ctrl0: false, ctrl1: false
   m: null, complet: false, src: null, tgt: null, auxS: false, auxT: false,
   sl: 0, tl: 0, res: null, texte: '', compte: 0, de: '', vers: ''});
 
+// Au doigt, le relâché ne termine pas le fil : il reste ancré, avec un
+// panneau pour les niveaux, la validation et l'annulation ; un nouvel
+// appui ou glissé sur la carte déplace la cible. À la souris, rien ne change.
 function commencerFil(e){
   const c = clientVersCarte(e.clientX, e.clientY);
   if(!c) return;
   const f = _fil = _nouveauFil(_filArme, c, c);
   f.ctrl0 = e.ctrlKey || e.metaKey;
+  const doigt = !!e.pointerType && e.pointerType !== 'mouse', id = e.pointerId;
   const bouge = ev => {
+    if(ev.pointerId !== id) return;
     ev.preventDefault();
     f.c1 = clientVersCarte(ev.clientX, ev.clientY) || f.c1;
     f.ctrl1 = ev.ctrlKey;
@@ -5432,9 +5496,11 @@ function commencerFil(e){
     dessinerFil();
   };
   const fin = ev => {
+    if(ev.pointerId !== id) return;
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
+    if(doigt && _fil === f){ f.ancre = true; panneauFil(f); return; }
     if(ev.type === 'pointerup') f.lache = true;
     if(f.m || f.pret) terminerFil(f);
   };
@@ -5448,10 +5514,86 @@ function commencerFil(e){
     if(map) _poserSource(f);
     if(map && (f.c1.x !== f.c0.x || f.c1.y !== f.c0.y)) _poserCible(f);
     dessinerFil();
-    if(f.lache) terminerFil(f);
+    if(f.ancre) panneauFil(f);
+    else if(f.lache) terminerFil(f);
   });
   dessinerFil();
 }
+
+// Fil ancré : la cible suit un nouvel appui ou glissé sur la carte.
+function deplacerCibleFil(e){
+  const f = _fil, id = e.pointerId;
+  const suivre = ev => {
+    if(ev.pointerId !== id) return;
+    const c = clientVersCarte(ev.clientX, ev.clientY);
+    if(!c) return;
+    f.c1 = c; f.ctrl1 = false;
+    if(f.m) _poserCible(f);
+    dessinerFil();
+    panneauFil(f);
+  };
+  const fin = ev => {
+    if(ev.pointerId !== id) return;
+    document.removeEventListener('pointermove', bouge, true);
+    document.removeEventListener('pointerup', fin, true);
+    document.removeEventListener('pointercancel', fin, true);
+  };
+  const bouge = ev => { ev.preventDefault(); suivre(ev); };
+  suivre(e);
+  document.addEventListener('pointermove', bouge, true);
+  document.addEventListener('pointerup', fin, true);
+  document.addEventListener('pointercancel', fin, true);
+}
+
+// Panneau du fil ancré, au-dessus de la carte. Les niveaux suivent le
+// même enchaînement que les flèches du clavier.
+function panneauFil(f){
+  let b = document.getElementById('panneauFil');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'panneauFil'; b.className = 'panneauFil';
+    b.setAttribute('role', 'toolbar');
+    b.setAttribute('aria-label', 'Ligne de vue');
+    b.addEventListener('pointerdown', e => e.stopPropagation());
+    document.getElementById('corps').appendChild(b);
+  }
+  b.replaceChildren();
+  const pret = !!(f.m && f.src);
+  const niveau = (loc, sens) => {
+    if(!pret) return;
+    _changerNiveau(f, loc === 'src' ? f.src : f.tgt, sens);
+    _faireLOS(f); dessinerFil(); _envoyerFil(f, true, false);
+    panneauFil(f);
+  };
+  const bt = (txt, titre, faire, actif = true, cls = '') => {
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'act bouton ' + cls;
+    x.textContent = txt; x.title = titre; x.setAttribute('aria-label', titre);
+    x.disabled = !actif;
+    x.addEventListener('click', faire);
+    b.appendChild(x);
+  };
+  const lib = t => { const x = document.createElement('span'); x.className = 'libFil'; x.textContent = t; b.appendChild(x); };
+  const niv = v => (Math.round(v) > Math.trunc(v) ? v : Math.trunc(v));
+  lib('Source' + (pret ? ' ' + niv(f.sl) : ''));
+  bt('▲', 'Monter le niveau de la source', () => niveau('src', 'up'), pret);
+  bt('▼', 'Descendre le niveau de la source', () => niveau('src', 'down'), pret);
+  lib('Cible' + (pret ? ' ' + niv(f.tl) : ''));
+  bt('▲', 'Monter le niveau de la cible', () => niveau('tgt', 'up'), pret);
+  bt('▼', 'Descendre le niveau de la cible', () => niveau('tgt', 'down'), pret);
+  bt('⇈ Haut', 'Plus haut niveau hors toit, pour la cible', () => {
+    if(!pret) return;
+    f.tgt = _plusHautHorsToit(f.tgt); f.tl = _niveauAffiche(f.tgt);
+    _faireLOS(f); dessinerFil(); _envoyerFil(f, true, false);
+    panneauFil(f);
+  }, pret);
+  bt('✓ Valider', 'Valider : rapport « Checked LOS » au chat', () => terminerFil(f), pret && f.compte > 0, 'prim');
+  bt('✕', 'Annuler la ligne de vue, sans rapport', () => desarmerFil(), true, 'danger');
+  const w = document.getElementById('mapWrap');
+  b.style.left = (w.offsetLeft + 8) + 'px';
+  b.style.maxWidth = (w.clientWidth - 16) + 'px';
+}
+function _fermerPanneauFil(){ const b = document.getElementById('panneauFil'); if(b) b.remove(); }
 
 function _poserSource(f){
   const s = _lieuAuPoint(f.m, f.c0);
@@ -5650,6 +5792,7 @@ function _calqueFil(){
 }
 function _effacerFil(){
   _fil = null;
+  _fermerPanneauFil();
   const s = document.getElementById('filLOS');
   if(s) s.remove();
   document.querySelectorAll('.etiqLOS').forEach(e => e.remove());
@@ -5744,7 +5887,9 @@ function _brancherFil(){
   const wrap = document.getElementById('mapWrap');
   // Pris avant les pions et le panoramique.
   wrap.addEventListener('pointerdown', e => {
-    if(!_filArme || e.button > 0 || _fil) return;
+    if(!_filArme || e.button > 0) return;
+    if(_fil && _fil.ancre && !_fil.distant){ e.preventDefault(); e.stopPropagation(); deplacerCibleFil(e); return; }
+    if(_fil) return;
     e.preventDefault(); e.stopPropagation();
     commencerFil(e);
   }, true);
@@ -6669,7 +6814,7 @@ function creerPion(seg, ordre){
     // KeyBufferer : le clic droit sur un pion non sélectionné le
     // sélectionne seul (Maj : en plus de la sélection).
     if(!_sel.has(p) && selectionnable(p)) selectionner([p], e.shiftKey ? 'ajouter' : 'remplacer');
-    ouvrirMenu(p, e.clientX, e.clientY);
+    ouvrirMenu(p, e.clientX, e.clientY, 'mouse');
   });
   // StackExpander : le double-clic déplie ou replie une pile d'au moins
   // deux pions visibles, et ne sélectionne que son pion du sommet.
@@ -7711,6 +7856,7 @@ function editerLabel(p, i, titre, lot){
   const r = p.el.getBoundingClientRect();
   box.style.left = Math.max(4, Math.min(r.left, window.innerWidth - box.offsetWidth - 4)) + 'px';
   box.style.top = Math.max(4, Math.min(r.bottom + 6, window.innerHeight - box.offsetHeight - 4)) + 'px';
+  _ancrerAuClavier(box);
   const valider = () => {
     const v = inp.value.replace(/[\t\x1b\\]/g, ' ').trim().replace(/\//g, '\\/');
     fermerEditeurLabel();
@@ -7725,6 +7871,22 @@ function editerLabel(p, i, titre, lot){
   ok.addEventListener('click', valider);
   box.addEventListener('pointerdown', e => e.stopPropagation());
   setTimeout(() => { inp.focus(); inp.select(); }, 0);
+}
+
+// Profils tactiles : la boîte s'ancre en bas de la zone visible, au-dessus
+// du clavier virtuel, et le suit (visualViewport).
+function _ancrerAuClavier(box){
+  if(!_profil || _profil === 'pc') return;
+  box.classList.add('auClavier');
+  const vv = window.visualViewport;
+  const placer = () => {
+    if(!box.isConnected){ if(vv) vv.removeEventListener('resize', placer), vv.removeEventListener('scroll', placer); return; }
+    const bas = vv ? window.innerHeight - vv.height - vv.offsetTop : 0;
+    box.style.left = '8px'; box.style.top = 'auto';
+    box.style.bottom = Math.max(8, bas + 8) + 'px';
+  };
+  placer();
+  if(vv){ vv.addEventListener('resize', placer); vv.addEventListener('scroll', placer); }
 }
 
 function fermerEditeurLabel(){
@@ -8672,11 +8834,13 @@ function cloner(p){
   return q;
 }
 
-// ── Le menu.
-function ouvrirMenu(p, cx, cy){
-  fermerMenu();
+// ── Le menu, en deux temps : l'arbre des commandes, puis son rendu —
+// menu flottant à la souris, feuille du bas au doigt. L'exécution passe
+// toujours par commander().
+//   item : {nom, touche, cmd, grise} ou sous-menu {nom, items}
+function arbreCommandes(p){
   const te = _typeEtEtat(p.seg);
-  if(!te) return;
+  if(!te) return null;
   const {cmds, sousMenus, T} = commandesDe(te.type);
   // Restrictions (hideCmd) en vigueur : elles visent les commandes des
   // traits qui leur sont intérieurs.
@@ -8719,18 +8883,44 @@ function ouvrirMenu(p, cx, cy){
   };
   for(const c of visibles){
     const pp = parent.get(c.nom);
-    (pp ? sousMenu(pp, 0) : racine).items.push(c);
+    (pp ? sousMenu(pp, 0) : racine).items.push({nom: c.nom, touche: c.touche, cmd: c, grise: restriction(c) === 'griser'});
   }
+  return {titre: p.el.title || p.nom, items: racine.items,
+          vide: visibles.length ? null : accesRefuse(p) ? 'Aucune commande — pion masqué par un autre joueur' : 'Aucune commande'};
+}
 
+// Une commande choisie dans un menu, une feuille ou une barre : un pion
+// sélectionné la transmet à toute la sélection, comme son raccourci.
+let _freqCmd = (() => { try { return JSON.parse(localStorage.getItem('aslweb.freqCmd') || '{}') || {}; } catch(e){ return {}; } })();
+function lancerCommande(p, c){
+  _freqCmd[c.nom] = (_freqCmd[c.nom] || 0) + 1;
+  try { localStorage.setItem('aslweb.freqCmd', JSON.stringify(_freqCmd)); } catch(e){}
+  if(c.touche && _sel.has(p) && _sel.size > 1) commanderSelection(c.touche);
+  else if(c.touche) commander([p], c.touche); else commander([p], null, c.cmd);
+}
+
+// pointerType : celui du geste qui ouvre le menu ; à défaut, le profil.
+function ouvrirMenu(p, cx, cy, pointerType){
+  fermerMenu();
+  const arbre = arbreCommandes(p);
+  if(!arbre) return;
+  const tactile = pointerType ? pointerType !== 'mouse' : _profil !== 'pc';
+  if(tactile) rendreFeuilleCommandes(arbre, p);
+  else rendreMenuFlottant(arbre, p, cx, cy);
+}
+
+function rendreMenuFlottant(arbre, p, cx, cy){
   const m = document.createElement('div');
   m.id = 'ctx';
+  m.setAttribute('role', 'menu');
   const tt = document.createElement('div');
-  tt.className = 'tt'; tt.textContent = p.el.title || p.nom;
+  tt.className = 'tt'; tt.textContent = arbre.titre;
   m.appendChild(tt);
   const remplir = (conteneur, items) => {
     for(const c of items){
       const it = document.createElement('div');
       it.className = 'it';
+      it.setAttribute('role', 'menuitem');
       const a = document.createElement('span'); a.textContent = c.nom;
       const b = document.createElement('span'); b.className = 'rc';
       it.append(a, b);
@@ -8755,31 +8945,67 @@ function ouvrirMenu(p, cx, cy){
         it.addEventListener('mouseenter', () => {
           for(const f of it.parentElement.children) if(f !== it) f.classList.remove('ouvert');
         });
-        if(restriction(c) === 'griser'){
+        if(c.grise){
           it.classList.add('off');
           it.addEventListener('click', e => e.stopPropagation());
         } else it.addEventListener('click', e => {
           e.stopPropagation();
           fermerMenu();
-          // Pion sélectionné : la commande part à toute la sélection.
-          if(c.touche && _sel.has(p) && _sel.size > 1) commanderSelection(c.touche);
-          else if(c.touche) commander([p], c.touche); else commander([p], null, c);
+          lancerCommande(p, c);
         });
       }
       conteneur.appendChild(it);
     }
   };
-  remplir(m, racine.items);
-  if(!visibles.length){
+  remplir(m, arbre.items);
+  if(arbre.vide){
     const v = document.createElement('div');
     v.className = 'vide';
-    v.textContent = accesRefuse(p) ? 'Aucune commande — pion masqué par un autre joueur' : 'Aucune commande';
+    v.textContent = arbre.vide;
     m.appendChild(v);
   }
   document.body.appendChild(m);
   const x = Math.min(cx, window.innerWidth - m.offsetWidth - 4);
   const y = Math.min(cy, window.innerHeight - m.offsetHeight - 4);
   m.style.left = Math.max(4, x) + 'px'; m.style.top = Math.max(4, y) + 'px';
+}
+
+// Feuille du bas : un sous-menu remplace le contenu, avec un en-tête
+// « ‹ nom » pour revenir.
+function rendreFeuilleCommandes(arbre, p){
+  const f = ouvrirFeuille({id: 'feuilleCmd', titre: arbre.titre, hauteur: 'moitie'});
+  const pileNiv = [];
+  const remplir = (items, nom) => {
+    f.corps.replaceChildren();
+    if(nom){
+      const r = document.createElement('button');
+      r.type = 'button'; r.className = 'act ligne retour';
+      r.innerHTML = '<span class="ic">‹</span><span class="lb"></span>';
+      r.querySelector('.lb').textContent = nom;
+      r.addEventListener('click', () => { pileNiv.pop(); const h = pileNiv[pileNiv.length - 1]; remplir(h ? h.items : arbre.items, h && h.nom); });
+      f.corps.appendChild(r);
+    }
+    for(const c of items){
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'act ligne';
+      b.innerHTML = '<span class="lb"></span><span class="rc"></span>';
+      b.querySelector('.lb').textContent = c.nom;
+      b.querySelector('.rc').textContent = c.items ? '›' : libelleTouche(c.touche);
+      if(c.grise) b.disabled = true;
+      b.addEventListener('click', () => {
+        if(c.items){ pileNiv.push(c); remplir(c.items, c.nom); return; }
+        f.fermer();
+        lancerCommande(p, c);
+      });
+      f.corps.appendChild(b);
+    }
+    if(!items.length && arbre.vide){
+      const v = document.createElement('div');
+      v.className = 'videFeuille'; v.textContent = arbre.vide;
+      f.corps.appendChild(v);
+    }
+  };
+  remplir(arbre.items, null);
 }
 
 // À droite de l'entrée, ou à gauche faute de place ; jamais hors de l'écran.
@@ -8795,7 +9021,7 @@ function placerSousMenu(it, sm){
 // sélection — ici la pile sélectionnée. Elle passe avant ceux des dés.
 function _brancherCommandes(){
   document.addEventListener('pointerdown', e => {
-    if(!e.target.closest('#ctx')) fermerMenu();
+    if(!e.target.closest('#ctx, .feuille, .voile')) fermerMenu();
     if(!e.target.closest('#editLabel')) fermerEditeurLabel();
   }, true);
   document.getElementById('mapWrap').addEventListener('scroll', fermerMenu);
@@ -8901,6 +9127,7 @@ function demanderChoix(p, invites, S, valider){
   const r = p.el.getBoundingClientRect();
   box.style.left = Math.max(4, Math.min(r.left, window.innerWidth - box.offsetWidth - 4)) + 'px';
   box.style.top = Math.max(4, Math.min(r.bottom + 6, window.innerHeight - box.offsetHeight - 4)) + 'px';
+  _ancrerAuClavier(box);
   const fini = () => {
     const rep = {};
     invites.forEach((inv, j) => { rep[inv.cle] = listes[j].value; });
@@ -8928,6 +9155,7 @@ document.addEventListener('keydown', e => {
 function fermerMenu(){
   const m = document.getElementById('ctx');
   if(m) m.remove();
+  fermerFeuille('feuilleCmd');
 }
 
 // ── Geste sur un pion : glisser déplace toute la pile, un simple clic
@@ -8955,7 +9183,17 @@ function _pionPointerDown(e, p){
   const k = cle(p), souris = e.pointerType === 'mouse' || !e.pointerType;
   const deplie = () => _depliees.has(k);
   const pileOuLui = () => deplie() ? [p] : pile(k).filter(selectionnable);
+  // Pose ou déplacement en deux appuis : la pile touchée est la destination.
+  if(_modeCarte){
+    glisser(e, null, 0, () => {}, () => toucherModeCarte({x: p.x, y: p.y}), {tapSeul: true});
+    return;
+  }
   if(!souris) _appuiLong(e, p);
+  // Pions verrouillés : le doigt qui glisse déplace la carte.
+  if(!souris && _verrouPions){
+    glisser(e, null, 0, () => {}, () => { if(deplie() && selectionnable(p)) selectionner([p]); else appuiSurPile(k); }, {tapSeul: true});
+    return;
+  }
   let reduire = false;
   if(souris && selectionnable(p)){
     if(!_sel.has(p)){
@@ -8979,7 +9217,7 @@ function _pionPointerDown(e, p){
       else if(reduire) selectionner(pileOuLui());
     }
     else if(deplie() && selectionnable(p)) selectionner([p]);
-    else selectionnerPile(k);
+    else appuiSurPile(k);
   });
 }
 
@@ -8990,6 +9228,13 @@ function _pionPointerDown(e, p){
 //   opts.appuiLong : au doigt, dans une liste qui défile, le glissé ne
 //                    part qu'après cet appui maintenu (ms) ; avant, le
 //                    doigt fait défiler la liste.
+//   opts.zone      : élément où le glissé reste local (changer de rang dans
+//                    une liste) : tant que le pointeur y est, pas de
+//                    fantôme, mais opts.dansZone(ev) ; lâché dedans,
+//                    opts.lacherZone(ev). Hors de la zone, vers la carte.
+//   opts.tapSeul   : pas de glissé (le geste revient à la carte) ; seul le
+//                    toucher compte.
+//   opts.debut     : appelé quand le geste devient un glissé.
 let _glisse = null;
 function glisser(e, src, taille, auLacher, auClic, opts = {}){
   if(_glisse) _glisse.abandonner();
@@ -8997,14 +9242,21 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
   const doigt = !!e.pointerType && e.pointerType !== 'mouse';
   const seuil = doigt ? 12 : 8;
   let arme = !(doigt && opts.appuiLong), timer = null;
-  let fantome = null, cible = null, rects = null, raf = 0, dernier = null;
+  let fantome = null, cible = null, rects = null, raf = 0, dernier = null, demarre = false;
   if(!arme) timer = setTimeout(() => { arme = true; vibrer(); }, opts.appuiLong);
   const wrap = document.getElementById('mapWrap');
   const oublierRects = () => { rects = null; };
+  const zr = opts.zone ? opts.zone.getBoundingClientRect() : null;
+  const dansZone = ev => !!zr && ev.clientX >= zr.left && ev.clientX <= zr.right && ev.clientY >= zr.top && ev.clientY <= zr.bottom;
+  const montrer = oui => { if(fantome){ fantome.style.display = oui ? '' : 'none'; if(!oui) cible.style.display = 'none'; } };
   const peindre = () => {
     raf = 0;
     const ev = dernier;
-    if(!ev || !fantome) return;
+    if(!ev) return;
+    if(dansZone(ev)){ montrer(false); if(opts.dansZone) opts.dansZone(ev); return; }
+    if(zr && opts.horsZone) opts.horsZone(ev);
+    if(!fantome) creerFantome();
+    montrer(true);
     // Lectures d'abord (une seule fois par image), écritures ensuite.
     if(!rects) rects = _rectsCarte();
     const c = clientVersCarte(ev.clientX, ev.clientY, rects);
@@ -9016,21 +9268,25 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
     if(a){ cible.style.left = a.x*SC + 'px'; cible.style.top = a.y*SC + 'px'; }
     if(opts.pendant) opts.pendant(ev, a);
   };
+  const creerFantome = () => {
+    fantome = document.createElement('img');
+    fantome.className = 'fantome';
+    if(src) fantome.src = src;
+    fantome.style.width = fantome.style.height = Math.max(24, taille) + 'px';
+    document.body.appendChild(fantome);
+    cible = document.createElement('div');
+    cible.className = 'cible';
+    document.getElementById('mapInner').appendChild(cible);
+  };
   const bouge = ev => {
     if(ev.pointerId !== id) return;
-    if(!fantome && Math.hypot(ev.clientX-x0, ev.clientY-y0) < seuil) return;
-    if(!arme){ abandonner(); return; }
+    if(!demarre && Math.hypot(ev.clientX-x0, ev.clientY-y0) < seuil) return;
+    if(!arme || opts.tapSeul){ abandonner(); return; }
     ev.preventDefault();
-    if(!fantome){
+    if(!demarre){
+      demarre = true;
       clearTimeout(timer);
-      fantome = document.createElement('img');
-      fantome.className = 'fantome';
-      if(src) fantome.src = src;
-      fantome.style.width = fantome.style.height = Math.max(24, taille) + 'px';
-      document.body.appendChild(fantome);
-      cible = document.createElement('div');
-      cible.className = 'cible';
-      document.getElementById('mapInner').appendChild(cible);
+      if(!zr) creerFantome();
       if(opts.debut) opts.debut();
     }
     dernier = ev;
@@ -9049,13 +9305,17 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
   };
   const fin = ev => {
     if(ev.pointerId !== id) return;
-    const avait = !!fantome;
+    const avait = demarre;
     nettoyer();
-    if(avait){ if(ev.type === 'pointerup') auLacher(ev.clientX, ev.clientY, ev); }
+    if(avait){
+      if(ev.type !== 'pointerup') return;
+      if(dansZone(ev)){ if(opts.lacherZone) opts.lacherZone(ev); }
+      else auLacher(ev.clientX, ev.clientY, ev);
+    }
     else if(ev.type === 'pointerup' && auClic) auClic(ev);
   };
   const abandonner = () => { fantome = fantome && (fantome.remove(), cible.remove(), null); nettoyer(); };
-  const g = _glisse = {abandonner, id, actif: () => arme && (!!fantome || !!opts.appuiLong)};
+  const g = _glisse = {abandonner, id, actif: () => arme && !opts.tapSeul && (demarre || !!opts.appuiLong)};
   document.addEventListener('pointermove', bouge);
   document.addEventListener('pointerup', fin);
   document.addEventListener('pointercancel', fin);
@@ -9097,6 +9357,8 @@ function selectionnerPile(k){
 
 function afficherPile(){
   purgerSelection();
+  majEventail();
+  majBarrePile();
   const box = document.getElementById('pile');
   box.innerHTML = '';
   if(!_pileSel) return;
@@ -9116,8 +9378,8 @@ function afficherPile(){
     im.appendChild(copie);
     // Le pion seul, sans son nom.
     l.append(im);
-    l.addEventListener('contextmenu', e => { e.preventDefault(); ouvrirMenu(p, e.clientX, e.clientY); });
-    for(const [txt, titre, f] of [['⋮', 'Commandes du pion (clic droit)', e => ouvrirMenu(p, e.clientX, e.clientY)],
+    l.addEventListener('contextmenu', e => { e.preventDefault(); if(_dernierPointeur === 'mouse') ouvrirMenu(p, e.clientX, e.clientY, 'mouse'); });
+    for(const [txt, titre, f] of [['⋮', 'Commandes du pion (clic droit)', e => ouvrirMenu(p, e.clientX, e.clientY, e.pointerType || _dernierPointeur)],
                                   ['▲', 'Monter', () => changerRang(p, +1)],
                                   ['▼', 'Descendre', () => changerRang(p, -1)],
                                   ['✕', 'Retirer de la carte', () => retirer(p)]]){
@@ -9225,7 +9487,7 @@ function _appuiLong(e, p){
     if(_pointeursCarte.size > 1) return;
     vibrer();
     if(!_sel.has(p)) selectionnerPile(cle(p));
-    ouvrirMenu(p, x0, y0);
+    ouvrirMenu(p, x0, y0, 'touch');
   }, APPUI_LONG);
   const bouge = ev => {
     if(ev.pointerId !== id || Math.hypot(ev.clientX - x0, ev.clientY - y0) < 12) return;
@@ -9247,6 +9509,448 @@ function _appuiLong(e, p){
   document.addEventListener('pointercancel', leve);
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// COMPOSANTS TACTILES — feuille du bas, barre de pile, éventail,
+// poses et déplacements en deux appuis, verrou des pions
+// ═══════════════════════════════════════════════════════════════
+
+// ── Feuille du bas générique : fond sombre, poignée, fermeture par glissé
+// vers le bas, Échap ou appui sur le voile.
+//   hauteur : 'auto' | 'moitie' | 'plein'
+const _feuilles = new Map();      // id → {el, voile, fermer}
+function ouvrirFeuille({id = 'feuille', titre = '', hauteur = 'auto', fermer, voile = true} = {}){
+  fermerFeuille(id);
+  const v = document.createElement('div');
+  v.className = 'voile' + (voile ? '' : ' transparent');
+  const f = document.createElement('div');
+  f.className = 'feuille ' + hauteur;
+  f.dataset.feuille = id;
+  f.setAttribute('role', 'dialog');
+  f.setAttribute('aria-modal', 'true');
+  f.innerHTML = '<div class="poigneeFeuille" aria-hidden="true"></div>'
+    + '<div class="teteFeuille"><span class="tt"></span><button type="button" class="ferme" aria-label="Fermer">✕</button></div>'
+    + '<div class="corpsFeuille"></div>';
+  f.querySelector('.tt').textContent = titre;
+  if(!titre) f.querySelector('.teteFeuille').classList.add('sansTitre');
+  document.body.append(v, f);
+  const h = {el: f, voile: v, corps: f.querySelector('.corpsFeuille'), fermer: () => fermerFeuille(id),
+             titre: t => { f.querySelector('.tt').textContent = t; }};
+  h._surFermer = fermer;
+  _feuilles.set(id, h);
+  v.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); h.fermer(); });
+  f.addEventListener('pointerdown', e => e.stopPropagation());
+  f.querySelector('.ferme').addEventListener('click', () => h.fermer());
+  // Glisser la poignée (ou l'en-tête) vers le bas referme la feuille.
+  for(const prise of [f.querySelector('.poigneeFeuille'), f.querySelector('.teteFeuille')]){
+    prise.addEventListener('pointerdown', e => {
+      if(e.target.closest('button')) return;
+      const id0 = e.pointerId, y0 = e.clientY;
+      let dy = 0;
+      f.style.transition = 'none';
+      const bouge = ev => { if(ev.pointerId !== id0) return; dy = Math.max(0, ev.clientY - y0); f.style.transform = `translateY(${dy}px)`; };
+      const finir = ev => {
+        if(ev.pointerId !== id0) return;
+        document.removeEventListener('pointermove', bouge);
+        document.removeEventListener('pointerup', finir);
+        document.removeEventListener('pointercancel', finir);
+        f.style.transition = ''; f.style.transform = '';
+        if(dy > 80) h.fermer();
+      };
+      document.addEventListener('pointermove', bouge);
+      document.addEventListener('pointerup', finir);
+      document.addEventListener('pointercancel', finir);
+    });
+  }
+  setTimeout(() => { const b = f.querySelector('.corpsFeuille button, .corpsFeuille input, .corpsFeuille select'); if(b && _profil === 'pc') b.focus(); }, 0);
+  return h;
+}
+function fermerFeuille(id){
+  const h = _feuilles.get(id);
+  if(!h) return false;
+  _feuilles.delete(id);
+  h.el.remove(); h.voile.remove();
+  if(h._surFermer) h._surFermer();
+  return true;
+}
+const feuilleOuverte = () => _feuilles.size > 0;
+// Échap referme la dernière feuille ouverte, avant tout le reste.
+window.addEventListener('keydown', e => {
+  if(e.key !== 'Escape' || !_feuilles.size) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  fermerFeuille([..._feuilles.keys()].pop());
+}, true);
+
+// ── Commandes rapides : celles, nommées et dotées d'une touche, des pions
+// donnés, avec les filtres du menu ; classées par fréquence d'usage, puis
+// dans l'ordre des traits.
+function commandesRapides(pions, n = 5){
+  const vues = new Map();
+  let rang = 0;
+  for(const p of pions){
+    const a = arbreCommandes(p);
+    if(!a) continue;
+    const aplatir = items => { for(const c of items){
+      if(c.items){ aplatir(c.items); continue; }
+      if(!c.touche || c.grise) continue;
+      const k = c.nom + '\u0001' + c.touche;
+      if(!vues.has(k)) vues.set(k, {nom: c.nom, touche: c.touche, cmd: c.cmd, p, rang: rang++});
+    } };
+    aplatir(a.items);
+  }
+  return [...vues.values()].sort((a, b) => (_freqCmd[b.nom] || 0) - (_freqCmd[a.nom] || 0) || a.rang - b.rang).slice(0, n);
+}
+// Pions visés par les barres : la sélection, sinon la pile courante.
+const _visesBarre = () => _sel.size ? trierParPile([..._sel])
+                    : _pileSel ? pile(_pileSel).filter(selectionnable) : [];
+
+function _rangeeCommandes(boite, avecDeplacer){
+  const vises = _visesBarre();
+  const haut = vises[vises.length - 1];
+  for(const c of commandesRapides(vises)){
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'act bouton cmdRapide';
+    b.textContent = c.nom;
+    b.title = c.nom + (libelleTouche(c.touche) ? ` [${libelleTouche(c.touche)}]` : '');
+    b.addEventListener('click', () => {
+      _freqCmd[c.nom] = (_freqCmd[c.nom] || 0) + 1;
+      try { localStorage.setItem('aslweb.freqCmd', JSON.stringify(_freqCmd)); } catch(e){}
+      if(_sel.size) commanderSelection(c.touche);
+      else commander(vises.filter(p => !accesRefuse(p) && commandesDe(_typeEtEtat(p.seg).type).cmds.some(x => x.touche === c.touche)), c.touche);
+    });
+    boite.appendChild(b);
+  }
+  const outil = (txt, titre, f, cls) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'act bouton ' + (cls || '');
+    b.textContent = txt; b.title = titre; b.setAttribute('aria-label', titre);
+    b.addEventListener('click', f);
+    boite.appendChild(b);
+    return b;
+  };
+  if(haut) outil('⋮ Toutes', 'Toutes les commandes', () => ouvrirMenu(haut, 0, 0, 'touch'));
+  if(avecDeplacer && vises.length) outil('Déplacer…', 'Déplacer : toucher ensuite la destination', () => armerDeplacement());
+  if(vises.length) outil('✕', 'Retirer de la carte', () => retirerSelection(), 'danger');
+}
+
+// Retire la sélection (ou la pile courante) ; confirmation dès 3 pions.
+function retirerSelection(){
+  const l = _visesBarre().filter(p => !accesRefuse(p));
+  if(!l.length){ const v = _visesBarre(); if(v.length) refuser(v[0]); return; }
+  if(l.length >= 3 && !confirm(`Retirer ${l.length} pions de la carte ?`)) return;
+  for(const p of l) retirer(p, l.length > 1);
+  if(l.length > 1) chatLog(`✖️ ${l.length} pions retirés`);
+}
+
+// ── Barre de pile (profils tactiles) : en bas de la carte, tant qu'une
+// pile est sélectionnée et que l'éventail est fermé.
+function majBarrePile(){
+  let b = document.getElementById('barrePile');
+  const montrer = _profil && _profil !== 'pc' && (_sel.size || _pileSel) && !_eventail && !_modeCarte;
+  if(!montrer){ if(b) b.remove(); return; }
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'barrePile'; b.className = 'barrePile';
+    b.setAttribute('role', 'toolbar');
+    b.addEventListener('pointerdown', e => e.stopPropagation());
+    document.getElementById('corps').appendChild(b);
+  }
+  b.replaceChildren();
+  const vises = _visesBarre();
+  const s = _pileSel ? pile(_pileSel).filter(p => !p.cache) : [];
+  const haut = vises[vises.length - 1] || s[s.length - 1];
+  // La pile en miniature : un appui ouvre l'éventail.
+  const mini = document.createElement('button');
+  mini.type = 'button'; mini.className = 'miniPile';
+  mini.setAttribute('aria-label', 'Pions de la pile');
+  if(haut) mini.appendChild(_copiePion(haut, 34));
+  const nb = document.createElement('span');
+  nb.className = 'nb';
+  nb.textContent = _sel.size && _sel.size < s.filter(selectionnable).length ? `${_sel.size}/${s.length}` : String(s.length);
+  mini.appendChild(nb);
+  mini.addEventListener('click', () => { if(_pileSel) ouvrirEventail(_pileSel); });
+  b.appendChild(mini);
+  _rangeeCommandes(b, true);
+  _placerBarrePile();
+}
+function _placerBarrePile(){
+  const b = document.getElementById('barrePile');
+  if(!b) return;
+  const w = document.getElementById('mapWrap');
+  b.style.left = w.offsetLeft + 'px';
+  b.style.width = w.clientWidth + 'px';
+}
+
+// Copie réduite d'un pion affiché (face, couches, orientation).
+function _copiePion(p, cote){
+  const boite = document.createElement('div');
+  boite.className = 'copiePion';
+  boite.style.width = boite.style.height = cote + 'px';
+  const c = p.el.cloneNode(true);
+  c.classList.remove('sel', 'deplie', 'coup', 'verrou');
+  c.removeAttribute('title');
+  c.style.cssText = `position:absolute;left:0;top:0;width:${p.sz}px;height:${p.sz}px;`
+                  + `transform:scale(${cote / p.sz});transform-origin:0 0;opacity:1`;
+  boite.appendChild(c);
+  return boite;
+}
+
+// ── Éventail de pile : au doigt, viser un pion décalé de 4 px est
+// impossible ; une bande flottante montre la pile en grand, du fond
+// (à gauche) vers le sommet, au-dessus de la pile.
+let _eventail = null;            // {k, el}
+const EVENTAIL_COTE = 60, EVENTAIL_PAR_RANG = 6;
+function ouvrirEventail(k){
+  if(_filArme) return;
+  _eventail = {k, el: null};
+  majEventail();
+  majBarrePile();
+}
+function fermerEventail(){
+  if(!_eventail) return;
+  if(_eventail.el) _eventail.el.remove();
+  _eventail = null;
+  majBarrePile();
+}
+function majEventail(){
+  const ev = _eventail;
+  if(!ev) return;
+  const s = pile(ev.k).filter(selectionnable);
+  if(!s.length){ fermerEventail(); return; }
+  const defil = ev.el ? ev.el.querySelector('.bandeEv').scrollTop : 0;
+  if(ev.el) ev.el.remove();
+  const el = ev.el = document.createElement('div');
+  el.id = 'eventail'; el.className = 'eventail';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', 'Pions de la pile');
+  el.addEventListener('pointerdown', e => e.stopPropagation());
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  const bande = document.createElement('div');
+  bande.className = 'bandeEv';
+  bande.style.maxWidth = (EVENTAIL_PAR_RANG * (EVENTAIL_COTE + 8) + 56) + 'px';
+  const tout = document.createElement('button');
+  tout.type = 'button'; tout.className = 'act bouton tout';
+  tout.textContent = 'Tout';
+  tout.title = 'Sélectionner toute la pile';
+  tout.addEventListener('click', () => { selectionnerPile(ev.k); vibrer(); });
+  bande.appendChild(tout);
+  const marque = document.createElement('div');
+  marque.className = 'inserEv';
+  marque.hidden = true;
+  for(const p of s) bande.appendChild(_vignetteEventail(p, ev.k, bande, marque));
+  const som = document.createElement('span');
+  som.className = 'sommetEv';
+  som.textContent = 'sommet ▸';
+  bande.append(som, marque);
+  const actions = document.createElement('div');
+  actions.className = 'actionsEv';
+  _rangeeCommandes(actions, false);
+  el.append(bande, actions);
+  document.body.appendChild(el);
+  bande.scrollTop = defil;
+  placerEventail();
+}
+function placerEventail(){
+  const ev = _eventail;
+  if(!ev || !ev.el) return;
+  const s = pile(ev.k).filter(p => !p.cache);
+  const haut = s[s.length - 1];
+  if(!haut){ fermerEventail(); return; }
+  const r = haut.el.getBoundingClientRect(), bas = s[0].el.getBoundingClientRect();
+  const w = document.getElementById('mapWrap').getBoundingClientRect();
+  const el = ev.el, L = el.offsetWidth, H = el.offsetHeight;
+  let x = (r.left + r.right) / 2 - L / 2;
+  let y = Math.min(r.top, bas.top) - H - 10;
+  if(y < w.top + 4) y = Math.max(r.bottom, bas.bottom) + 10;
+  x = Math.max(8, Math.min(x, window.innerWidth - L - 8));
+  y = Math.max(w.top + 4, Math.min(y, w.bottom - H - 4));
+  el.style.left = x + 'px'; el.style.top = y + 'px';
+}
+
+function _vignetteEventail(p, k, bande, marque){
+  const v = document.createElement('div');
+  v.className = 'vigEv';
+  const masque = accesRefuse(p), horsCouche = !COUCHES_SEL[p.couche || 'unite'];
+  v.classList.toggle('sel', _sel.has(p));
+  v.classList.toggle('masque', masque);
+  v.classList.toggle('horsCouche', horsCouche);
+  v.title = p.el.title || p.nom;
+  v.setAttribute('aria-label', (p.el.title || p.nom) + (_sel.has(p) ? ', sélectionné' : ''));
+  v.appendChild(_copiePion(p, EVENTAIL_COTE));
+  if(masque){ const c = document.createElement('span'); c.className = 'cadenas'; c.textContent = '🔒'; v.appendChild(c); }
+  if(horsCouche) return v;        // couche non sélectionnable : vue, pas prise
+  const ck = document.createElement('button');
+  ck.type = 'button'; ck.className = 'ckEv';
+  ck.textContent = _sel.has(p) ? '☑' : '☐';
+  ck.setAttribute('aria-label', _sel.has(p) ? 'Retirer de la sélection' : 'Ajouter à la sélection');
+  ck.addEventListener('pointerdown', e => e.stopPropagation());
+  ck.addEventListener('click', e => { e.stopPropagation(); selectionner([p], 'basculer'); vibrer(); });
+  v.appendChild(ck);
+  v.addEventListener('pointerdown', e => {
+    if(e.button > 0) return;
+    const x0 = e.clientX, y0 = e.clientY;
+    // Appui long : le menu de ce pion, en feuille du bas.
+    const timer = setTimeout(() => {
+      if(_glisse) _glisse.abandonner();
+      vibrer();
+      if(!_sel.has(p)) selectionner([p]);
+      ouvrirMenu(p, x0, y0, 'touch');
+    }, APPUI_LONG);
+    // Rang visé dans la bande : avant ou après la vignette sous le doigt.
+    const rangVise = ev => {
+      const cases = [...bande.querySelectorAll('.vigEv')];
+      let best = null, bd = Infinity;
+      for(const c of cases){
+        const r = c.getBoundingClientRect();
+        const d = Math.hypot((r.left + r.right) / 2 - ev.clientX, (r.top + r.bottom) / 2 - ev.clientY);
+        if(d < bd){ bd = d; best = {c, r}; }
+      }
+      if(!best) return null;
+      return {c: best.c, r: best.r, apres: ev.clientX > (best.r.left + best.r.right) / 2, i: cases.indexOf(best.c)};
+    };
+    glisser(e, p.face.src, EVENTAIL_COTE, (cx, cy) => {
+      // Lâché sur la carte : la sélection, ou ce pion s'il n'en est pas.
+      const c = clientVersCarte(cx, cy);
+      if(!c || masque) return;
+      deplacer(_sel.has(p) ? piecesADeplacer() : [p], c.x, c.y);
+    }, () => {
+      clearTimeout(timer);
+      selectionner([p]); vibrer();
+    }, {
+      zone: bande,
+      debut: () => clearTimeout(timer),
+      fin: () => { clearTimeout(timer); marque.hidden = true; },
+      dansZone: ev => {
+        const r = rangVise(ev);
+        if(!r) return;
+        const br = bande.getBoundingClientRect();
+        marque.hidden = false;
+        marque.style.left = ((r.apres ? r.r.right + 3 : r.r.left - 5) - br.left + bande.scrollLeft) + 'px';
+        marque.style.top = (r.r.top - br.top + bande.scrollTop) + 'px';
+        marque.style.height = r.r.height + 'px';
+      },
+      horsZone: () => { marque.hidden = true; },
+      lacherZone: ev => {
+        // Glissé le long de la bande : un seul M/, au rang visé.
+        const r = rangVise(ev);
+        if(!r || masque) return;
+        const vus = pile(k).filter(selectionnable);
+        const q = vus[r.i];
+        if(!q || q === p) return;
+        const sans = pile(k).filter(x => x !== p);
+        deplacerDansPile(p, sans.indexOf(q) + (r.apres ? 1 : 0));
+        vibrer();
+      }
+    });
+  });
+  return v;
+}
+
+// L'éventail et la barre suivent la sélection, la pile et la vue.
+_apresRedimension.push(() => { placerEventail(); _placerBarrePile(); if(_fil) dessinerFil(); });
+_apresProfil.push(() => { fermerEventail(); majBarrePile(); });
+document.addEventListener('pointerdown', e => {
+  if(_eventail && !e.target.closest('#eventail, .feuille, .voile, #barrePile')) {
+    // Un appui sur la pile elle-même la laisse ouverte (le geste la rouvre).
+    fermerEventail();
+  }
+}, true);
+
+// ── Poses et déplacements en deux appuis : un bandeau dit quoi faire,
+// l'appui suivant sur la carte (ou sur une pile) agit.
+let _modeCarte = null;           // {texte, toucher(c), multiple}
+function armerModeCarte(m){
+  annulerModeCarte();
+  _modeCarte = m;
+  fermerEventail();
+  const b = document.createElement('div');
+  b.id = 'bandeauMode'; b.className = 'bandeauMode';
+  b.setAttribute('role', 'status');
+  const t = document.createElement('span');
+  t.textContent = m.texte;
+  b.appendChild(t);
+  if(m.optionMultiple){
+    const l = document.createElement('label');
+    l.innerHTML = '<input type="checkbox"> poses multiples';
+    const c = l.querySelector('input');
+    c.checked = !!m.multiple;
+    c.addEventListener('change', () => { m.multiple = c.checked; try { localStorage.setItem('aslweb.posesMultiples', c.checked ? '1' : '0'); } catch(e){} });
+    b.appendChild(l);
+  }
+  const x = document.createElement('button');
+  x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', 'Annuler');
+  x.addEventListener('click', annulerModeCarte);
+  b.appendChild(x);
+  b.addEventListener('pointerdown', e => e.stopPropagation());
+  document.getElementById('corps').appendChild(b);
+  const w = document.getElementById('mapWrap');
+  b.style.left = (w.offsetLeft + 8) + 'px';
+  b.style.maxWidth = (w.clientWidth - 16) + 'px';
+  majBarrePile();
+}
+function annulerModeCarte(){
+  _modeCarte = null;
+  const b = document.getElementById('bandeauMode');
+  if(b) b.remove();
+  majBarrePile();
+}
+function toucherModeCarte(c){
+  const m = _modeCarte;
+  if(!m || !c) return false;
+  if(!m.multiple) annulerModeCarte();
+  m.toucher(c);
+  return true;
+}
+function armerDeplacement(){
+  const l = _sel.size ? piecesADeplacer() : (_pileSel ? pile(_pileSel) : []);
+  if(!l.length) return;
+  armerModeCarte({texte: `➡️ ${l.length > 1 ? l.length + ' pions' : l[0].nom} — touchez la destination`,
+    toucher: c => deplacer(l.filter(p => !p.deleted), c.x, c.y)});
+}
+function armerPose(x){
+  armerModeCarte({texte: `♟ ${x.n} — touchez la carte pour poser`, optionMultiple: true,
+    multiple: _lirePref('aslweb.posesMultiples') === '1',
+    toucher: c => poserDepuisPalette(x, c.x, c.y)});
+  // Sur téléphone, le panneau se ferme pour montrer la carte.
+  if(_profil === 'mobile') basculerCote(false);
+}
+
+// ── Verrou des pions : un glissé déplace toujours la carte, jamais une
+// pile ; on déplace alors par « Déplacer… ».
+let _verrouPions = _lirePref('aslweb.verrouPions') === '1';
+function basculerVerrou(){
+  _verrouPions = !_verrouPions;
+  try { localStorage.setItem('aslweb.verrouPions', _verrouPions ? '1' : '0'); } catch(e){}
+  chatLog(_verrouPions ? '🔒 Pions verrouillés : un glissé déplace la carte' : '🔓 Pions déverrouillés');
+}
+
+// Au doigt, un appui hors de tout pion prend la pile la plus proche si son
+// centre est à moins de 30 px à l'écran : après « Ajuster », un pion de
+// téléphone ne fait que quelques pixels.
+function pileProche(cx, cy){
+  const c = clientVersCarte(cx, cy, null, true);
+  if(!c) return null;
+  let best = null, bd = 30;
+  for(const [k, l] of indexerPiles()){
+    const vus = l.filter(p => selectionnable(p) && COUCHES_SEL[p.couche || 'unite']);
+    if(!vus.length) continue;
+    const d = Math.hypot(l[0].x - c.x, l[0].y - c.y) * SC * zoom;
+    if(d < bd){ bd = d; best = k; }
+  }
+  return best;
+}
+
+// Appui (doigt) sur une pile : elle est sélectionnée ; de deux pions ou
+// plus, l'éventail s'ouvre ; un double appui l'ouvre même pour un seul.
+let _dernierAppui = {k: null, t: 0};
+function appuiSurPile(k){
+  const double = _dernierAppui.k === k && Date.now() - _dernierAppui.t < 350;
+  _dernierAppui = {k, t: Date.now()};
+  if(!(_sel.size && pileEntiereSel(k)) || !_eventail || _eventail.k !== k) selectionnerPile(k);
+  const n = pile(k).filter(selectionnable).length;
+  if(n >= 2 || (double && n >= 1)) ouvrirEventail(k);
+  else majBarrePile();
+}
 
 // ═══════════════════════════════════════════════════════════════
 // BASE DE DONNÉES DES PIONS — le buildFile du module VASL
@@ -9484,7 +10188,8 @@ function remplirGrille(liste){
   for(const x of liste){
     const d = document.createElement('div');
     d.className = 'vig';
-    d.title = `${x.n}  (gpid ${x.g})`;
+    d.title = `${x.n}  (gpid ${x.g}) — glisser vers la carte, ou cliquer pour poser au centre ; au doigt, toucher puis toucher la carte`;
+    d.setAttribute('aria-label', x.n);
     const mini = document.createElement('div');
     mini.className = 'mini';
     d.appendChild(mini);
@@ -9495,10 +10200,10 @@ function remplirGrille(liste){
       const c = clientVersCarte(cx, cy);
       if(c) poserDepuisPalette(x, c.x, c.y);
       else chatLog('Lâché hors de la carte : rien posé');
-    }, () => {
-      const wr = document.getElementById('mapWrap').getBoundingClientRect();
-      const c = clientVersCarte(wr.left + wr.width/2, wr.top + wr.height/2, null, true);
-      if(c) poserDepuisPalette(x, c.x, c.y);
+    }, ev => {
+      // Au doigt : le pion est armé, l'appui suivant sur la carte le pose.
+      if(ev && ev.pointerType && ev.pointerType !== 'mouse') armerPose(x);
+      else _poserAuCentre(x);
     }, {appuiLong: 300}));
   }
   return g;
@@ -10894,7 +11599,9 @@ const ACTIONS = {
   all:      {lib: 'Remove all — retirer tous les pions d\'un type…', court: 'ALL', img: 'QC/Remove.png',
              faire: ancre => ouvrirMassRemover(ancre)},
   los:      {lib: 'Ligne de vue (LOS)', court: 'LOS', ico: '👁', touche: 'F10',
-             faire: (ancre, e) => armerFil(e && e.ctrlKey && e.shiftKey ? 'l' : 'L'), allume: () => !!_filArme},
+             faire: (ancre, e) => armerFil(e && e.ctrlKey && e.shiftKey ? 'l' : 'L'), allume: () => !!_filArme,
+             // Au doigt, un appui long propose la LOS silencieuse et le mode détaillé.
+             menuLong: ['los', 'losMuet', 'verbeux']},
   losMuet:  {lib: 'Ligne de vue silencieuse', court: 'LOS muette', ico: '👁', touche: 'Ctrl+Maj+F10',
              faire: () => armerFil('l'), allume: () => _filArme === 'l'},
   verbeux:  {lib: 'LOS détaillée (Verbose LOS mode)', coche: () => _losVerbeux, faire: basculerVerbeux},
@@ -10916,6 +11623,8 @@ const ACTIONS = {
   palette:  {lib: 'Palette des pions', court: 'Palette', ico: '🗂', faire: () => montrerOnglet('palette')},
   pile:     {lib: 'Pile sélectionnée', court: 'Pile', ico: '▤', faire: () => montrerOnglet('pile')},
   des:      {lib: 'Dés', court: 'Dés', ico: '🎲', faire: () => montrerOnglet('des')},
+  verrou:   {lib: 'Verrou des pions (un glissé déplace la carte)', court: 'Verrou', ico: '🔒',
+             coche: () => _verrouPions, faire: () => basculerVerrou()},
   effectif: {lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
   commandes:{lib: 'Palette de commandes…', court: 'Commandes', ico: '⌘', touche: 'Ctrl+K', faire: () => ouvrirPaletteCommandes()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
@@ -10991,8 +11700,15 @@ function rendreAction(id, forme = 'icone'){
   el.addEventListener('click', e => {
     if(el.classList.contains('off') || el.disabled) return;
     e.stopPropagation();
+    if(el._long){ el._long = false; return; }
     if(menu) fermerDeroulants();
     executerAction(id, e.currentTarget, e);
+  });
+  if(a.menuLong && !menu) el.addEventListener('pointerdown', e => {
+    if(e.pointerType === 'mouse') return;
+    const t = setTimeout(() => { el._long = true; vibrer(); ouvrirFeuilleActions(_v(a.lib), a.menuLong); }, APPUI_LONG);
+    const fin = () => { clearTimeout(t); el.removeEventListener('pointerup', fin); el.removeEventListener('pointercancel', fin); el.removeEventListener('pointerleave', fin); };
+    el.addEventListener('pointerup', fin); el.addEventListener('pointercancel', fin); el.addEventListener('pointerleave', fin);
   });
   if(id === 'los') el.addEventListener('contextmenu', e => {
     // Clic droit sur le bouton LOS : Verbose LOS mode, comme VASL.
@@ -11001,6 +11717,18 @@ function rendreAction(id, forme = 'icone'){
   });
   _majAction(el, a, id);
   return el;
+}
+
+// Une feuille du bas qui liste des actions, en grand.
+function ouvrirFeuilleActions(titre, ids, id = 'feuilleActions'){
+  const f = ouvrirFeuille({id, titre});
+  for(const x of ids){
+    if(x === '-'){ const s = document.createElement('div'); s.className = 'sepFeuille'; f.corps.appendChild(s); continue; }
+    const el = rendreAction(x, 'ligne');
+    el.addEventListener('click', () => { if(!ACTIONS[x].coche) f.fermer(); }, true);
+    f.corps.appendChild(el);
+  }
+  return f;
 }
 
 // Les actions passent toutes par ici : la fréquence d'usage sert à trier
@@ -11111,7 +11839,6 @@ function appliquerProfil(p){
   for(const f of _apresProfil) f(p, ancien);
   _surRedimension();
 }
-const _apresProfil = [];
 
 function construireBarre(ids, classe){
   const b = document.createElement('div');
@@ -11502,6 +12229,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // La carte qui défile ou zoome emporte la pile survolée : on referme.
   const w = document.getElementById('mapWrap');
   w.addEventListener('scroll', cacherSurvol);
+  w.addEventListener('scroll', () => placerEventail());
   w.addEventListener('wheel', cacherSurvol);
   dessinerPalette();
   majNet();
