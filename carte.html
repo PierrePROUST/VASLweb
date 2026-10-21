@@ -6774,6 +6774,16 @@ function piecesADeplacer(){
   return out;
 }
 
+// Ce qu'emporte un pion tiré du panneau ou de l'éventail : la sélection
+// s'il en fait partie et qu'elle a été choisie pion par pion ; si elle
+// n'est que sa pile entière (le simple clic sur la pile), lui seul, comme
+// on tirait un pion de la liste.
+function aEmporter(p){
+  const k = cle(p);
+  const seulementSaPile = pileEntiereSel(k) && selDans(k).length === _sel.size;
+  return _sel.has(p) && _sel.size > 1 && !seulementSaPile ? piecesADeplacer() : [p];
+}
+
 function deplier(k, oui){
   const avant = _depliees.has(k);
   if(oui && pile(k).filter(p => !p.cache).length > 1) _depliees.add(k); else _depliees.delete(k);
@@ -9433,7 +9443,7 @@ function afficherPile(){
       if(e.button > 0) return;
       glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
         const c = clientVersCarte(cx, cy);
-        if(c) deplacer(_sel.has(p) ? piecesADeplacer() : [p], c.x, c.y);
+        if(c) deplacer(aEmporter(p), c.x, c.y);
       }, ev => {
         if(!selectionnable(p)) return;
         if(ev && (ev.ctrlKey || ev.metaKey)) selectionner([p], 'basculer');
@@ -9888,7 +9898,7 @@ function _vignetteEventail(p, k, bande, marque){
       // Lâché sur la carte : la sélection, ou ce pion s'il n'en est pas.
       const c = clientVersCarte(cx, cy);
       if(!c || masque) return;
-      deplacer(_sel.has(p) ? piecesADeplacer() : [p], c.x, c.y);
+      deplacer(aEmporter(p), c.x, c.y);
     }, () => {
       clearTimeout(timer);
       selectionner([p]); vibrer();
