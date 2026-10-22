@@ -53,7 +53,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
 | `chat0.js` | Journal non ramené en bas, profil gelé pendant la saisie |
 | `chat2.js` | Relecture d'un log de 50 messages chat compact ouvert ; message reçu en vue Carte ; Retour |
-| `chat3.js` | « OK » en deux appuis ; 📍 lieu identique à celui des rapports |
+| `chat3.js` | une phrase envoyée d'un appui ; 📍 lieu identique à celui des rapports |
 | `chat4.js` | Filtres, lieu cliquable, Retour depuis le journal plein |
 | `pcchat.js` | Rien de nouveau visible sur PC |
 

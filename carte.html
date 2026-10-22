@@ -14073,17 +14073,20 @@ function _brancherPoigneeChat(){
 
 // ═══ CHAT — SAISIE RAPIDE ═══
 // Au doigt, une rangée de pastilles au-dessus du champ : le lieu de la pile
-// sélectionnée, des phrases, les phases. Un appui insère (on complète, puis
-// on envoie) ; un appui long envoie la pastille seule.
+// sélectionnée, des phrases, les phases. Une phrase part au chat dès
+// l'appui ; le lieu et les phases s'insèrent au curseur (on complète, puis
+// on envoie), et un appui long les envoie seuls.
 // Phases : la base VASL 6.7.x ne nomme pas les niveaux de sa roue des
 // phases (huit images MC/Phase1…8, noms vides) ; on prend alors les
 // abréviations du livre de règles ASL, dans l'ordre du tour.
 const PHASES_ASL = ['RPh', 'PFPh', 'MPh', 'DFPh', 'AFPh', 'RtPh', 'APh', 'CCPh'];
-const PHRASES_DEFAUT = ['OK', 'À toi', 'Attends', 'Fini', 'Merci'];
+const PHRASES_DEFAUT = ['Hello', 'Assault Move', 'Bypass', 'Double Time', 'Dash'];
+const _PHRASES_ANCIENNES = 'OK|À toi|Attends|Fini|Merci';
 function phrasesChat(){
   try {
     const l = JSON.parse(localStorage.getItem('aslweb.phrasesChat') || 'null');
-    if(Array.isArray(l)) return l.filter(x => typeof x === 'string' && x.trim());
+    // La première liste par défaut, enregistrée telle quelle, cède la place à la nouvelle.
+    if(Array.isArray(l) && l.join('|') !== _PHRASES_ANCIENNES) return l.filter(x => typeof x === 'string' && x.trim());
   } catch(e){}
   return PHRASES_DEFAUT.slice();
 }
@@ -14106,6 +14109,16 @@ function majSaisieRapide(){
   const r = document.getElementById('chatRapide');
   if(!r) return;
   r.replaceChildren();
+  // Phrase (direct) : envoyée telle quelle au chat, d'un seul appui.
+  const phrase = texte => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'pastilleChat phrase';
+    b.textContent = texte;
+    b.title = 'Envoyer au chat';
+    b.addEventListener('pointerdown', e => e.preventDefault());   // le clavier ne bouge pas
+    b.addEventListener('click', () => { vibrer(); envoyerChat(texte); });
+    r.appendChild(b);
+  };
   const pastille = (texte, cls, titre) => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'pastilleChat ' + (cls || '');
@@ -14130,7 +14143,7 @@ function majSaisieRapide(){
     const l = lieu(s[0].x, s[0].y);
     if(l !== 'offboard'){ const b = pastille('📍 ' + l, 'lieu'); b._texte = l; }
   }
-  for(const p of phrasesChat()) pastille(p);
+  for(const p of phrasesChat()) phrase(p);
   for(const p of phasesChat()) pastille(p, 'phase');
   const ed = document.createElement('button');
   ed.type = 'button'; ed.className = 'pastilleChat modif';
