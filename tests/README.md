@@ -49,7 +49,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-horscarte.js` | Board 5 : unité hors carte qui entre sur le board (coût du premier hexagone, le décompte ne plante plus) ; chef reconnu par son nom affiché |
 | `mf-relecture.js` | Board 5 : décompte des coups relus d'un .vlog (M/ d'un pion, M/ d'une pile VASSAL), au chat sans entrer dans le log ; changement de phase relu ; recul |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
-| `loupe.js` | Loupe : 200 px, rayon de 2 hexagones, dans l'écran (`node loupe.js carte.html 360 740`) |
+| `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
 | `chat0.js` | Journal non ramené en bas, profil gelé pendant la saisie |

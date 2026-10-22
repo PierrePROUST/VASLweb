@@ -10723,10 +10723,10 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
 document.addEventListener('touchmove', e => { if(_glisse && _glisse.actif()) e.preventDefault(); }, {passive: false});
 
 // ── Loupe de dépôt : un disque décalé au-dessus du doigt, qui montre la
-// zone des boards et les faces des pions sur un rayon de 2 hexagones
-// autour de l'ancrage visé (2,5 hexagones de bord à bord, pour voir les
-// hexagones du second rang en entier), et le nom de l'ancrage.
-const LOUPE = 200, LOUPE_RAYON_HEX = 2.5;
+// zone des boards et les faces des pions sur un rayon de 1 hexagone
+// autour de l'ancrage visé (1,5 hexagone du centre au bord, pour voir les
+// six voisins en entier), et le nom de l'ancrage.
+const LOUPE = 200, LOUPE_RAYON_HEX = 1.5;
 // Hauteur d'un hexagone (pixels natifs) du board sous le point : un board
 // deluxe a des hexagones trois fois plus grands que les 64,5 px standard.
 function _hautHexAu(x, y){
@@ -10752,8 +10752,8 @@ function dessinerLoupe(cx, cy, a, rects){
     document.body.appendChild(l);
   }
   const cv = l.querySelector('canvas'), g = cv.getContext('2d');
-  // Point visé et côté de la zone montrée, en pixels de #mapInner : deux
-  // hexagones et demi de part et d'autre.
+  // Point visé et côté de la zone montrée, en pixels de #mapInner : un
+  // hexagone et demi de part et d'autre.
   const px = a.x * SC, py = a.y * SC, hex = _hautHexAu(a.x, a.y) * SC;
   const cote = 2 * LOUPE_RAYON_HEX * hex;
   const x0 = px - cote / 2, y0 = py - cote / 2, k = cv.width / cote;
