@@ -40,6 +40,19 @@ const {ouvrir} = require('./commun.js');
   await glisse(await centre('T6'), [900, 700]);
   await pg.mouse.click(...await coin('T2'));
   out.clicPile = await sel();
+  // Pile d'arrivée faite de pions HIP adverses (T4, T5) : invisibles, ils
+  // ne repartent pas avec T6, qui en est le seul pion visible.
+  const h = await pg.evaluate(() => {
+    const a = positionDepot(1100, 760);
+    for(const u of ['T4', 'T5']){ const p = parUid(u); p.x = a.x; p.y = a.y; p.cache = true; p.el.style.display = 'none'; }
+    rendreToutes(); selectionner([parUid('T6')]);
+    return [a.x, a.y];
+  });
+  await glisse(await centre('T6'), h);
+  out.hipArrivee = await pg.evaluate(() => pile(cle(parUid('T6'))).map(p => p.uid));
+  n0 = (await cmds()).length;
+  await glisse(await centre('T6'), [1300, 900]);
+  out.hip = {partis: await partis(n0), restent: await pg.evaluate(h => pile(h.join(',')).map(p => p.uid), h)};
   console.log(JSON.stringify(out), errs);
   await b.close();
 })();

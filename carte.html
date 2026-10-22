@@ -7046,13 +7046,14 @@ function selectionner(liste, mode = 'remplacer'){
 const trierParPile = l => l.slice().sort((a, b) => a.y - b.y || a.x - b.x || a.ordre - b.ordre);
 
 // Ce que déplace un glissé de la sélection. Une pile repliée sélectionnée
-// en entier part tout entière, comme aujourd'hui (pions HIP compris) ;
-// ailleurs, seuls les pions sélectionnés.
+// en entier part tout entière, sauf les pions HIP de l'adversaire : comme
+// chez VASSAL (canPiecesMerge), ils ne sont pas dans ma pile ; ailleurs,
+// seuls les pions sélectionnés.
 function piecesADeplacer(){
   const cles = [...new Set(trierParPile([..._sel]).map(cle))];
   const out = [];
   for(const k of cles){
-    if(pileEntiereSel(k) && !_depliees.has(k)) out.push(...pile(k));
+    if(pileEntiereSel(k) && !_depliees.has(k)) out.push(...pile(k).filter(p => !p.cache));
     else out.push(...selDans(k));
   }
   return out;
@@ -8210,6 +8211,8 @@ function positionDepot(x, y){
 }
 
 function deplacer(liste, x, y){
+  // Un pion invisible pour moi (HIP adverse) ne part jamais avec les miens.
+  liste = liste.filter(p => !p.cache);
   if(!liste.length) return;
   _avantAction();
   const pos = positionDepot(x, y);

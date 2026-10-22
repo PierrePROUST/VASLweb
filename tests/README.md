@@ -32,7 +32,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `doigt.js` | Appui court, appui long (menu), glissé au doigt, lâcher sur le panneau |
 | `pc.js` | Double-clic, clic dans une pile dépliée, Ctrl+clic, ↑, glissé de la sélection, Échap, Maj+rectangle, clic dans le vide |
 | `alt.js` | Alt + molette dans une pile |
-| `pile-arrivee.js` | Pion entré dans une pile occupée : la sélection reste la sienne ; glissé depuis lui ou depuis un pion déjà là, seul lui repart ; Ctrl+clic ajoute un pion au groupe ; clic simple : pile entière |
+| `pile-arrivee.js` | Pion entré dans une pile occupée : la sélection reste la sienne ; glissé depuis lui ou depuis un pion déjà là, seul lui repart ; Ctrl+clic ajoute un pion au groupe ; clic simple : pile entière ; pions HIP adverses de la pile d'arrivée laissés sur place |
 | `p4.js` | Panneau Pile : rang par glisser-déposer (un seul `M/`), Undo, Maj+clic, Ctrl+clic |
 | `ui.js` | Menus (Alt, flèches), Ctrl+K, onglet Dés, changement de profil à chaud |
 | `desbarre.js` | Dés en boutons sous la barre d'icônes (PC) |
