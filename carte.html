@@ -359,6 +359,12 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 body.maj .pion.immob{pointer-events:auto}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
+/* Le pion reçoit le clic partout où il est dessiné : sa face et ses
+   couches, tournées avec le CA d'un véhicule, débordent de son carré.
+   C'est la forme de VASSAL (FreeRotator.getShape, Embellishment.getShape) :
+   sous un chef, le bout visible d'un véhicule tourné reste cliquable. */
+.pion > img,.pion > .couche{pointer-events:auto}
+.pion.verrou *,.pion.retire *,.mini *{pointer-events:none!important}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
 /* Pile dépliée : une trame et un liseré sous ses pions écartés ; le pion
    survolé est cerné, pour que le clic soit sans surprise. */
@@ -946,25 +952,29 @@ function _gifDuBoard(files, nom, prefere){
   return null;
 }
 
+// Comme Map.getLocation de VASSAL : un board est décalé de la largeur des
+// boards qui le précèdent sur SA rangée, et de la hauteur de ceux qui le
+// précèdent dans SA colonne ; une case vide compte pour zéro. Avec des
+// boards recadrés ou de tailles différentes, ce n'est pas une grille.
 function _layoutBoards(boards){
-  const colW = {}, rowH = {};
+  const larg = new Map(), haut = new Map();
   for(const b of boards){
     const g = geoBoard(b);
     const w  = (b.crop && b.crop.w > 0) ? b.crop.w : g.w;
     const hh = (b.crop && b.crop.h > 0) ? b.crop.h : g.h;
     b.dispW = Math.round(w * b.zoom);
     b.dispH = Math.round(hh * b.zoom);
-    colW[b.col] = Math.max(colW[b.col] || 0, b.dispW);
-    rowH[b.row] = Math.max(rowH[b.row] || 0, b.dispH);
+    larg.set(b.col + ',' + b.row, b.dispW);
+    haut.set(b.col + ',' + b.row, b.dispH);
   }
-  const colX = {}, rowY = {};
-  let acc = 0;
-  for(const c of Object.keys(colW).map(Number).sort((a,b)=>a-b)){ colX[c] = acc; acc += colW[c]; }
-  const totalW = acc;
-  acc = 0;
-  for(const r of Object.keys(rowH).map(Number).sort((a,b)=>a-b)){ rowY[r] = acc; acc += rowH[r]; }
-  const totalH = acc;
-  for(const b of boards){ b.px = colX[b.col]; b.py = rowY[b.row]; }
+  let totalW = 0, totalH = 0;
+  for(const b of boards){
+    b.px = 0; b.py = 0;
+    for(let c = 0; c < b.col; c++) b.px += larg.get(c + ',' + b.row) || 0;
+    for(let r = 0; r < b.row; r++) b.py += haut.get(b.col + ',' + r) || 0;
+    totalW = Math.max(totalW, b.px + b.dispW);
+    totalH = Math.max(totalH, b.py + b.dispH);
+  }
   return {totalW, totalH};
 }
 
@@ -1802,9 +1812,12 @@ function _buildHexTable(boards){
       for(let r = r0; r <= r1; r++){
         const c = centreHex(g, col + r);
         if(c.x <= -g.hw/4 || c.x >= g.w + g.hw/4 || c.y <= -g.hh/4 || c.y >= g.h + g.hh/4) continue;
-        const lx = c.x - cropX, ly = c.y - cropY;
-        if(ly < -g.hh/2 || ly > dispH + g.hh/2) continue;
-        if(lx < -g.hw/2 || lx > dispW + g.hw/2) continue;
+        // ASLBoard.globalCoordinates : recadrage, puis grossissement (ZOOM),
+        // puis retournement sur la taille affichée.
+        const z = b.zoom || 1;
+        const lx = (c.x - cropX) * z, ly = (c.y - cropY) * z;
+        if(ly < -g.hh*z/2 || ly > dispH + g.hh*z/2) continue;
+        if(lx < -g.hw*z/2 || lx > dispW + g.hw*z/2) continue;
         const px = b.reversed ? dispW - lx : lx;
         const py = b.reversed ? dispH - ly : ly;
         _hexTable.push({name: b.name + col + r,
@@ -6327,6 +6340,9 @@ function _proprietes(ts){
   const pr = {};
   if(!ts) return pr;
   const net = v => (v || '').replace(/\\+$/, '').replace(/\\(.)/g, '$1');
+  // Comme getProperty, le trait le plus externe répond le premier : un
+  // nom porté deux fois (DBCounterType) garde la valeur de l'extérieur.
+  const def = (k, v) => { if(!(k in pr)) pr[k] = v; };
   for(let i = 0; i < ts.typ.length; i++){
     const ch = ts.typ[i].split(';');
     if(ch[0] === 'emb2'){
@@ -6337,17 +6353,17 @@ function _proprietes(ts){
       const premier = parseInt(ch[24], 10);
       const noms = (ch[17] || '').split(/(?<!\\),/).map(net);
       const ims = net(ch[16]).split(',');
-      pr[nom + '_Level'] = String(niv - 1 + (isNaN(premier) ? 1 : premier));
-      pr[nom + '_Name'] = (noms[niv - 1] || '').replace(/^\+\s*|\s*\+$/g, '').trim();
-      pr[nom + '_Image'] = ims[niv - 1] || '';
-      pr[nom + '_Active'] = String(v > 0);
+      def(nom + '_Level', String(niv - 1 + (isNaN(premier) ? 1 : premier)));
+      def(nom + '_Name', (noms[niv - 1] || '').replace(/^\+\s*|\s*\+$/g, '').trim());
+      def(nom + '_Image', ims[niv - 1] || '');
+      def(nom + '_Active', String(v > 0));
     } else if(ch[0] === 'rotate' && net(ch[8])){
       // FreeRotator : <nom>_Facing, de 1 au nombre de faces.
-      pr[net(ch[8]) + '_Facing'] = String((parseInt(net(ts.eta[i]), 10) || 0) + 1);
+      def(net(ch[8]) + '_Facing', String((parseInt(net(ts.eta[i]), 10) || 0) + 1));
     } else if(ch[0] === 'PROP' && ch[1]){
-      pr[net(ch[1])] = net(ts.eta[i]);
+      def(net(ch[1]), net(ts.eta[i]));
     } else if(ch[0] === 'mark' && ch[1]){
-      pr[net(ch[1])] = net(ts.eta[i]);
+      def(net(ch[1]), net(ts.eta[i]));
     }
   }
   return pr;
@@ -6628,7 +6644,9 @@ function _pieceVaslTools(ts){
   return null;
 }
 
-const _vtEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Les champs viennent du fichier ou d'un autre joueur : échappés aussi
+// pour un attribut (title="…").
+const _vtEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // Tours « 2,4,7 » ou « 2-5, 8 » (ScenarioCardButton.expandTurnSpec).
 function _vtTours(spec){
@@ -6644,13 +6662,16 @@ function _vtTours(spec){
 // État de ScenarioCardEditor (mySetState), dans l'ordre d'écriture.
 function _vtCarte(c){
   const v = (i, d) => (c[i] !== undefined && c[i] !== '') ? c[i] : d;
+  // Le code de nation entre dans des classes et la feuille de style :
+  // seuls les codes connus passent, les autres valent « alminor ».
+  const nat = (i, d) => { const x = v(i, d); return Object.prototype.hasOwnProperty.call(VT_NATIONS, x) ? x : 'alminor'; };
   return {
     id: v(0, ''), nom: v(1, ''), date: v(2, ''), lieu: v(3, ''), tours: v(4, '6'),
     toursLV: v(5, ''), toursNuit: v(6, ''),
     j: [
-      {code: v(7, 'germans'), nom: v(8, ''), elr: v(9, '1'), san: v(10, '1'), renforts: v(16, '')},
-      {code: v(11, 'americans'), nom: v(12, ''), elr: v(13, '1'), san: v(14, '1'), renforts: v(17, '')},
-      {code: v(50, 'russian'), nom: v(51, ''), elr: v(52, '1'), san: v(53, '1'), renforts: v(54, '')}
+      {code: nat(7, 'germans'), nom: v(8, ''), elr: v(9, '1'), san: v(10, '1'), renforts: v(16, '')},
+      {code: nat(11, 'americans'), nom: v(12, ''), elr: v(13, '1'), san: v(14, '1'), renforts: v(17, '')},
+      {code: nat(50, 'russian'), nom: v(51, ''), elr: v(52, '1'), san: v(53, '1'), renforts: v(54, '')}
     ],
     vc: v(15, ''), police: v(18, 'Verdana'), disposition: v(20, 'horizontal'),
     nvr: v(36, '-'), joueurs: parseInt(v(49, '2'), 10) === 3 ? 3 : 2
@@ -6955,6 +6976,7 @@ let _annexes = new Map();
 let _nomFichier = 'partie';
 let _coucheParUid = new Map();        // uid → couche (@@n) de sa pile d'origine
 let _pilesVassal = new Map();         // id de pile VASSAL → uids, du fond au sommet
+let _pilesRetirees = new Map();       // piles retirées d'un seul -/, pour Undo
 let _uidSeq = 0;
 
 // Une pièce qui ne s'empile pas (trait Immobilized « R ») forme à elle
@@ -7083,6 +7105,7 @@ function creerPion(seg, ordre){
   const el = document.createElement('div');
   el.className = 'pion';
   const face = document.createElement('img');
+  face.className = 'face';
   el.appendChild(face);
   const p = {id: pions.length, uid: d.uid, seg, x: d.x, y: d.y, ordre, nom: d.nom,
              el, face, sz: Math.round(48 * SC), deleted: false,
@@ -7566,6 +7589,7 @@ function _parseStacks(segs){
   const rangs = new Map();
   _coucheParUid = new Map();
   _pilesVassal = new Map();
+  _pilesRetirees = new Map();
   for(const seg of segs){
     if(!/^\+\/[^/]+\/stack\//.test(seg)) continue;
     const ch = seg.substring(seg.indexOf('/stack/') + 7).replace(/\\/g, '').split(';');
@@ -7615,7 +7639,10 @@ function importerPions(texte, label, annexes){
   let n = 0;
   for(const c of candidats){
     if(c.d.carte !== _carteJeu) continue;     // autres fenêtres : réécrites telles quelles
-    creerPion(c.seg, rangs.has(c.d.uid) ? rangs.get(c.d.uid) : 1000 + c.i);
+    // Hors de toute pile : une pièce qui ne s'empile pas est dessinée
+    // sous les piles (DefaultPieceCollection, couche 0), les autres dessus.
+    const q = creerPion(c.seg, rangs.has(c.d.uid) ? rangs.get(c.d.uid) : 1000 + c.i);
+    if(!rangs.has(c.d.uid) && neSEmpilePas(q)) q.ordre = -1000 + c.i;
     n++;
   }
   const caches = vivants().filter(p => p.cache && !p.outil).length;
@@ -7646,38 +7673,66 @@ let _annulation = false;  // vrai pendant qu'Undo consigne son coup
 let _etapeLog = false;    // vrai pendant qu'un coup relu est consigné
 
 // Champs d'une commande « / » tels qu'écrits (guillemets et
-// contre-obliques gardés), pour la réécrire dans l'autre sens.
+// contre-obliques gardés), pour la réécrire dans l'autre sens. Comme
+// SequenceEncoder.Decoder, seul un « / » précédé d'une contre-oblique
+// est échappé ; les apostrophes ne protègent rien.
 function _decoupeBrut(s){
-  const out = []; let cur = '', q = false;
+  const out = []; let debut = 0;
   for(let i = 0; i < s.length; i++){
-    const c = s[i];
-    if(c === '\\' && i+1 < s.length){ cur += c + s[i+1]; i++; continue; }
-    if(c === "'" && (cur === '' || q)) q = !q;
-    else if(c === '/' && !q){ out.push(cur); cur = ''; continue; }
-    cur += c;
+    if(s[i] === '/' && (i === 0 || s[i-1] !== '\\')){ out.push(s.substring(debut, i)); debut = i + 1; }
   }
-  out.push(cur);
+  out.push(s.substring(debut));
   return out;
 }
 
-// Commande inverse, ou null si elle n'en a pas.
+// RemovePiece.myUndoCommand : AddPiece de la pièce telle qu'elle était,
+// plus le ChangePiece qui la remet dans sa pile. Nos piles n'ont pas
+// d'identifiant VASSAL : un M/ sur la pièce qui était dessous (null :
+// au fond) la remet à son rang, chez nous comme chez un client VASSAL.
+function _remise(p, sous){
+  const d = lirePiece(p.seg);
+  if(d.carte !== _carteJeu) return [p.seg];
+  return [p.seg, `M/${p.uid}/${_carteJeu}/${d.x}/${d.y}/${sous || 'null'}/${_carteJeu}/${d.x}/${d.y}/null/${joueur()}`];
+}
+
+// Pièce encore en jeu juste sous p, d'après les rangs d'avant le retrait.
+function _dessousRetire(p){
+  if(neSEmpilePas(p)) return null;
+  let best = null;
+  for(const q of vivants())
+    if(q !== p && q.x === p.x && q.y === p.y && q.ordre < p.ordre && !neSEmpilePas(q) && (!best || q.ordre > best.ordre)) best = q;
+  return best ? best.uid : null;
+}
+
+// Commande(s) inverse(s), ou null si elle n'en a pas.
 function _inverse(c){
   if(/^\+\/[^/]+\/stack\//.test(c)) return null;
-  if(c.startsWith('+/')) return '-/' + c.split('/')[1];
+  if(c.startsWith('+/')) return ['-/' + c.split('/')[1]];
   if(c.startsWith('-/')){
-    // RemovePiece.myUndoCommand : AddPiece de la pièce telle qu'elle était.
     const uid = c.substring(2);
     const p = pions.filter(q => q.uid === uid).pop();
-    return p ? p.seg : null;
+    if(p) return _remise(p, _dessousRetire(p));
+    // Une pile entière : ses pièces reviennent du fond vers le sommet.
+    const ids = _pilesRetirees.get(uid);
+    if(!ids) return null;
+    const out = [];
+    let sous = null;
+    for(const u of ids){
+      const q = pions.filter(x => x.uid === u).pop();
+      if(!q) continue;
+      out.push(..._remise(q, sous));
+      sous = u;
+    }
+    return out.length ? out : null;
   }
   if(c.startsWith('D/')){
     const t = _decoupeBrut(c.substring(2));
-    return t.length >= 3 ? `D/${t[0]}/${t[2]}/${t[1]}` : null;
+    return t.length >= 3 ? [`D/${t[0]}/${t[2]}/${t[1]}`] : null;
   }
   if(c.startsWith('M/')){
     const t = _decoupeBrut(c.substring(2));
     if(t.length < 9) return null;
-    return 'M/' + [t[0], t[5], t[6], t[7], t[8] || 'null', t[1], t[2], t[3], t[4], ...t.slice(9)].join('/');
+    return ['M/' + [t[0], t[5], t[6], t[7], t[8] || 'null', t[1], t[2], t[3], t[4], ...t.slice(9)].join('/')];
   }
   return null;
 }
@@ -7691,7 +7746,7 @@ function _histoCmd(c){
   e.cmds.push(c);
   if(c.startsWith('UNDO')){ e.annulable = false; e.inv = []; }
   const i = e.annulable ? _inverse(c) : null;
-  if(i) e.inv.unshift(i);
+  if(i) e.inv.unshift(...i);
   majUndo();
 }
 
@@ -7749,17 +7804,9 @@ function annuler(){
 //   M/id/carte/x/y/dessous/carteAnc/xAnc/yAnc/dessousAnc/joueur
 // Les sous-commandes d'un coup composé suivent leur « LOG » dans des
 // segments à part : tout segment de la zone de log est donc examiné.
+// Un champ entouré d'apostrophes les perd (SequenceEncoder.unquote).
 function _decoupeCmd(s){
-  const out = []; let cur = '', q = false;
-  for(let i = 0; i < s.length; i++){
-    const c = s[i];
-    if(c === '\\' && i+1 < s.length){ cur += c + s[i+1]; i++; continue; }
-    if(c === "'" && (cur === '' || q)){ q = !q; continue; }
-    if(c === '/' && !q){ out.push(cur); cur = ''; continue; }
-    cur += c;
-  }
-  out.push(cur);
-  return out;
+  return _decoupeBrut(s).map(t => t.length > 1 && t[0] === "'" && t[t.length - 1] === "'" ? t.slice(1, -1) : t);
 }
 const _nul = v => (v === 'null' || v === '' ? null : v);
 const parUid = uid => pions.find(p => p.uid === uid && !p.deleted);
@@ -7778,6 +7825,7 @@ function _retirer(id){
   const ids = _pilesVassal.get(id);
   if(!ids) return 0;
   _pilesVassal.delete(id);
+  _pilesRetirees.set(id, ids);
   let n = 0;
   for(const u of ids) n += _retirer(u);
   return n;
@@ -7817,7 +7865,10 @@ function rejouerLog(segs){
         if(t[1]) _pilesVassal.set(t[0], _idsPile(t[1]));
         continue;
       }
-      const p = parUid(_nul(t[0]));
+      // Une pièce tenue sur une autre fenêtre (Casualties…) change d'état
+      // elle aussi : elle le garde en revenant, et dans la sauvegarde.
+      const id = _nul(t[0]);
+      const p = pions.find(q => q.uid === id && (!q.deleted || q.ailleurs));
       const te = p && _typeEtEtat(p.seg);
       if(te && t[1]){
         p.seg = '+/' + p.uid + '/' + te.type + '/' + t[1];
@@ -8111,10 +8162,32 @@ function cadrerSur(pts){
 
 function majBarreLog(){ rafraichirActions(['relecture', ...ACTIONS.relecture.groupe]); majHautBas(); }
 
+// Trait Immobilized sans « L » en tête des options d'empilement : la
+// pièce ne s'empile pas (Properties.NO_STACK) — clocher, tunnel, marqueur
+// de la piste des tours. VASSAL ne la met dans aucune pile.
+const _nonEmpilable = new Map();      // type → booléen
+function neSEmpilePas(p){
+  const te = _typeEtEtat(p.seg);
+  if(!te) return false;
+  if(!_nonEmpilable.has(te.type) || !_bdd){
+    const ts = _developperPrototypes(_splitTypeState(p.seg), 0);
+    const im = ts && ts.typ.map(t => _seq(t.replace(/\\+$/, ''), ';')).find(f => f[0] === 'immob');
+    const v = !!im && (im[3] === undefined ? 'R' : im[3].replace(/\\/g, '')).charAt(0) !== 'L';
+    if(!_bdd) return v;
+    _nonEmpilable.set(te.type, v);
+  }
+  return _nonEmpilable.get(te.type);
+}
+
+// La pièce sur laquelle p est posée, pour un M/ : la plus proche en
+// dessous qui s'empile, ou rien si p elle-même ne s'empile pas. Une pièce
+// invisible pour moi (HIP adverse) n'est jamais dans ma pile chez VASSAL
+// (canPiecesMerge) : elle ne sert pas de dessous.
 function _dessous(p){
+  if(neSEmpilePas(p)) return 'null';
   const s = pile(cle(p));
-  const i = s.indexOf(p);
-  return i > 0 ? s[i-1].uid : 'null';
+  for(let i = s.indexOf(p) - 1; i >= 0; i--) if(!neSEmpilePas(s[i]) && (!s[i].cache || p.cache)) return s[i].uid;
+  return 'null';
 }
 
 // Position finale d'un lâcher : l'ancrage d'hexagone, ou une pile déjà
@@ -9095,9 +9168,15 @@ function deplacerDansPile(p, i){
   return true;
 }
 
-// Monte (+1) ou descend (-1) un pion dans sa pile.
+// Monte (+1) ou descend (-1) un pion dans sa pile. Le voisin visible : un
+// pion HIP adverse ne compte pas ; p passe de l'autre côté de ce voisin,
+// les pions sautés ne bougent pas.
 function changerRang(p, sens){
-  return deplacerDansPile(p, pile(cle(p)).indexOf(p) + sens);
+  const s = pile(cle(p)), i = s.indexOf(p);
+  let j = i + sens;
+  while(j >= 0 && j < s.length && s[j].cache && !p.cache) j += sens;
+  if(j < 0 || j >= s.length) return false;
+  return deplacerDansPile(p, j);
 }
 
 // Touches de rang du StackMetrics (BasicPiece.keyEvent) : sommet, fond,
@@ -9455,9 +9534,19 @@ function commandesDe(type){
               ({S}) => regle(S, n => n + 1 > N ? (boucle ? 1 : N) : n + 1));
       ajouter(i, ch[7], lireTouche(ch[29]) || toucheAncienne(ch[9], ch[8]),
               ({S}) => regle(S, n => n - 1 < 1 ? (boucle ? N : 1) : n - 1));
-      const raz = parseInt(ch[12], 10);
+      // Remise à un niveau (resetLevel) : sa valeur absolue donne le
+      // niveau, son signe l'activation — « 0 » ou « -1 » : niveau 1 éteint.
+      const raz = parseInt(ch[12], 10) || 0;
       if(ch[10] || ch[11]) ajouter(i, ch[10], lireTouche(ch[11]), ({S}) => {
-        const [, r] = niveau(S, i); S[i] = String(raz > 0 ? raz : 1) + r;
+        const [, r] = niveau(S, i);
+        const n = Math.min(N, Math.max(1, Math.abs(raz)));
+        S[i] = String(raz > 0 ? n : -n) + r;
+      });
+      // Niveau au hasard (rndKey, champ 20), activation inchangée.
+      if(ch[20]) ajouter(i, ch[21], lireTouche(ch[20]), ({S}) => {
+        const [v, r] = niveau(S, i);
+        const n = 1 + Math.floor(Math.random() * N);
+        S[i] = String(v < 0 ? -n : n) + r;
       });
     } else if(id === 'rotate'){
       // FreeRotator : rotate;facettes;touche cw;touche ccw;texte cw;texte ccw
@@ -9482,19 +9571,31 @@ function commandesDe(type){
     } else if(['replace', 'placemark', 'placeDM', 'placeACQ'].includes(id)){
       // PlaceMarker et ses dérivés VASL :
       //   commande;touche;chemin;définition;dx;dy;rotation;touche après;description;gpid;placement
-      const gpid = ch[10], chemin = ch[3] || '';
-      const placement = parseInt(ch[11], 10) || 0;
-      const apres = lireTouche(ch[8]);
-      ajouter(i, ch[1], lireTouche(ch[2]), ({p, effets}) => effets.push(() => {
-        // PlaceDM ne pose rien s'il y a déjà un DM au-dessus de l'unité.
+      // Le chemin peut être une définition entière, pleine de « ; »
+      // échappés : les champs se lisent comme SequenceEncoder.Decoder.
+      const f = _seq(t, ';');
+      const chemin = f[3] || '';
+      const placement = parseInt(f[11], 10) || 0;
+      const apres = lireTouche(f[8]);
+      ajouter(i, ch[1], lireTouche(ch[2]), ({p, S, effets}) => {
+        // PlaceDM ne pose rien sur une pièce dont le nom intérieur contient
+        // « broken », lu avant que la touche n'atteigne les traits
+        // intérieurs (VASL.counters.PlaceDM.myKeyEvent).
         if(id === 'placeDM'){
-          const s = pile(cle(p));
-          if(s.slice(s.indexOf(p) + 1).some(q => q.nom === 'DM')) return;
+          const Ti = T.slice(i + 1), Si = S.slice(i + 1);
+          if(/broken/.test(lirePiece('+/0/' + encoderTraits(Ti) + '/' + encoderTraits(Si)).nom)) return;
         }
-        const q = placerMarqueur(p, gpid, chemin, id === 'replace' ? 2 : placement);
-        if(q && apres) executerTouche(q, apres);
-        if(q && id === 'replace') retirer(p, true);
-      }));
+        effets.push(() => {
+          // … ni s'il y a déjà un DM au-dessus de l'unité.
+          if(id === 'placeDM'){
+            const s = pile(cle(p));
+            if(s.slice(s.indexOf(p) + 1).some(q => q.nom === 'DM')) return;
+          }
+          const q = placerMarqueur(p, chemin, placement);
+          if(q && apres) executerTouche(q, apres);
+          if(q && id === 'replace') retirer(p, true);
+        });
+      });
     } else if(id === 'macro'){
       // Trigger Action : macro;nom;commande;touche;condition;veille;actions;boucle…
       // La condition est évaluée sur les propriétés du pion au moment où
@@ -9750,15 +9851,19 @@ function rapportDeplacement(liste, ax, ay){
 function rapportsEtat(p, type, tirees, cmds, nomAvant){
   if(p.cache) return;
   const T = decoderTraits(type);
+  let pr = null;
   for(const t of T){
     if(!/^report;/.test(t)) continue;
-    const ch = t.split(';');
+    // Le format peut contenir des « ; » échappés.
+    const ch = _seq(t, ';');
     const touches = lireTouches(ch[1]);
     const k = tirees.find(x => touches.includes(x));
     if(!k) continue;
     const cmd = cmds.find(c => c.touche === k && c.nom);
     const format = (ch[2] || '$location$: $newPieceName$ *').replace(/\\(.)/g, '$1');
-    rapport(_remplir(format, {location: lieu(p.x, p.y), oldLocation: p.ancienLieu || lieu(p.x, p.y),
+    // FormattedString : toute propriété du pion peut figurer dans le texte.
+    if(!pr){ const te = _typeEtEtat(p.seg); pr = te ? proprietesPion(p, T, decoderTraits(te.etat)) : {}; }
+    rapport(_remplir(format, {...pr, location: lieu(p.x, p.y), oldLocation: p.ancienLieu || lieu(p.x, p.y),
       newPieceName: p.deleted ? nomAvant : nomRapport(p), oldPieceName: nomAvant,
       menuCommand: cmd ? cmd.nom : '', playerName: joueur(), PlayerName: joueur(), playerId: joueur(),
       mapName: _carteJeu}));
@@ -9777,17 +9882,44 @@ function envoyerChat(texte){
 
 // Pose le pion d'un PieceSlot (désigné par gpid, à défaut par le nom en
 // fin de chemin) à l'emplacement de `p`.
-function placerMarqueur(p, gpid, chemin, placement){
+// PieceSlot désigné par un chemin de composants (ComponentPathBuilder),
+// tel qu'il figure dans un trait : « Classe:nom/Classe:nom/… », avec le
+// « / » encore échappé une fois par la commande +/ qui porte le trait.
+function _slotDuChemin(chemin){
+  if(!_bdd || !chemin) return null;
+  const noms = _splitUnescaped(chemin.replace(/\\\//g, '/'), '/').map(x => {
+    const c = x.replace(/\\(.)/g, '$1');
+    const k = c.indexOf(':');
+    return k < 0 ? '' : c.substring(k + 1);
+  });
+  return _bdd.parChemin.get(noms.join('\u0001')) || null;
+}
+
+// Pose le marqueur d'un trait PlaceMarker / Replace. `spec` est son
+// markerSpec : un chemin vers un PieceSlot, ou une définition « +/… »
+// autonome (isMarkerStandalone). Le gpId du trait est celui du marqueur
+// créé, pas celui d'un PieceSlot : il ne sert pas à le retrouver.
+function placerMarqueur(p, spec, placement){
   if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
-  let x = _bdd.parGpid.get(gpid);
-  if(!x){
-    const nom = (chemin.replace(/\\(.)/g, '$1').match(/PieceSlot:([^/]*)$/) || [])[1];
-    if(nom) x = [..._bdd.parGpid.values()].find(y => y.n === nom);
+  let def = null, nom = null;
+  if(/^\+\\?\//.test(spec)){
+    // Définition dans le trait : un niveau d'échappement de « / » (la
+    // commande +/) et de tabulation (le trait) en trop.
+    def = developperDefinition(spec.replace(/\\\//g, '/').replace(/\\(\t)/g, '$1'));
+    if(def) nom = lirePiece('+/0/' + encoderTraits(def.T) + '/' + encoderTraits(def.S)).nom;
+  } else {
+    let x = _slotDuChemin(spec);
+    if(!x){
+      // Chemin introuvable (fenêtre renommée…) : le PieceSlot du même nom.
+      const n = (spec.replace(/\\(.)/g, '$1').match(/PieceSlot:([^/]*)$/) || [])[1];
+      if(n) x = [..._bdd.parGpid.values()].find(y => y.n === n);
+    }
+    def = x && developperDefinition(x.cmd);
+    nom = x && x.n;
   }
-  const def = x && developperDefinition(x.cmd);
-  if(!def){ chatLog(`⚠️ ${p.nom} : pion à poser introuvable (gpid ${gpid || '?'})`); return null; }
+  if(!def){ chatLog(`⚠️ ${p.nom} : pion à poser introuvable`); return null; }
   const q = poserTraits(def.T, def.S, p.x, p.y, p, placement);
-  chatLog(`➕ ${x.n} posé sur ${p.nom}`);
+  chatLog(`➕ ${nom} posé sur ${p.nom}`);
   return q;
 }
 
@@ -9828,6 +9960,14 @@ function infoDissimulation(p){
   return {};
 }
 
+// Pion qui sépare deux lieux dans une pile (prototype « Location » :
+// niveau de bâtiment, pont…) : propriété separateLocation. Un « ? » ne
+// dissimule rien sous lui (Concealment.keyEvent, Concealable).
+function _lieuSepare(p){
+  const ts = _developperPrototypes(_splitTypeState(p.seg), 0);
+  return !!ts && ts.typ.some(t => /^mark;separateLocation(;|$)/.test(t.replace(/\\/g, '')));
+}
+
 // Masque (`qui` = joueur) ou démasque (null) une unité, avec son « D/ ».
 function fixerMasque(p, qui){
   const te = _typeEtEtat(p.seg);
@@ -9858,7 +9998,12 @@ function dissimuler(p){
   }
   fixerMasque(p, idJoueur());
   const s = pile(cle(p));
-  const dejaLa = s.slice(s.indexOf(p) + 1).some(q => { const c = infoDissimulation(q); return c.compteur && c.nation === m.nation; });
+  let dejaLa = false;
+  for(const q of s.slice(s.indexOf(p) + 1)){
+    if(_lieuSepare(q)) break;
+    const c = infoDissimulation(q);
+    if(c.compteur && c.nation === m.nation){ dejaLa = true; break; }
+  }
   if(!dejaLa) poserConcealment(p, m);
   ajusterDissimulation(cle(p));
   chatLog(`❔ ${p.nom} dissimulé`);
@@ -9869,12 +10014,7 @@ function dissimuler(p){
 // Comme Concealment.setId, il prend le joueur pour propriétaire.
 function poserConcealment(p, m){
   if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
-  const noms = m.marqueur ? _splitUnescaped(m.marqueur, '/').map(x => {
-    const c = x.replace(/\\(.)/g, '$1');
-    const k = c.indexOf(':');
-    return k < 0 ? '' : c.substring(k + 1);
-  }) : null;
-  let x = noms && _bdd.parChemin.get(noms.join('\u0001'));
+  let x = _slotDuChemin(m.marqueur);
   if(!x) x = _bdd.parChemin.get(['?', m.nation, /58/.test(m.image) ? 'L?' : '?'].join('\u0001'));
   const def = x && developperDefinition(x.cmd);
   if(!def){ chatLog(`⚠️ ${p.nom} : contre-pion « ? » introuvable pour ${m.nation || '?'}`); return null; }
@@ -9903,6 +10043,7 @@ function ajusterDissimulation(k){
     for(let i = s.length - 1; i >= 0; i--){
       const m = infos[i];
       if(m.compteur){ nations.add(m.nation); continue; }
+      if(_lieuSepare(s[i])){ nations.clear(); continue; }
       if(!m.unite || (m.proprio && m.proprio !== idJoueur())) continue;
       const doit = nations.has(m.nation);
       if(doit && !m.proprio) fixerMasque(s[i], idJoueur());
@@ -9912,9 +10053,12 @@ function ajusterDissimulation(k){
 }
 
 // ── « ? » qui suivent les unités sorties d'une pile (A12.15).
-// Le « ? » de nationalité `nation` le plus proche au-dessus de s[i].
+// Le « ? » de nationalité `nation` le plus proche au-dessus de s[i]. Un
+// pion qui sépare deux lieux (niveau, pont) arrête la recherche, comme
+// dans ajusterDissimulation.
 function _qmarkAuDessus(s, i, nation){
   for(let j = i + 1; j < s.length; j++){
+    if(_lieuSepare(s[j])) return null;
     const c = infoDissimulation(s[j]);
     if(c.compteur && c.nation === nation) return s[j];
   }
@@ -9983,10 +10127,11 @@ function _qmarkPourPartants(liste, kArr, sousQ){
     if(poserConcealment(p, m)) chatLog(`❔ « ? » posé sur ${p.nom}`);
 }
 
+// Clone.myKeyEvent : la copie rejoint la pile par placeOrMerge, au sommet.
 function cloner(p){
   const te = _typeEtEtat(p.seg);
   if(!te) return null;
-  const q = poserTraits(decoderTraits(te.type), decoderTraits(te.etat), p.x, p.y, p, 2);
+  const q = poserTraits(decoderTraits(te.type), decoderTraits(te.etat), p.x, p.y, p, 0);
   chatLog(`➕ ${p.nom} cloné`);
   return q;
 }
@@ -10375,7 +10520,8 @@ function _pionPointerDown(e, p){
   const aDeplacer = () => {
     if(_sel.has(p)) return piecesADeplacer();
     if(!souris && deplie() && selectionnable(p)) return [p];
-    return pile(k);
+    // Les pions HIP de l'adversaire, invisibles, restent où ils sont.
+    return pile(k).filter(q => !q.cache);
   };
   glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
