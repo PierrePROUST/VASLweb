@@ -3,7 +3,8 @@
 // cumul annoncé doit égaler la somme des coûts recalculés hexagone par
 // hexagone. En cours de route : une autre unité bouge, un saut de deux
 // hexagones, un Undo puis la reprise, et la pile se sépare. Une pile est
-// annoncée d'un bloc, au cumul de l'unité qui a le plus dépensé.
+// annoncée d'un bloc, au cumul de l'unité qui a le plus dépensé. Mark
+// unmoved remet tout à zéro, et Undo rend les cumuls.
 const nav = require('./navigateur.js');
 (async () => {
   const b = await nav.lancer();
@@ -87,6 +88,20 @@ const nav = require('./navigateur.js');
     await aller([ldr, frais], suite);
     verifier(`pile chef + escouade fraîche → ${suite.getName()} (${cf.lib})`, cf.cout, dernier());
     journal.push(`escouade fraîche : cumul ${_mvtCumul(frais)}`);
+    // Mark unmoved : tout repart de zéro ; Undo rend les cumuls.
+    const avantMU = _mvtCumul(ldr);
+    leverDeplaces(); await tic();
+    journal.push(`Mark unmoved : ${ldr.mvt ? '✘ cumul ' + _mvtCumul(ldr) : 'cumuls remis à zéro'}`);
+    if(ldr.mvt) ecarts.push('mark unmoved');
+    annuler(); await tic();
+    journal.push(`  Undo → chef ${ldr.mvt ? _mvtCumul(ldr) : 'aucun cumul'} (attendu ${avantMU})`);
+    if(!ldr.mvt || _mvtCumul(ldr) !== avantMU) ecarts.push('undo mark unmoved');
+    leverDeplaces(); await tic();
+    const apres = vois(suite).find(v => _estNb(coutEntree(m, suite, v, inf).cout));
+    const ca = coutEntree(m, suite, apres, inf);
+    attendu = 0;
+    await aller([ldr], apres);
+    verifier(`nouvelle phase, chef → ${apres.getName()} (${ca.lib})`, ca.cout, dernier());
     return {journal, ecarts};
   });
   console.log(r.journal.join('\n'));

@@ -8881,8 +8881,14 @@ function marquerDeplace(p, oui){
 function leverDeplaces(){
   let n = 0;
   for(const p of vivants()) if(marquerDeplace(p, false)) n++;
-  // Nouvelle phase : les MF / MP repartent de zéro.
-  for(const p of pions) delete p.mvt;
+  // Nouvelle phase : les MF / MP repartent de zéro, ce que le chat et le
+  // log annoncent. Undo du Mark unmoved rend les cumuls effacés.
+  const gardes = pions.filter(p => p.mvt).map(p => [p, p.mvt]);
+  for(const [p] of gardes) delete p.mvt;
+  if(gardes.length){
+    rapport('Mark unmoved : MF et MP remis à zéro');
+    _histoJs(() => { for(const [p, mvt] of gardes) p.mvt = mvt; });
+  }
   chatLog(n ? `↩️ Statut Moved levé sur ${n} pion(s)` : 'Aucun pion marqué Moved');
   return n;
 }
