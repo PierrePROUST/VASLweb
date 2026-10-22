@@ -360,7 +360,7 @@ body.maj .pion.immob{pointer-events:auto}
    C'est la forme de VASSAL (FreeRotator.getShape, Embellishment.getShape) :
    sous un chef, le bout visible d'un véhicule tourné reste cliquable. */
 .pion > img,.pion > .couche{pointer-events:auto}
-.pion.verrou *,.pion.retire *,.mini *{pointer-events:none!important}
+.pion.verrou *,.pion.retire *,.mini *,.survol *{pointer-events:none!important}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
 /* Pile dépliée : une trame et un liseré sous ses pions écartés ; le pion
    survolé est cerné, pour que le clic soit sans surprise. */
@@ -8257,7 +8257,11 @@ function deplacer(liste, x, y){
   // démasquerait.
   _qmarkPourPartants(liste, kArr, sousQ);
   new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
-  selectionnerPile(kArr);
+  // La sélection reste celle des pions déplacés : les unités qui
+  // occupaient déjà l'hexagone n'y entrent pas, et le glissé suivant
+  // poursuit le mouvement sans les embarquer.
+  const bouges = liste.filter(selectionnable);
+  if(bouges.length) selectionner(bouges); else selectionnerPile(kArr);
   // MF / MP dépensés, d'après le terrain traversé. Une erreur du décompte
   // ne doit ni bloquer le déplacement ni passer inaperçue.
   try { compterMouvement(avant, portes); }
@@ -10838,7 +10842,13 @@ function _pionPointerDown(e, p){
     return;
   }
   let reduire = false;
-  if(souris && selectionnable(p)){
+  // Pile où sont arrivés des pions en mouvement : saisir l'un des pions
+  // qui l'occupaient déjà poursuit le mouvement de la sélection, sans le
+  // prendre. Un simple clic, lui, sélectionne la pile entière ; Ctrl ou
+  // Maj ajoutent des pions au groupe en mouvement.
+  const enCours = !_sel.has(p) && !deplie() && selDans(k).length > 0 && !_basculeSel(e) && !e.shiftKey;
+  if(enCours) reduire = true;
+  else if(souris && selectionnable(p)){
     if(!_sel.has(p)){
       if(_basculeSel(e)) selectionner([p], 'basculer');
       else selectionner(pileOuLui(), e.shiftKey ? 'ajouter' : 'remplacer');
@@ -10846,7 +10856,7 @@ function _pionPointerDown(e, p){
     else reduire = !e.shiftKey;
   }
   const aDeplacer = () => {
-    if(_sel.has(p)) return piecesADeplacer();
+    if(_sel.has(p) || enCours) return piecesADeplacer();
     if(!souris && deplie() && selectionnable(p)) return [p];
     // Les pions HIP de l'adversaire, invisibles, restent où ils sont.
     return pile(k).filter(q => !q.cache);
