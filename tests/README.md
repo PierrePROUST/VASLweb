@@ -46,6 +46,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-contournement.js` | Board 5 : trou d'obus « 1 ou 2 MF » (B2.4) ; contournement d'un bois à pied, côtés 1 à 4 : +1, +0, +1, +0 (A4.31) ; VBM (D2.3, D2.33) ; VCA 1 MP par hexspine, 2 dans les bois (D2.11) ; démarrage et arrêt, Motion (D2.12, D2.13) ; véhicule dans l'hexagone entré (D2.14) ; Undo |
 | `mf-start.js` | Board 5 : menu des véhicules — « Start/Stop » et « Reverse » avant « CA cw » ; marche arrière ×4, changement de sens en marche (arrêt + démarrage), Undo d'un Stop |
 | `mf-transport.js` | Board 5 : passagers et Riders — entrée à pied (pas passagère), Load (D6.4 : 1 MF, ¼ des MP gardés par MF restant), transport sans MF (D6.3), Unload (D6.5 : ¼ des MP, MF du trajet en véhicule), Undo, nouvelle phase à bord |
+| `mf-horscarte.js` | Board 5 : unité hors carte qui entre sur le board (coût du premier hexagone, le décompte ne plante plus) ; chef reconnu par son nom affiché |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |

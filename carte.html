@@ -8240,8 +8240,10 @@ function deplacer(liste, x, y){
   _qmarkPourPartants(liste, kArr, sousQ);
   new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
   selectionnerPile(kArr);
-  // MF / MP dépensés, d'après le terrain traversé.
-  compterMouvement(avant, portes);
+  // MF / MP dépensés, d'après le terrain traversé. Une erreur du décompte
+  // ne doit ni bloquer le déplacement ni passer inaperçue.
+  try { compterMouvement(avant, portes); }
+  catch(e){ chatLog(`⚠️ Décompte des MF / MP impossible : ${e.message}`); }
   chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
 }
 
@@ -8421,18 +8423,39 @@ function natureMouvement(p){
   if(p._natMvt && p._natMvt.seg === p.seg) return p._natMvt.n;
   let pr = {};
   try { pr = _proprietes(_developperPrototypes(_splitTypeState(p.seg), 0)) || {}; } catch(e){}
-  const nom = (lirePiece(p.seg).nomBase || p.nom || '').trim();
+  const d = lirePiece(p.seg);
+  // Le nom de base d'un chef est souvent « geLDR » : son nom affiché
+  // (« 9-1 ») vient d'un calque. Les deux sont essayés.
+  const noms = [d.nomBase, d.nom, p.nom].map(x => (x || '').trim());
+  const nom = noms[0];
+  const te = _typeEtEtat(p.seg), S = te ? decoderTraits(te.etat) : [];
+  const gpid = ((S[S.length - 1] || '').split(';')[3] || '').trim();
+  // Pièce d'une sauvegarde faite avec un module plus ancien : son type de
+  // véhicule manque, la définition actuelle du même PieceSlot le donne.
+  if(!pr.vehicleType && gpid && _bdd && _bdd.parGpid){
+    const x = _bdd.parGpid.get(gpid);
+    if(x){
+      if(!_bdd._typeVehicule) _bdd._typeVehicule = new Map();
+      if(!_bdd._typeVehicule.has(gpid)){
+        let v = null;
+        try { v = (_proprietes(_developperPrototypes(_splitTypeState(x.cmd), 0)) || {}).vehicleType || null; } catch(e){}
+        _bdd._typeVehicule.set(gpid, v);
+      }
+      if(_bdd._typeVehicule.get(gpid)) pr.vehicleType = _bdd._typeVehicule.get(gpid);
+    }
+  }
   let n = null;
   if(pr.vehicleType){
-    const te = _typeEtEtat(p.seg), S = te ? decoderTraits(te.etat) : [];
-    const gpid = ((S[S.length - 1] || '').split(';')[3] || '').trim();
     // Boutonné : VASL l'écrit dans le nom courant (« … BU », sinon « CE »).
     n = {col: _COL_VEH[pr.vehicleType] || null, unite: 'MP', mp: MP_VEHICULES[gpid] || null,
          bu: /(^|\s)BU(\s|$)/.test(lirePiece(p.seg).nom || '')};
-  } else if(pr.CounterType === 'unit' && (/^\d{1,2}[-+]\d$/.test(nom) || /^\d+-\d+-\d+/.test(nom) || /\bhero\b/i.test(nom)))
+  } else if(pr.CounterType === 'unit'){
     // Allocation de MF (A4.1) : 6 pour un chef ou un héros, 4 sinon ; elle
     // ne sert qu'à l'embarquement (D6.4).
-    n = {col: 'inf', unite: 'MF', mp: null, mf: /^\d{1,2}[-+]\d$/.test(nom) || /\bhero\b/i.test(nom) ? 6 : 4};
+    const chef = noms.some(x => /^\d{1,2}[-+]\d(\s|$)/.test(x) || /\bhero\b/i.test(x) || /^[a-z]{2}LDR/.test(x));
+    if(chef) n = {col: 'inf', unite: 'MF', mp: null, mf: 6};
+    else if(noms.some(x => /^\d+-\d+-\d+/.test(x))) n = {col: 'inf', unite: 'MF', mp: null, mf: 4};
+  }
   p._natMvt = {seg: p.seg, n};
   return n;
 }
@@ -8667,6 +8690,11 @@ function etapesDeplacement(m, P, Q, n, prec){
   };
   // Hexagone contourné au départ : celui de l'étape précédente.
   const X0 = P.cote ? (bypPrec && _hexParNomLOS(m, bypPrec)) || P.cote.find(_obstacleMvt) || P.hex : null;
+  if(Q.cote && !P.hex){
+    // Entrée depuis le hors-carte directement en contournement.
+    const X = Q.cote.find(_obstacleMvt);
+    return X ? [Object.assign(coutContournement(m, X, X, n), {byp: X.getName()})] : [coutEntree(m, Q.hex, Q.hex, n)];
+  }
   if(Q.cote){
     const obs = Q.cote.filter(_obstacleMvt);
     // Suite du contournement le long du même obstacle. Infanterie
@@ -8696,6 +8724,9 @@ function etapesDeplacement(m, P, Q, n, prec){
     return [...chemin(A, voisin), Object.assign(coutContournement(m, voisin, X, n), {byp: X.getName()})];
   }
   if(!Q.hex) return [];
+  // Entrée depuis le hors-carte (zone de mise en place, renforts) : coût
+  // du premier hexagone, sans côté ni montée.
+  if(!P.hex) return [coutEntree(m, Q.hex, Q.hex, n)];
   if(X0){
     // Quitter le contournement : vers un voisin de l'obstacle, coût
     // d'entrée normal ; dans l'obstacle lui-même, son plein coût (A4.3).
