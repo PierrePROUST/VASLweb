@@ -20,7 +20,7 @@ const {ouvrir} = require('./commun.js');
     const poser = async (nom, h) => { const [x, y] = px(h); poserDepuisPalette(_bdd.pions.find(s => s.n === nom), x, y); await tic(); return vivants().slice(-1)[0]; };
     const aller = async (l, h) => { const [x, y] = px(h); deplacer(l, x, y); await tic(); };
     // Le décompte part au log comme un rapport : dernier segment CHAT.
-    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
+    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
     const r = {};
     r.lignesInconnues = Object.entries(_LIGNE_TEC).filter(([k, v]) => !TEC_MVT[v]).map(([k]) => k);
     // 1. Terrain ouvert → bois : 2 MF.
@@ -81,7 +81,7 @@ const {ouvrir} = require('./commun.js');
     const boisR = voisins(rte2).find(v => v && T(v) === 'Woods');
     if(boisR){ await aller([tk], boisR); r.charBois = msg(); }
     // 9. Rien sur les pions ; Mark unmoved remet les cumuls à zéro.
-    r.pastilles = document.querySelectorAll('.pastille').length;
+    r.pastilles = document.querySelectorAll('.pastilleMF').length;   // plus de pastille MF sur les piles
     leverDeplaces();
     r.apresUnmoved = pions.filter(p => p.mvt).length;
     return r;

@@ -23,7 +23,7 @@ const nav = require('./navigateur.js');
     const tic = () => new Promise(f => setTimeout(f, 20));
     const poser = async (nom, h) => { const [x, y] = px(h); poserDepuisPalette(_bdd.pions.find(s => s.n === nom), x, y); await tic(); return vivants().slice(-1)[0]; };
     const aller = async (l, h) => { deplacer(l, ...px(h)); await tic(); };
-    const dernier = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.* : \+/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
+    const dernier = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
     const cumulLu = t => (/cumul ([^ )]+)/.exec(t) || [])[1];
     const fmt = v => _fmtCout(v);
     const inf = {col: 'inf', unite: 'MF'};

@@ -18,7 +18,7 @@ const nav = require('./navigateur.js');
     const T = h => h.getCenterLocation().getTerrain().getName();
     const px = h => { const c = h.getHexCenter(); return [c.x * _losZoom() + BOARD_MARGIN, c.y * _losZoom() + BOARD_MARGIN]; };
     const tic = () => new Promise(f => setTimeout(f, 20));
-    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
+    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
     const r = {};
     // Hors carte : au-dessus du board, dans la marge.
     const bois = H.find(h => T(h) === 'Woods' && h.getHexCenter().y < 120);

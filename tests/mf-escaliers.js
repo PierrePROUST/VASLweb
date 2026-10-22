@@ -21,7 +21,7 @@ const nav = require('./navigateur.js');
     const tic = () => new Promise(f => setTimeout(f, 20));
     const piece = n => _bdd.pions.find(s => s.n === n);
     const poser = async (x, h) => { poserDepuisPalette(x, ...px(h)); await tic(); return vivants().slice(-1)[0]; };
-    const msgs = n => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.* : /.test(c)).slice(-n).map(c => c.replace(/^CHAT\* /, '')).join(' | ');
+    const msgs = n => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).slice(-n).map(c => c.replace(/^CHAT\* /, '')).join(' | ');
     // Marqueur d'étage réglé au niveau voulu (il naît au niveau 3).
     const etage = async (h, n) => {
       const q = await poser(_bdd.parGpid.get('163'), h);
