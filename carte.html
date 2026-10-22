@@ -8722,6 +8722,7 @@ function compterMouvement(avant){
   if(!m){ carteLOS().then(r => { if(_losPrete) compterMouvement(avant); }); return; }
   const groupe = avant.map(a => a.p);
   const lignes = new Map();          // même texte → unités regroupées
+  const pied = [];                   // infanterie : une ligne pour la pile
   for(const a of avant){
     const p = a.p, n = !p.deleted && natureMouvement(p);
     if(!n) continue;
@@ -8745,11 +8746,24 @@ function compterMouvement(avant){
     if(recul) for(const r of ch) if(_estNb(r.cout)){ r.cout = _fois(r.cout, recul); r.lib += ` (marche arrière ×${recul})`; }
     ch.forEach((r, i) => e.push(Object.assign({pos: i === ch.length - 1 ? Q.cle : '·', vca,
       etat: d.etat, recul: d.recul}, r)));
-    const motion = veh && _enMotion(p, p.x, p.y, groupe);
-    const txt = `+${ch.map(r => _fmtCout(r.cout)).join('+')} ${n.unite}` + (recul ? ` en marche arrière (×${recul})` : '')
+    const pas = ch.map(r => _fmtCout(r.cout)).join('+');
+    if(!veh){ pied.push({p, pas}); continue; }
+    const motion = _enMotion(p, p.x, p.y, groupe);
+    const txt = `+${pas} ${n.unite}` + (recul ? ` en marche arrière (×${recul})` : '')
       + (demarrage ? ', démarrage +1' : '') + ` (${_texteCumul(p, n, motion)})`;
     if(!lignes.has(txt)) lignes.set(txt, []);
     lignes.get(txt).push(nomRapport(p));
+  }
+  // Infanterie : la pile qui bouge est comptée d'un bloc, sans le détail
+  // des unités. Son cumul est celui de l'unité qui a le plus dépensé
+  // (une unité ralentit la pile). Une unité seule garde son nom.
+  if(pied.length){
+    const cle = x => { const c = x.p.mvt.etapes.slice(1).map(e => e.cout);
+                       return c.includes('ALL') ? Infinity : _cMax(_mvtSomme(x.p)); };
+    const max = pied.reduce((a, x) => cle(x) > cle(a) ? x : a);
+    const pas = [...new Set(pied.map(x => x.pas))].join(' / ');
+    const qui = pied.length > 1 ? 'Pile en ' + lieu(max.p.x, max.p.y) : nomRapport(max.p);
+    rapport(`${qui} : +${pas} MF (cumul ${_mvtCumul(max.p)} MF)`);
   }
   for(const [txt, noms] of lignes) rapport(`${noms.join(', ')} : ${txt}`);
 }

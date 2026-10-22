@@ -2,7 +2,8 @@
 // escouade + chef fait dix pas sur un parcours varié ; à chaque pas, le
 // cumul annoncé doit égaler la somme des coûts recalculés hexagone par
 // hexagone. En cours de route : une autre unité bouge, un saut de deux
-// hexagones, un Undo puis la reprise, et la pile se sépare.
+// hexagones, un Undo puis la reprise, et la pile se sépare. Une pile est
+// annoncée d'un bloc, au cumul de l'unité qui a le plus dépensé.
 const nav = require('./navigateur.js');
 (async () => {
   const b = await nav.lancer();
@@ -78,6 +79,14 @@ const nav = require('./navigateur.js');
     await aller([ldr], seul);
     verifier(`chef seul → ${seul.getName()} (${cs.lib})`, cs.cout, dernier());
     journal.push(`escouade restée : cumul ${_mvtCumul(sq)}`);
+    // Une escouade fraîche rejoint le chef : la pile annonce une seule
+    // ligne, au cumul de l'unité qui a le plus dépensé (le chef).
+    const frais = await poser('5-4-8 SSsq', seul);
+    const suite = vois(seul).find(v => _estNb(coutEntree(m, seul, v, inf).cout));
+    const cf = coutEntree(m, seul, suite, inf);
+    await aller([ldr, frais], suite);
+    verifier(`pile chef + escouade fraîche → ${suite.getName()} (${cf.lib})`, cf.cout, dernier());
+    journal.push(`escouade fraîche : cumul ${_mvtCumul(frais)}`);
     return {journal, ecarts};
   });
   console.log(r.journal.join('\n'));

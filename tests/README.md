@@ -41,7 +41,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `qmark.js` | Unités dissimulées sorties d'une pile : « ? » neuf si l'ancien coiffe encore d'autres unités, sinon l'ancien suit |
 | `mf.js` | Décompte des MF / MP (table des terrains de VASL Tools) : coût de l'hexagone et cumul au chat et au log — bois, mur, pile avec chef, saut, montée, Undo, T-34 sur route (1 MP boutonné, ½ CE) et en bois (Z), Mark unmoved |
 | `mf-ravin.js` | Board 5 : ravin 2 MF, ravin-bois 4 MF (B19.4), sortie de ravin à coût doublé (B10.4), pont sur le ravin par la route (B3.4) |
-| `mf-cumul.js` | Board 5 : continuité du cumul de l'infanterie sur dix pas, avec une autre unité qui bouge, un Undo, un saut et une pile qui se sépare |
+| `mf-cumul.js` | Board 5 : continuité du cumul de l'infanterie sur dix pas (une ligne par pile, sans détail), avec une autre unité qui bouge, un Undo, un saut, une pile qui se sépare et une escouade fraîche qui rejoint le chef |
 | `mf-contournement.js` | Board 5 : trou d'obus « 1 ou 2 MF » (B2.4) ; contournement d'un bois à pied, côtés 1 à 4 : +1, +0, +1, +0 (A4.31) ; VBM (D2.3, D2.33) ; VCA 1 MP par hexspine, 2 dans les bois (D2.11) ; démarrage et arrêt, Motion (D2.12, D2.13) ; véhicule dans l'hexagone entré (D2.14) ; Undo |
 | `mf-start.js` | Board 5 : menu des véhicules — « Start/Stop » et « Reverse » avant « CA cw » ; marche arrière ×4, changement de sens en marche (arrêt + démarrage), Undo d'un Stop |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
