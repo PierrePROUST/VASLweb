@@ -8224,8 +8224,19 @@ function deplacer(liste, x, y){
   const portes = typeof _transportes === 'function' ? _transportes(liste) : new Set();
   const avant = liste.map(p => ({p, x: p.x, y: p.y, sous: _dessous(p), k: cle(p),
     lieu: typeof lieuDansPile === 'function' ? lieuDansPile(p) : null}));
-  let haut = Math.max(-1, ...pile(kArr).filter(q => !liste.includes(q)).map(q => q.ordre));
-  for(const p of liste){ p.x = pos.x; p.y = pos.y; p.ordre = ++haut; }
+  // Une unité arrive toujours au rez-de-chaussée (B23.421) : sous le
+  // marqueur d'étage le plus bas de la pile d'arrivée, s'il y en a un. Le
+  // joueur la fait ensuite monter en la plaçant sur le marqueur.
+  const deja = pile(kArr).filter(q => !liste.includes(q));
+  const iEtage = typeof _niveauCompteur === 'function' && !liste.some(q => _niveauCompteur(q) !== null)
+    ? deja.findIndex(q => _niveauCompteur(q) !== null) : -1;
+  if(iEtage >= 0){
+    for(const p of liste){ p.x = pos.x; p.y = pos.y; }
+    [...deja.slice(0, iEtage), ...liste, ...deja.slice(iEtage)].forEach((q, k) => { q.ordre = k; });
+  } else {
+    let haut = Math.max(-1, ...deja.map(q => q.ordre));
+    for(const p of liste){ p.x = pos.x; p.y = pos.y; p.ordre = ++haut; }
+  }
   for(const a of avant){
     _majSeg(a.p);
     _logCmd(`M/${a.p.uid}/${_carteJeu}/${a.p.x}/${a.p.y}/${_dessous(a.p)}`
@@ -8888,6 +8899,7 @@ function compterMouvement(avant, portes, local){
   const groupe = avant.map(a => a.p);
   const lignes = new Map();          // même texte → unités regroupées
   const pied = [];                   // infanterie : une ligne pour la pile
+  const alertes = [];
   for(const a of avant){
     const p = a.p, n = !p.deleted && natureMouvement(p);
     if(!n) continue;
@@ -8924,9 +8936,11 @@ function compterMouvement(avant, portes, local){
     let entree = null;
     if(!veh && a.lieu){
       const r = ch[ch.length - 1], arr = lieuDansPile(p);
-      entree = {base: r.cout, lieuDep: a.lieu, lieuArr: arr, A: P.hex, B: Q.hex};
+      entree = {base: r.cout, lieuDep: a.lieu, lieuArr: arr, A: P.hex, B: Q.hex, p, arrivee: true};
       const c = _coutEntreeLieu(m, entree);
+      delete entree.arrivee;
       if(c.cout !== r.cout){ r.cout = c.cout; r.lib += c.lib; }
+      if(c.alerte) alertes.push(`${nomRapport(p)} : ⚠️ ${c.alerte}`);
     }
     ch.forEach((r, i) => Object.assign(e[e.length - ch.length + i], {cout: r.cout, lib: r.lib}));
     if(entree) Object.assign(e[e.length - 1], {entree});
@@ -8950,6 +8964,7 @@ function compterMouvement(avant, portes, local){
     rapport(`${qui} : +${pas} MF (cumul ${_mvtCumul(max.p)} MF)`);
   }
   for(const [txt, noms] of lignes) rapport(`${noms.join(', ')} : ${txt}`);
+  for(const t of alertes) rapport(t);
 }
 
 // Changement d'orientation d'un véhicule (D2.11) : 1 MP par hexspine, 2
@@ -9211,8 +9226,9 @@ function lieuDansPile(p){
     const t = _fortifCompteur(s[j]);
     if(t){ fort = {q: s[j], type: t}; break; }
   }
-  if(niveau === 'toit') niveau = _hauteurBatiment(p) + 1;
-  return {niveau, fort, x: p.x, y: p.y};
+  const toit = niveau === 'toit';
+  if(toit) niveau = _hauteurBatiment(p) + 1;
+  return {niveau, toit, fort, x: p.x, y: p.y};
 }
 // Infanterie d'une pile et son emplacement.
 function _lieuxPile(s){
@@ -9220,23 +9236,63 @@ function _lieuxPile(s){
   for(const q of s){ const n = natureMouvement(q); if(n && n.unite === 'MF') r.set(q, lieuDansPile(q)); }
   return r;
 }
-const _memeLieu = (a, b) => a.niveau === b.niveau && (a.fort && a.fort.q) === (b.fort && b.fort.q);
+const _memeLieu = (a, b) => a.niveau === b.niveau && !!a.toit === !!b.toit && (a.fort && a.fort.q) === (b.fort && b.fort.q);
 const _nomNiveau = n => n === -1 ? 'cave' : n === 0 ? 'rez-de-chaussée' : `niveau ${n}`;
-const _decrireLieu = l => [l.fort ? 'sous ' + l.fort.type : 'hors fortification', l.niveau ? _nomNiveau(l.niveau) : ''].filter(Boolean).join(', ');
+const _nomEmplacement = l => l.toit ? 'toit' : _nomNiveau(l.niveau || 0);
+const _decrireLieu = l => [l.fort ? 'sous ' + l.fort.type : '', l.niveau || l.toit ? _nomEmplacement(l) : ''].filter(Boolean).join(', ') || 'rez-de-chaussée, hors fortification';
 // Ce qui change d'un emplacement à l'autre : « sous Foxhole », « niveau 1 »…
 function _decrireChangement(l1, l2){
   const r = [];
   if((l1.fort && l1.fort.q) !== (l2.fort && l2.fort.q))
     r.push(l2.fort ? 'sous ' + l2.fort.type : 'sort du ' + l1.fort.type);
-  if((l1.niveau || 0) !== (l2.niveau || 0)) r.push(_nomNiveau(l2.niveau || 0));
+  if((l1.niveau || 0) !== (l2.niveau || 0) || !!l1.toit !== !!l2.toit) r.push(_nomEmplacement(l2));
   return r.join(', ') || _decrireLieu(l2);
 }
-// Changement d'emplacement sur place : 1 MF par étage (B23.4), +1 MF pour
+// Changer d'étage dans l'hexagone h (B23.4) : 1 MF par niveau, dans un
+// hexagone d'escalier, imprimé ou inhérent. La carte LOS de VASL sait où
+// sont les escaliers : imprimés (1U3), inhérents à chaque hexagone d'une
+// maison à deux niveaux (1F1, B23.22) ; un bâtiment à étages n'en a pas
+// d'autres (1U2, B23.23) ; une maison d'un hexagone n'a pas d'étage (1D4,
+// B23.21). Le toit a un escalier inhérent vers l'étage du dessous (B23.8).
+// Un marqueur de niveau 3 (SSR) donne un escalier inhérent (B23.24). Une
+// usine n'a pas d'étage : son toit coûte 2 MF (1½ niveau) ou 3 MF (2½),
+// par un escalier imprimé ou un côté de route (B23.74, B23.87).
+// Rend {cout, alerte} ; le coût est compté même quand l'alerte est levée.
+function _coutNiveaux(h, l1, l2, s){
+  const n1 = l1.niveau || 0, n2 = l2.niveau || 0;
+  if(n1 === n2) return {cout: 0, alerte: ''};
+  const dn = Math.abs(n2 - n1), bas = Math.min(n1, n2), hautN = Math.max(n1, n2);
+  if(!h) return {cout: dn, alerte: ''};
+  const c = _terrainMvt(h);
+  const nomBat = c ? c.getName() : '';
+  const etages = [];
+  for(let l = h.getCenterLocation().getUpLocation(); l; l = l.getUpLocation()) etages.push(l.getName());
+  const nbEtages = etages.filter(x => /Level/.test(x)).length, toit = etages.some(x => /Rooftop/.test(x));
+  const niveau3 = (s || []).some(q => _niveauCompteur(q) === 3);
+  if(/Factory/.test(nomBat)){
+    const route = [0, 1, 2, 3, 4, 5].some(k => { const t = _coteDe(h, k); return t && t.isRoad(); });
+    return {cout: /2\.5/.test(nomBat) ? 3 : 2,
+            alerte: h.hasStairway() || route ? '' : "toit d'usine : par un escalier imprimé ou un côté de route (B23.87)"};
+  }
+  if(!c || !c.isBuilding()) return {cout: dn, alerte: "pas de bâtiment dans l'hexagone"};
+  if(!nbEtages && !niveau3 && hautN > 0) return {cout: dn, alerte: "pas d'étage dans ce bâtiment (B23.21)"};
+  const sommet = niveau3 ? Math.max(nbEtages, 3) : nbEtages;
+  if((l1.toit || l2.toit) && !toit) return {cout: dn, alerte: "pas de toit praticable ici (B23.8)"};
+  const etageMax = Math.max(l1.toit ? 0 : n1, l2.toit ? 0 : n2);
+  if(etageMax > sommet) return {cout: dn, alerte: `le niveau ${etageMax} n'existe pas ici`};
+  for(let k = Math.max(bas, 0); k < hautN; k++){
+    const versToit = toit && k + 1 === sommet + 1 && (l1.toit || l2.toit);
+    if(!versToit && !h.hasStairway() && !niveau3) return {cout: dn, alerte: "pas d'escalier dans cet hexagone (B23.23)"};
+  }
+  return {cout: dn, alerte: ''};
+}
+// Changement d'emplacement sur place : étages (ci-dessus), +1 MF pour
 // sortir d'une fortification, +1 MF pour y entrer (B27.4).
-function _coutLieu(l1, l2){
-  let c = Math.abs((l2.niveau || 0) - (l1.niveau || 0));
+function _coutLieu(l1, l2, h, s){
+  const nv = _coutNiveaux(h, l1, l2, s);
+  let c = nv.cout;
   if((l1.fort && l1.fort.q) !== (l2.fort && l2.fort.q)) c += (l1.fort ? 1 : 0) + (l2.fort ? 1 : 0);
-  return c;
+  return {cout: c, alerte: nv.alerte};
 }
 // Coût d'entrée d'un hexagone, emplacements de départ et d'arrivée
 // compris. Tranchées reliées (B27.54) : 1 MF en tout, quel que soit le
@@ -9246,13 +9302,22 @@ function _coutEntreeLieu(m, en){
   const {A, B} = en;
   if(l1.fort && l2.fort && l1.fort.type === 'Trench' && l2.fort.type === 'Trench' && A && B && _voisins(m, A, B))
     return {cout: B.getBaseLevelofHex() > A.getBaseLevelofHex() ? 2 : 1, lib: ' (tranchées reliées)'};
-  if(!_estNb(base)) return {cout: base, lib: ''};
-  let c = base, lib = '';
+  if(!_estNb(base)) return {cout: base, lib: '', alerte: ''};
+  let c = base, lib = '', alerte = '';
   if(l1.fort){ c = _plus(c, 1); lib += `, sortie du ${l1.fort.type}`; }
   if(l2.fort){ c = _plus(c, 1); lib += `, sous ${l2.fort.type}`; }
-  const dn = Math.abs((l2.niveau || 0) - (l1.niveau || 0));
-  if(dn){ c = _plus(c, dn); lib += `, niveau ${l2.niveau}`; }
-  return {cout: c, lib};
+  // À l'arrivée, l'unité est au rez-de-chaussée : son étage se règle en la
+  // replaçant, et c'est ce reclassement qui compte l'escalier, d'un étage
+  // de départ à l'étage d'arrivée (même étage d'un hexagone à l'autre du
+  // bâtiment : rien de plus, B23.421).
+  if(en.arrivee){
+    if(l1.niveau) alerte = `parti du ${_nomEmplacement(l1)} : le replacer à son étage (B23.421)`;
+  } else {
+    const nv = _coutNiveaux(B, l1, l2, B ? pile(cle(en.p)) : null);
+    if(nv.cout){ c = _plus(c, nv.cout); lib += `, ${l2.toit ? 'toit' : _nomNiveau(l2.niveau || 0)}`; }
+    alerte = nv.alerte;
+  }
+  return {cout: c, lib, alerte};
 }
 // Après un changement de rang (ici ou relu) : chaque unité dont
 // l'emplacement a changé paie. Juste après son entrée dans l'hexagone,
@@ -9273,14 +9338,16 @@ function compterLieux(avant, local){
       // Reclassement juste après l'entrée : l'entrée se recalcule.
       const garde = {cout: der.cout, lib: der.lib, lieuArr: der.entree.lieuArr};
       der.entree.lieuArr = l2;
+      der.entree.p = p;
       const c = _coutEntreeLieu(m, der.entree);
       der.cout = c.cout;
-      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : l'hexagone coûte ${_fmtCout(c.cout)} MF${c.lib.includes('tranchées') ? ' (tranchées reliées)' : ''}`;
+      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : l'hexagone coûte ${_fmtCout(c.cout)} MF${c.lib.includes('tranchées') ? ' (tranchées reliées)' : ''}`
+          + (c.alerte ? ` — ⚠️ ${c.alerte}` : '');
       if(!local) _histoJs(() => { der.cout = garde.cout; der.lib = garde.lib; der.entree.lieuArr = garde.lieuArr; });
     } else {
-      const c = _coutLieu(l1, l2);
-      e.push({pos, vca: null, cout: c, lib: _decrireChangement(l1, l2), etat: 'arret'});
-      txt = `${_decrireChangement(l1, l2)} +${c} MF`;
+      const c = _coutLieu(l1, l2, m ? _hexDe(m, p.x, p.y) : null, pile(cle(p)));
+      e.push({pos, vca: null, cout: c.cout, lib: _decrireChangement(l1, l2), etat: 'arret'});
+      txt = `${_decrireChangement(l1, l2)} +${c.cout} MF` + (c.alerte ? ` — ⚠️ ${c.alerte}` : '');
       if(!local){
         const et = e;
         _histoJs(() => { if(p.mvt && p.mvt.etapes === et) et.length = n0; if(!avait && p.mvt && p.mvt.etapes.length <= 1) delete p.mvt; });
