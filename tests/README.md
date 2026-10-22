@@ -35,6 +35,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `p4.js` | Panneau Pile : rang par glisser-déposer (un seul `M/`), Undo, Maj+clic, Ctrl+clic |
 | `ui.js` | Menus (Alt, flèches), Ctrl+K, onglet Dés, changement de profil à chaud |
 | `desbarre.js` | Dés en boutons sous la barre d'icônes (PC) |
+| `alerte.js` | SAN, Booby Trap et Sniper sur la ligne du jet (ASLChatter) : annonces soulignées, SAN ou piège en tête ; pas de SAN sur TK, CC, Rally ni de piège hors TC ; dr SA 1 et 2 (A14.3) |
 | `log500.js` | « ⏭ Fin du log » sur 500 coups : un seul rendu |
 | `p3.js` | Téléphone 360×740 : éventail, 3ᵉ pion d'une pile de 6, commande, sommet, déplacement seul |
 | `l3.js` | Tablette : fil LOS ancré, mode pose, feuille de commandes |

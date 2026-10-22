@@ -313,8 +313,8 @@ body:not([data-terminal=pc]) #chatEnvoi{display:block;min-width:44px;min-height:
 #journal .jet img{width:22px;height:22px}
 #journal .jet .cat{font-weight:600}
 #journal .jet .tot{font-weight:700;color:var(--accent)}
-#journal .jet .spe{color:#f0b040}
-#journal .jet .san{color:#ff5a5a;font-weight:700}
+#journal .jet .spe{color:#f0b040;text-decoration:underline}
+#journal .jet .spe .san{color:#ff5a5a;font-weight:700}
 #journal .jet .qui{color:var(--doux)}
 .sep{width:1px;align-self:stretch;background:var(--bord);margin:0 4px}
 #corps{flex:1;display:flex;min-height:0}
@@ -12147,23 +12147,36 @@ function afficherChat(msg){
   const q = document.createElement('span');
   q.className = 'qui'; q.textContent = qui;
   ligne.appendChild(q);
+  // Annonces soulignées après le joueur, comme ASLChatter : le SAN ou le
+  // piège en tête, puis les annonces de règle, séparés par des virgules.
+  let san = null, sp;
   if(type === 'DR'){
-    const san = (reste.match(/^(Axis\/Allied|Axis|Allied) (SAN|Booby Trap)/) || [])[0];
+    san = (reste.match(/^(Axis\/Allied|Axis|Allied) (SAN|Booby Trap)/) || [])[0];
     // ASLChatter ne signale pas le SAN sur Rally, TK et CC, ni les pièges hors TC.
-    const montre = san && (/Booby/.test(san) ? cat === 'TC' : !['TK','CC','Rally'].includes(cat));
-    if(montre){
-      const s = document.createElement('span');
-      s.className = 'san'; s.textContent = '🎯 ' + san;
-      ligne.appendChild(s);
+    if(san && !(/Booby/.test(san) ? cat === 'TC' : !['TK','CC','Rally'].includes(cat))) san = null;
+    sp = _annoncesDR(cat, v[0], v[1]);
+  } else sp = _annoncesdr(cat, v[0]);
+  if(san || sp.length){
+    const s = document.createElement('span');
+    s.className = 'spe';
+    if(san){
+      const e = document.createElement('span');
+      e.className = 'san'; e.textContent = san;
+      s.appendChild(e);
+      if(sp.length) s.append(', ');
     }
-    const sp = _annoncesDR(cat, v[0], v[1]);
-    if(sp.length){
-      const s = document.createElement('span');
-      s.className = 'spe'; s.textContent = sp.join(', ');
-      ligne.appendChild(s);
-    }
+    s.append(sp.join(', '));
+    ligne.appendChild(s);
   }
   ajouterLigne(ligne);
+}
+
+// dr d'activation du Sniper (A14.3), comme ASLChatter.
+function _annoncesdr(cat, d){
+  if(cat !== 'SA') return [];
+  if(d === 1) return ['Eliminates SMC, Dummy stack, Sniper; Stuns & Recalls CE crew; breaks MMC & Inherent crew of certain vehicles; immobilizes unarmored vehicle (A14.3)'];
+  if(d === 2) return ['Eliminates Dummy stack; Wounds SMC; Stuns CE crew; pins MMC, Inherent crew of certain vehicles, Sniper (A14.3)'];
+  return [];
 }
 
 function _annoncesDR(cat, a, b){
