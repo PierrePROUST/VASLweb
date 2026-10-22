@@ -7658,6 +7658,9 @@ function importerPions(texte, label, annexes){
   rendreToutes();
   majBoutons();
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
+  // Le décompte des MF / MP des coups relus a besoin du terrain : la
+  // carte LOS se construit dès maintenant.
+  if(_etapes.length && typeof carteLOS === 'function') carteLOS();
 }
 
 // ═══ ANNULER — le bouton Undo de BasicLogger ═══
@@ -8044,8 +8047,14 @@ function avancerLog(muet){
   _instantanes[_logPos].log = _logEnr ? {enr: _logEnr, n: _logEnr.length} : null;
   _instantanes[_logPos].histo = _histo.length;
   const photo = _photo();
+  // Décompte des MF / MP du coup relu : cumuls mémorisés pour un recul,
+  // positions relevées avant le coup.
+  _instantanes[_logPos].mvt = typeof _photoMvt === 'function' ? _photoMvt() : null;
+  const avantMvt = typeof _avantRelecture === 'function' ? _avantRelecture(etape) : null;
   _relecture = true;
   try { rejouerLog(etape); } finally { _relecture = false; }
+  if(avantMvt) try { compterRelecture(etape, avantMvt); }
+               catch(e){ chatLog(`⚠️ Décompte des MF / MP impossible : ${e.message}`); }
   // BasicLogger.step : le coup relu passe par sendAndLog, il entre donc
   // dans le log en cours et part chez les autres joueurs.
   _actionOuverte = false;
@@ -8073,6 +8082,7 @@ function reculerLog(muet){
   const photo = _photo();
   const snap = _instantanes[_logPos];
   _restaurer(snap);
+  if(snap.mvt && typeof _restaurerMvt === 'function') _restaurerMvt(snap.mvt);
   if(snap.histo !== undefined){ _histo.length = Math.min(snap.histo, _histo.length); majUndo(); }
   // VASSAL ne recule pas dans une relecture : ici, le coup relu sort du
   // log en cours. Revenir avant le début du log le fait repartir de là.
@@ -8431,19 +8441,23 @@ function natureMouvement(p){
   const te = _typeEtEtat(p.seg), S = te ? decoderTraits(te.etat) : [];
   const gpid = ((S[S.length - 1] || '').split(';')[3] || '').trim();
   // Pièce d'une sauvegarde faite avec un module plus ancien : son type de
-  // véhicule manque, la définition actuelle du même PieceSlot le donne.
-  if(!pr.vehicleType && gpid && _bdd && _bdd.parGpid){
+  // véhicule, voire son type de pion, manque ; la définition actuelle du
+  // même PieceSlot (gpid) les donne.
+  if((!pr.vehicleType || !pr.CounterType) && gpid && _bdd && _bdd.parGpid){
     const x = _bdd.parGpid.get(gpid);
     if(x){
-      if(!_bdd._typeVehicule) _bdd._typeVehicule = new Map();
-      if(!_bdd._typeVehicule.has(gpid)){
-        let v = null;
-        try { v = (_proprietes(_developperPrototypes(_splitTypeState(x.cmd), 0)) || {}).vehicleType || null; } catch(e){}
-        _bdd._typeVehicule.set(gpid, v);
+      if(!_bdd._typesPion) _bdd._typesPion = new Map();
+      if(!_bdd._typesPion.has(gpid)){
+        let v = {};
+        try { v = _proprietes(_developperPrototypes(_splitTypeState(x.cmd), 0)) || {}; } catch(e){}
+        _bdd._typesPion.set(gpid, {vehicleType: v.vehicleType || null, CounterType: v.CounterType || null});
       }
-      if(_bdd._typeVehicule.get(gpid)) pr.vehicleType = _bdd._typeVehicule.get(gpid);
+      const t = _bdd._typesPion.get(gpid);
+      if(!pr.vehicleType && t.vehicleType) pr.vehicleType = t.vehicleType;
+      if(!pr.CounterType && t.CounterType) pr.CounterType = t.CounterType;
     }
   }
+  if(!pr.CounterType && pr.DBCounterType) pr.CounterType = pr.DBCounterType;
   let n = null;
   if(pr.vehicleType){
     // Boutonné : VASL l'écrit dans le nom courant (« … BU », sinon « CE »).
@@ -8824,11 +8838,15 @@ function _texteCumul(p, n, motion){
 const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
 
 // Après deplacer() : coût de l'hexagone entré et cumul, au chat et au log.
-function compterMouvement(avant, portes){
+function compterMouvement(avant, portes, local){
   const m = _losPrete;
   // Carte LOS pas encore construite : le décompte attend qu'elle le soit.
-  // Sans données de terrain (board inconnu), rien n'est compté.
-  if(!m){ carteLOS().then(r => { if(_losPrete) compterMouvement(avant, portes); }); return; }
+  // Sans données de terrain (board inconnu), rien n'est compté. Pendant
+  // une relecture, les positions auront changé : le coup n'est pas compté.
+  if(!m){ if(!local) carteLOS().then(r => { if(_losPrete) compterMouvement(avant, portes); }); return; }
+  // local : coup relu d'un log, la ligne s'affiche au chat sans entrer
+  // dans le log, qui contient déjà le coup.
+  const rapport = local ? t => afficherChat('* ' + t) : window.rapport;
   portes = portes || new Set();
   const groupe = avant.map(a => a.p);
   const lignes = new Map();          // même texte → unités regroupées
@@ -9063,6 +9081,38 @@ function itemsTransport(p){
   if(_estPassager(p)) return [cmd('Unload', 'unload')];
   const vehicule = pile(cle(p)).some(q => { const k = natureMouvement(q); return k && k.unite === 'MP'; });
   return vehicule ? [cmd('Load', 'load')] : [];
+}
+
+// ── Relecture d'un log : les coups relus (M/) sont comptés comme ceux
+// joués ici. Un changement de phase relu (« … Turn 2 - MPh », ou la
+// remise à zéro de ce décompte) remet les cumuls à zéro.
+const _M_RELU = /^M\/([^\/]+)\//;
+function _avantRelecture(etape){
+  const avant = [];
+  for(const c of etape){
+    const k = _M_RELU.exec(c);
+    if(!k) continue;
+    // VASSAL déplace une pile entière d'un seul M/ portant son id.
+    const ids = parUid(k[1]) ? [k[1]] : (_pilesVassal.get(k[1]) || []);
+    for(const id of ids){
+      const p = parUid(id);
+      if(p && !p.deleted && !avant.some(a => a.p === p)) avant.push({p, x: p.x, y: p.y});
+    }
+  }
+  return {avant, portes: _transportes(avant.map(a => a.p))};
+}
+function compterRelecture(etape, {avant, portes}){
+  if(etape.some(c => /^CHAT\* .*(Turn \d+ - \w+|Mark unmoved : MF et MP)/.test(c)))
+    for(const p of pions) delete p.mvt;
+  if(avant.length) compterMouvement(avant, portes, true);
+}
+// Cumuls de toute la carte, copiés pour un recul dans la relecture.
+function _photoMvt(){
+  return pions.filter(p => p.mvt).map(p => [p, p.mvt.etapes.map(e => Object.assign({}, e))]);
+}
+function _restaurerMvt(photo){
+  for(const p of pions) delete p.mvt;
+  for(const [p, etapes] of photo) p.mvt = {etapes: etapes.map(e => Object.assign({}, e))};
 }
 
 // Après Undo : chaque chemin revient à la position et au VCA de l'unité.
