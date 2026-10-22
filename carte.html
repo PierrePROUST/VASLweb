@@ -8816,14 +8816,15 @@ function commandeVehicule(p, quoi){
     if(!avait && p.mvt && p.mvt.etapes.length <= 1) delete p.mvt;
   });
 }
-// Entrées du menu : Start ou Stop selon l'état, et Reverse.
+// Entrées du menu : Start ou Stop selon l'état, et Reverse. Les coûts
+// ne figurent pas dans le menu : ils sont annoncés au chat.
 function itemsVehicule(p){
   const n = natureMouvement(p);
   if(!n || n.unite !== 'MP') return [];
   const d = p.mvt ? _etatMvt(p.mvt.etapes) : {etat: 'arret', recul: false};
   const cmd = (nom, quoi) => ({nom, cmd: {nom, faire: ({effets}) => effets.push(() => commandeVehicule(p, quoi))}});
-  const items = [d.etat === 'marche' ? cmd('Stop (1 MP)', 'stop') : cmd('Start (1 MP)', 'start')];
-  if(_MULT_RECUL[n.col]) items.push(d.recul ? cmd('Marche avant', 'reverse') : cmd(`Reverse (×${_MULT_RECUL[n.col]})`, 'reverse'));
+  const items = [d.etat === 'marche' ? cmd('Stop', 'stop') : cmd('Start', 'start')];
+  if(_MULT_RECUL[n.col]) items.push(d.recul ? cmd('Marche avant', 'reverse') : cmd('Reverse', 'reverse'));
   return items;
 }
 
