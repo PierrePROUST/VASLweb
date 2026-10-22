@@ -8140,6 +8140,9 @@ function deplacer(liste, x, y){
   // dans la liste pour se poser au sommet, avec son propre « M/ ».
   const sousQ = _qmarkDesPartants(liste, kArr);
   liste = liste.concat(_qmarkQuiSuivent(liste, kArr, sousQ));
+  // Passagers et Riders emportés par leur véhicule (D6.3) : relevés avant
+  // que la pile ne change.
+  const portes = typeof _transportes === 'function' ? _transportes(liste) : new Set();
   const avant = liste.map(p => ({p, x: p.x, y: p.y, sous: _dessous(p), k: cle(p)}));
   let haut = Math.max(-1, ...pile(kArr).filter(q => !liste.includes(q)).map(q => q.ordre));
   for(const p of liste){ p.x = pos.x; p.y = pos.y; p.ordre = ++haut; }
@@ -8165,7 +8168,7 @@ function deplacer(liste, x, y){
   new Set([...avant.map(a => a.k), kArr]).forEach(k => { ajusterDissimulation(k); rendrePile(k); });
   selectionnerPile(kArr);
   // MF / MP dépensés, d'après le terrain traversé.
-  compterMouvement(avant);
+  compterMouvement(avant, portes);
   chatLog(`➡️ ${liste.length > 1 ? liste.length + ' pions' : liste[0].nom} → ${pos.label || kArr}`);
 }
 
@@ -8354,7 +8357,9 @@ function natureMouvement(p){
     n = {col: _COL_VEH[pr.vehicleType] || null, unite: 'MP', mp: MP_VEHICULES[gpid] || null,
          bu: /(^|\s)BU(\s|$)/.test(lirePiece(p.seg).nom || '')};
   } else if(pr.CounterType === 'unit' && (/^\d{1,2}[-+]\d$/.test(nom) || /^\d+-\d+-\d+/.test(nom) || /\bhero\b/i.test(nom)))
-    n = {col: 'inf', unite: 'MF', mp: null};
+    // Allocation de MF (A4.1) : 6 pour un chef ou un héros, 4 sinon ; elle
+    // ne sert qu'à l'embarquement (D6.4).
+    n = {col: 'inf', unite: 'MF', mp: null, mf: /^\d{1,2}[-+]\d$/.test(nom) || /\bhero\b/i.test(nom) ? 6 : 4};
   p._natMvt = {seg: p.seg, n};
   return n;
 }
@@ -8715,11 +8720,12 @@ function _texteCumul(p, n, motion){
 const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
 
 // Après deplacer() : coût de l'hexagone entré et cumul, au chat et au log.
-function compterMouvement(avant){
+function compterMouvement(avant, portes){
   const m = _losPrete;
   // Carte LOS pas encore construite : le décompte attend qu'elle le soit.
   // Sans données de terrain (board inconnu), rien n'est compté.
-  if(!m){ carteLOS().then(r => { if(_losPrete) compterMouvement(avant); }); return; }
+  if(!m){ carteLOS().then(r => { if(_losPrete) compterMouvement(avant, portes); }); return; }
+  portes = portes || new Set();
   const groupe = avant.map(a => a.p);
   const lignes = new Map();          // même texte → unités regroupées
   const pied = [];                   // infanterie : une ligne pour la pile
@@ -8728,6 +8734,13 @@ function compterMouvement(avant){
     if(!n) continue;
     const P = _posMvt(m, a.x, a.y), Q = _posMvt(m, p.x, p.y);
     if(P.cle === Q.cle || !Q.hex) continue;
+    // Passager ou Rider : son véhicule paie, lui ne dépense rien (D6.3).
+    // L'étape garde sa position pour la suite du décompte.
+    if(portes.has(p)){
+      const e = _mvtDepart(p, P.cle, null);
+      e.push({pos: Q.cle, vca: null, cout: 0, lib: 'transporté', etat: 'arret'});
+      continue;
+    }
     const veh = n.unite === 'MP';
     const vca = _vcaPion(p);
     const e = _mvtDepart(p, P.cle, vca);
@@ -8842,6 +8855,110 @@ function itemsVehicule(p){
   const items = [cmd('Start/Stop', d.etat === 'marche' ? 'stop' : 'start')];
   if(_MULT_RECUL[n.col]) items.push(d.recul ? cmd('Marche avant', 'reverse') : cmd('Reverse', 'reverse'));
   return items;
+}
+
+// ── Passagers et Riders (D6). Dans VASL, l'infanterie transportée est
+// posée au-dessus de son véhicule ; en dessous, elle est à pied (D6.3).
+// Une infanterie arrivée à pied pendant la phase est posée au sommet par
+// le déplacement : elle n'est passagère qu'après « Load ».
+function _vehiculeSous(p){
+  const s = pile(cle(p));
+  for(let i = s.indexOf(p) - 1; i >= 0; i--){
+    const n = natureMouvement(s[i]);
+    if(n && n.unite === 'MP') return s[i];
+  }
+  return null;
+}
+function _estPassager(p){
+  const n = natureMouvement(p);
+  if(!n || n.unite !== 'MF' || !_vehiculeSous(p)) return false;
+  const e = p.mvt && p.mvt.etapes;
+  if(!e || e.length < 2) return true;               // déjà à bord au début de la phase
+  return /^(embarquement|transporté)$/.test(e[e.length - 1].lib || '');
+}
+// Infanterie emportée par un véhicule du même groupe.
+function _transportes(liste){
+  const r = new Set();
+  for(const p of liste) if(_estPassager(p) && liste.includes(_vehiculeSous(p))) r.add(p);
+  return r;
+}
+const _mfDepenses = p => p.mvt ? _cMax(_mvtSomme(p)) : 0;
+const _quartMP = mp => Math.ceil(mp / 4);           // un quart de l'allocation, FRU
+
+// Load (D6.4) : 1 MF pour monter ; le véhicule, qui doit être arrêté et
+// n'avoir pas bougé, garde un quart de ses MP par MF restant à
+// l'infanterie (celle qui a le plus dépensé) : le reste est compté comme
+// dépensé. Unload (D6.5) : un quart des MP par pile qui descend ;
+// l'infanterie paie 1 MF et a déjà dépensé 1 MF par quart des MP du
+// véhicule utilisé avant (FRU). Undo annule l'un et l'autre.
+function commandeTransport(p, quoi){
+  const n = natureMouvement(p);
+  if(!n || n.unite !== 'MF') return;
+  const m = _losPrete;
+  const posDe = q => m ? _posMvt(m, q.x, q.y).cle : lieu(q.x, q.y);
+  const s = pile(cle(p));
+  const v = quoi === 'unload' ? _vehiculeSous(p)
+          : s.filter(q => { const k = natureMouvement(q); return k && k.unite === 'MP'; }).pop();
+  if(!v) return;
+  const nv = natureMouvement(v);
+  const avaitP = !!p.mvt, avaitV = !!v.mvt;
+  const eP = _mvtDepart(p, posDe(p), null), nP = eP.length;
+  const eV = _mvtDepart(v, posDe(v), _vcaPion(v)), nV = eV.length;
+  const dV = _etatMvt(eV);
+  const ajoutV = (cout, lib) => eV.push({pos: posDe(v), vca: _vcaPion(v), cout, lib, byp: dV.byp, etat: dV.etat, recul: dV.recul});
+  const alertes = [];
+  if(dV.etat === 'marche') alertes.push('véhicule en marche');
+  let txtP, txtV = null;
+  if(quoi === 'load'){
+    if(eV.some((x, i) => i > 0 && x.pos !== eV[0].pos)) alertes.push('véhicule déjà déplacé');
+    eP.push({pos: posDe(p), vca: null, cout: 1, lib: 'embarquement', etat: 'arret'});
+    txtP = `Load +1 MF`;
+    // Rang : juste au-dessus du véhicule.
+    if(s.indexOf(p) < s.indexOf(v)) deplacerDansPile(p, s.indexOf(v));
+    if(nv.mp){
+      const reste = Math.max(0, (n.mf || 4) - _mfDepenses(p));
+      const garde = Math.min(nv.mp, _quartMP(nv.mp) * reste);
+      const deja = eV.filter(x => x.lib === 'chargement').reduce((t, x) => t + x.cout, 0);
+      const cout = Math.max(0, nv.mp - garde - deja);
+      if(cout){ ajoutV(cout, 'chargement'); txtV = `chargement +${_fmtMF(cout)} MP, ${_fmtMF(garde)} MP gardés`; }
+    } else txtV = 'chargement : MP du véhicule inconnus';
+  } else {
+    const depV = _cMax(_mvtSomme(v));
+    if(nv.mp && depV > nv.mp * 3 / 4) alertes.push('plus des 3/4 des MP dépensés');
+    // Un quart des MP par pile qui descend : une fois par coup.
+    if(nv.mp && v._dechargeNo !== _actionNo){
+      ajoutV(_quartMP(nv.mp), 'déchargement');
+      txtV = `déchargement +${_quartMP(nv.mp)} MP`;
+    }
+    const quarts = nv.mp ? Math.ceil(depV / (nv.mp / 4)) : 0;
+    const avant = _mfDepenses(p), cible = Math.max(avant, quarts) + 1;
+    eP.push({pos: posDe(p), vca: null, cout: cible - avant, lib: 'débarquement', etat: 'arret'});
+    txtP = `Unload +${_fmtMF(cible - avant)} MF` + (quarts > avant ? ` (dont ${quarts - avant} pour le trajet en véhicule)` : '');
+    // Rang : sous le véhicule, à pied.
+    deplacerDansPile(p, pile(cle(p)).indexOf(v));
+  }
+  const alerte = alertes.length ? ` — ⚠️ ${alertes.join(', ')} (D6.${quoi === 'load' ? 4 : 5})` : '';
+  rapport(`${nomRapport(p)} : ${txtP} (cumul ${_mvtCumul(p)} MF)${alerte}`);
+  if(txtV) rapport(`${nomRapport(v)} : ${txtV} (${_texteCumul(v, nv, _enMotion(v, v.x, v.y, [v]))})`);
+  if(quoi === 'unload') v._dechargeNo = _actionNo;
+  const etP = eP, etV = eV;
+  _histoJs(() => {
+    if(p.mvt && p.mvt.etapes === etP) etP.length = nP;
+    if(!avaitP && p.mvt && p.mvt.etapes.length <= 1) delete p.mvt;
+    if(v.mvt && v.mvt.etapes === etV) etV.length = nV;
+    if(!avaitV && v.mvt && v.mvt.etapes.length <= 1) delete v.mvt;
+    v._dechargeNo = null;
+  });
+}
+// Entrées du menu de l'infanterie : Load s'il y a un véhicule dans la
+// pile, Unload pour un passager.
+function itemsTransport(p){
+  const n = natureMouvement(p);
+  if(!n || n.unite !== 'MF') return [];
+  const cmd = (nom, quoi) => ({nom, cmd: {nom, faire: ({effets}) => effets.push(() => commandeTransport(p, quoi))}});
+  if(_estPassager(p)) return [cmd('Unload', 'unload')];
+  const vehicule = pile(cle(p)).some(q => { const k = natureMouvement(q); return k && k.unite === 'MP'; });
+  return vehicule ? [cmd('Load', 'load')] : [];
 }
 
 // Après Undo : chaque chemin revient à la position et au VCA de l'unité.
@@ -9935,6 +10052,9 @@ function arbreCommandes(p){
     };
     if(!placer(racine.items)) racine.items.push(...ajoutes);
   }
+  // Infanterie : Load / Unload en tête du menu (D6.4, D6.5).
+  const transport = !accesRefuse(p) && typeof itemsTransport === 'function' ? itemsTransport(p) : [];
+  if(transport.length) racine.items.unshift(...transport);
   return {titre: p.el.title || p.nom, items: racine.items,
           vide: visibles.length ? null : accesRefuse(p) ? 'Aucune commande — pion masqué par un autre joueur' : 'Aucune commande'};
 }
