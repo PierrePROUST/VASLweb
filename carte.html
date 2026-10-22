@@ -8557,26 +8557,64 @@ function _obstacleMvt(h){
   return !!c && (c.isBuilding() || c.getLOSCategory() === 'WOODS');
 }
 
+// Terrain d'un hexagone traversé par une route ou un chemin. La carte LOS
+// met au centre ce que touche le point central : la route de 5I4, le
+// chemin (compté terrain ouvert) de 24W7, alors que ces hexagones sont des
+// bois. Si le centre est ouvert, une route ou un chemin et qu'un autre
+// terrain de la table couvre au moins le quart de l'hexagone, c'est lui
+// qui compte pour le mouvement. Mis en cache.
+function _autreTerrainMvt(h){
+  if('_autreMvt' in h) return h._autreMvt;
+  const c = h.getCenterLocation().getTerrain();
+  h._autreMvt = null;
+  if(c && (c.isOpen() || c.isRoad() || /Path|Track/.test(c.getName())) && !c.isDepression()){
+    const compte = new Map();
+    let total = 0;
+    h._chercherPixel(t => {
+      total++;
+      if(t && !t.isOpen() && !t.isRoad() && !t.isHexsideTerrain() && !t.isDepression()
+         && !t.isBridge() && !/Path|Track/.test(t.getName()) && _ligneTerrain(t))
+        compte.set(t, (compte.get(t) || 0) + 1);
+      return false;
+    });
+    let best = null, n = 0;
+    for(const [t, k] of compte) if(k > n){ best = t; n = k; }
+    if(best && n >= total / 4) h._autreMvt = best;
+  }
+  return h._autreMvt;
+}
+const _coteDe = (h, s) => h.getHexsideLocation(s) && h.getHexsideLocation(s).getTerrain();
+
 // Coût d'entrée dans b depuis a, voisins : {cout, lib}.
 function coutEntree(m, a, b, n){
   const col = n.col, veh = n.unite === 'MP';
   if(!col) return {cout: null, lib: '?'};
   const s = _coteVers(m, a, b);
-  const c = _terrainMvt(b);
+  const centre = _terrainMvt(b), autre = _autreTerrainMvt(b);
+  const c = autre || centre;
   const ligne = _ligneTerrain(c);
   let lib = c ? c.getName() : 'Open Ground';
-  // Par un côté de route, d'une route (ou d'un pont) à l'autre : coût de
-  // la route (B3.4, B3.41) ; le drapeau « R » d'un terrain traversé par
-  // la route y renvoie aussi.
-  const parRoute = s >= 0 && _routeMvt(a)
-    && a.getHexsideLocation(s).getTerrain() && a.getHexsideLocation(s).getTerrain().isRoad();
-  const routeB = _routeMvt(b);
+  // Côté de route (B3.4, B3.41), lu de part et d'autre. L'infanterie paie
+  // la route OU l'autre terrain de l'hexagone, à son choix (A4.132) :
+  // bois traversé par une route, 1 ou 2 MF. Un véhicule prend la route.
+  const cs = s >= 0 ? _coteDe(a, s) : null, cb = s >= 0 ? _coteDe(b, (s + 3) % 6) : null;
+  const parRoute = s >= 0 && ((cs && cs.isRoad()) || (cb && cb.isRoad()));
+  const routeB = _routeMvt(b) || parRoute;
   const caseC = ligne && _casesTEC(ligne, col);
   const tarifRoute = parRoute && (routeB || _parRouteTEC(caseC));
+  // Chemin (B13.6) : dans un bois ou des broussailles, entrer par un côté
+  // de chemin coûte 1 MF (2 à cheval) au lieu de 2 (4) ; on reste dans le
+  // bois.
+  const parChemin = !tarifRoute && s >= 0 && ((cs && /Path/.test(cs.getName())) || (cb && /Path/.test(cb.getName())))
+    && /^ETO:(Woods|Woods-Pine|Woods-Light|Brush \(½\))$/.test(ligne || '') && (col === 'inf' || col === 'cav');
+  const autreCout = caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp}) : null;
   let cout = tarifRoute
     ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu})
-    : caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp}) : null;
+    : parChemin ? (col === 'inf' ? 1 : 2) : autreCout;
+  if(tarifRoute && !veh && autre && _estNb(cout) && _estNb(autreCout) && _cMax(autreCout) > _cMax(cout))
+    cout = _cFaire(_cMin(cout), _cMax(autreCout));
   if(parRoute && !(c && c.isRoad())) lib += routeB && b._pontMvt ? ' (pont)' : ' (route)';
+  if(parChemin) lib += ' (chemin)';
   const cotHex = cout;
   // Dépression : le ravin, le ruisseau ou le wadi coûte en plus du
   // terrain de l'hexagone (« +COT »). À pied : ravin 2 MF (B19.4),

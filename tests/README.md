@@ -48,6 +48,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-transport.js` | Board 5 : passagers et Riders — entrée à pied (pas passagère), Load (D6.4 : 1 MF, ¼ des MP gardés par MF restant), transport sans MF (D6.3), Unload (D6.5 : ¼ des MP, MF du trajet en véhicule), Undo, nouvelle phase à bord |
 | `mf-horscarte.js` | Board 5 : unité hors carte qui entre sur le board (coût du premier hexagone, le décompte ne plante plus) ; chef reconnu par son nom affiché |
 | `mf-relecture.js` | Board 5 : décompte des coups relus d'un .vlog (M/ d'un pion, M/ d'une pile VASSAL), au chat sans entrer dans le log ; changement de phase relu ; recul |
+| `mf-route.js` | Boards 5 et 24 : bois traversé d'une route (5I4 : 1 ou 2 MF par la route, 2 par le bois ; A4.132, B13.4), chemin (24W8 : 1 MF, B13.6), bois traversé d'un chemin (24W7) |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
