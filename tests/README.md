@@ -41,6 +41,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `qmark.js` | Unités dissimulées sorties d'une pile : « ? » neuf si l'ancien coiffe encore d'autres unités, sinon l'ancien suit |
 | `mf.js` | Décompte des MF / MP (table des terrains de VASL Tools) : coût de l'hexagone et cumul au chat et au log — bois, mur, pile avec chef, saut, montée, Undo, T-34 sur route (1 MP boutonné, ½ CE) et en bois (Z), Mark unmoved |
 | `mf-ravin.js` | Board 5 : ravin 2 MF, ravin-bois 4 MF (B19.4), sortie de ravin à coût doublé (B10.4), pont sur le ravin par la route (B3.4) |
+| `mf-contournement.js` | Board 5 : trou d'obus « 1 ou 2 MF » (B2.4), contournement d'un bois à pied (A4.3) et en VBM (D2.3, D2.33), VCA 1 MP par hexspine, 2 dans les bois (D2.11), Undo d'une rotation |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |

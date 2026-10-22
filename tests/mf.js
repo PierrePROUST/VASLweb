@@ -34,7 +34,7 @@ const {ouvrir} = require('./commun.js');
     if(rteB){ await aller([sq], rteB); r.boisRoute = msg(); }
     // 3. Undo : le cumul revient à l'hexagone retrouvé.
     annuler();
-    r.undo = sq.mvt && sq.mvt.couts.join('+');
+    r.undo = sq.mvt && sq.mvt.etapes.slice(1).map(e => e.cout).join('+');
     // 4. Mur vers un bâtiment de pierre : 1+COT (B9).
     let mur = null;
     for(const h of hexes) for(let s = 0; s < 6 && !mur; s++)

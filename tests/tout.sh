@@ -26,7 +26,7 @@ compare "gestes à la souris (M/)" "node '$ICI/jeu.js' ref.html jeu_ref.json" "n
 compare "raccourci sur une pile (D/)" "node '$ICI/touche.js' ref.html" "node '$ICI/touche.js' '$CARTE'"
 compare "segment CHAT au PC" "node '$ICI/chat1.js' ref.html" "node '$ICI/chat1.js' '$CARTE'"
 echo "— Scénarios (résultats à lire)"
-for t in pince doigt pc p4 ui pcchat desbarre alt log500 p3 l3 p5 vues chat0 chat2 chat3 chat4 qmark mf mf-ravin; do
+for t in pince doigt pc p4 ui pcchat desbarre alt log500 p3 l3 p5 vues chat0 chat2 chat3 chat4 qmark mf mf-ravin mf-contournement; do
   echo "· $t"; node "$ICI/$t.js" "$CARTE" 2>&1 | tr -d '\n' | cut -c1-600; echo
 done
 echo "· chat1 (téléphone)"; node "$ICI/chat1.js" "$CARTE" mobile
