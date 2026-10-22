@@ -370,8 +370,8 @@ body.maj .pion.immob{pointer-events:auto}
 .pastille{position:absolute;z-index:6000;pointer-events:none;transform:translate(-50%,-50%) scale(var(--zinv,1));
   background:#1e1e1e;color:var(--texte);border:1px solid var(--bord);border-radius:9px;padding:0 5px;
   font:600 11px/16px system-ui,sans-serif;white-space:nowrap}
-.loupe{position:fixed;z-index:9990;width:90px;pointer-events:none;text-align:center}
-.loupe canvas{width:90px;height:90px;border-radius:50%;border:2px solid var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.7);display:block}
+.loupe{position:fixed;z-index:9990;pointer-events:none;text-align:center}
+.loupe canvas{border-radius:50%;border:2px solid var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.7);display:block}
 .loupe span{display:inline-block;margin-top:3px;background:#000;color:#fff;font:600 12px/16px system-ui,sans-serif;
   padding:0 5px;border-radius:3px;white-space:nowrap}
 .lasso{position:fixed;z-index:9400;pointer-events:none;border:2px solid var(--accent);background:rgba(217,164,65,.12)}
@@ -10722,24 +10722,40 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
 // Un glissé armé dans une liste : le doigt ne la fait plus défiler.
 document.addEventListener('touchmove', e => { if(_glisse && _glisse.actif()) e.preventDefault(); }, {passive: false});
 
-// ── Loupe de dépôt : 90 px, décalée au-dessus du doigt ; la zone des
-// boards et les faces des pions autour du point visé, grossies, et le nom
-// de l'ancrage.
-const LOUPE = 90, LOUPE_GROS = 1.8;
+// ── Loupe de dépôt : un disque décalé au-dessus du doigt, qui montre la
+// zone des boards et les faces des pions sur un rayon de 2 hexagones
+// autour de l'ancrage visé (2,5 hexagones de bord à bord, pour voir les
+// hexagones du second rang en entier), et le nom de l'ancrage.
+const LOUPE = 200, LOUPE_RAYON_HEX = 2.5;
+// Hauteur d'un hexagone (pixels natifs) du board sous le point : un board
+// deluxe a des hexagones trois fois plus grands que les 64,5 px standard.
+function _hautHexAu(x, y){
+  for(const b of _losBoards || []){
+    const L = (b.px || 0) + BOARD_MARGIN, T = (b.py || 0) + BOARD_MARGIN;
+    if(x < L || y < T || x > L + (b.dispW || 0) || y > T + (b.dispH || 0)) continue;
+    const g = geoBoard(b);
+    if(g && g.hh) return g.hh;
+  }
+  return 2 * HEX_HY;
+}
 function dessinerLoupe(cx, cy, a, rects){
   let l = document.getElementById('loupe');
   if(!a){ cacherLoupe(); return; }
+  // Diamètre à l'écran : 200 px, moins sur un écran étroit.
+  const d = Math.min(LOUPE, window.innerWidth - 16);
   if(!l){
     l = document.createElement('div');
     l.id = 'loupe'; l.className = 'loupe';
-    l.innerHTML = `<canvas width="${LOUPE * 2}" height="${LOUPE * 2}"></canvas><span></span>`;
+    l.innerHTML = `<canvas width="${d * 2}" height="${d * 2}"></canvas><span></span>`;
+    l.style.width = d + 'px';
+    l.querySelector('canvas').style.width = l.querySelector('canvas').style.height = d + 'px';
     document.body.appendChild(l);
   }
   const cv = l.querySelector('canvas'), g = cv.getContext('2d');
-  // Point visé, en pixels de #mapInner, et demi-côté de la zone montrée.
-  const px = a.x * SC, py = a.y * SC;
-  // La vue grossie LOUPE_GROS fois, sans montrer plus de deux hexagones.
-  const cote = Math.min(LOUPE / LOUPE_GROS / zoom, 4 * HEX_HX * SC);
+  // Point visé et côté de la zone montrée, en pixels de #mapInner : deux
+  // hexagones et demi de part et d'autre.
+  const px = a.x * SC, py = a.y * SC, hex = _hautHexAu(a.x, a.y) * SC;
+  const cote = 2 * LOUPE_RAYON_HEX * hex;
   const x0 = px - cote / 2, y0 = py - cote / 2, k = cv.width / cote;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height);
@@ -10756,11 +10772,15 @@ function dessinerLoupe(cx, cy, a, rects){
     try { g.drawImage(p.face, L, T, W, W); } catch(e){}
   }
   g.setTransform(1, 0, 0, 1, 0, 0);
+  // L'ancrage visé : un cercle de 0,7 hexagone de diamètre.
   g.strokeStyle = '#d9a441'; g.lineWidth = 4;
-  g.beginPath(); g.arc(cv.width / 2, cv.height / 2, 16, 0, 2 * Math.PI); g.stroke();
+  g.beginPath(); g.arc(cv.width / 2, cv.height / 2, hex * k * 0.35, 0, 2 * Math.PI); g.stroke();
   l.querySelector('span').textContent = a.label || '';
-  l.style.left = (cx - LOUPE / 2) + 'px';
-  l.style.top = Math.max(4, cy - LOUPE - 70) + 'px';
+  // Au-dessus du doigt ; trop près du haut de l'écran, en dessous.
+  let haut = cy - d - 60;
+  if(haut < 4) haut = cy + 60;
+  l.style.left = Math.max(8, Math.min(cx - d / 2, window.innerWidth - d - 8)) + 'px';
+  l.style.top = haut + 'px';
 }
 function cacherLoupe(){ const l = document.getElementById('loupe'); if(l) l.remove(); }
 
