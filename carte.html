@@ -8399,37 +8399,60 @@ function _valeurTEC(txt, ctx){
 const _casesTEC = (ligne, col) => (TEC_MVT[ligne] || [])[_COL_MVT[col]];
 const _parRouteTEC = c => /(^|\s)R(\s|$)/.test(c || '');
 
+// Terrain de l'hexagone pour le coût. Dans une dépression, la carte LOS
+// met la dépression au centre : l'autre terrain (bois d'un ravin-bois,
+// 5Z8) se lit dans les pixels de l'hexagone, car les coûts se cumulent
+// (B19.4). null : terrain ouvert. Mis en cache, le chemin le plus court
+// interroge chaque hexagone plusieurs fois.
+function _terrainMvt(h){
+  const c = h.getCenterLocation().getTerrain();
+  if(!c || !c.isDepression()) return c;
+  if(!('_sousMvt' in h)) h._sousMvt = h._chercherPixel(t => !t.isDepression() && !t.isOpen()
+    && !t.isHexsideTerrain() && !t.isBridge() && !!_ligneTerrain(t)) || null;
+  return h._sousMvt;
+}
+// Hexagone de route pour le mouvement : route au centre, ou pont (B6).
+function _routeMvt(h){
+  const c = h.getCenterLocation().getTerrain();
+  if(c && c.isRoad()) return true;
+  if(!('_pontMvt' in h)) h._pontMvt = !!h.getBridgeTerrain();
+  return h._pontMvt;
+}
+
 // Coût d'entrée dans b depuis a, voisins : {cout, lib}.
 function coutEntree(m, a, b, n){
   const col = n.col, veh = n.unite === 'MP';
   if(!col) return {cout: null, lib: '?'};
   const s = _coteVers(m, a, b);
-  const c = b.getCenterLocation().getTerrain();
-  const ca = a.getCenterLocation().getTerrain();
+  const c = _terrainMvt(b);
   const ligne = _ligneTerrain(c);
   let lib = c ? c.getName() : 'Open Ground';
-  // Par un côté de route, d'une route à l'autre : coût de la route ; le
-  // drapeau « R » d'un terrain traversé par la route y renvoie aussi.
-  const parRoute = s >= 0 && c && ca && ca.isRoad()
+  // Par un côté de route, d'une route (ou d'un pont) à l'autre : coût de
+  // la route (B3.4, B3.41) ; le drapeau « R » d'un terrain traversé par
+  // la route y renvoie aussi.
+  const parRoute = s >= 0 && _routeMvt(a)
     && a.getHexsideLocation(s).getTerrain() && a.getHexsideLocation(s).getTerrain().isRoad();
+  const routeB = _routeMvt(b);
   const caseC = ligne && _casesTEC(ligne, col);
-  let cout = parRoute && (c.isRoad() || _parRouteTEC(caseC))
+  let cout = parRoute && (routeB || _parRouteTEC(caseC))
     ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu})
     : caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp}) : null;
-  if(parRoute && !c.isRoad()) lib += ' (route)';
+  if(parRoute && !(c && c.isRoad())) lib += routeB && !(c && c.isRoad()) && b._pontMvt ? ' (pont)' : ' (route)';
   const cotHex = cout;
   // Dépression : le ravin, le ruisseau ou le wadi coûte en plus du
-  // terrain de l'hexagone (« +COT »). Ravin à pied : 2 MF, +COT hors
-  // terrain ouvert.
+  // terrain de l'hexagone (« +COT »). À pied : ravin 2 MF (B19.4),
+  // ruisseau sec 2, peu profond 3, profond 4 (B20.4), plus le coût de
+  // l'autre terrain s'il n'est pas ouvert (ravin-bois : 4 MF).
+  // Sur un pont par la route, la dépression dessous ne coûte rien.
   const dep = b.isDepressionTerrain() ? b.getCenterLocation().getDepressionTerrain() : null;
-  if(dep && !parRoute){
+  if(dep && !(parRoute && routeB)){
     const ld = _LIGNE_TEC[dep.getName()], cd = ld && _casesTEC(ld, col);
     if(cd != null){
       const nd = dep.getName();
       const ctx = {cot: typeof cout === 'number' ? cout : 1, mp: n.mp,
                    ruisseau: /Dry/.test(nd) ? 0 : /Shallow/.test(nd) ? 1 : /Deep/.test(nd) ? 2 : null};
       cout = _valeurTEC(cd, ctx);
-      if(!veh && /^(ETO:Gully|DTO:Wadi)$/.test(ld) && typeof cout === 'number' && lib !== 'Open Ground') cout += ctx.cot;
+      if(!veh && /^(ETO:Gully|ETO:Stream|DTO:Wadi)$/.test(ld) && typeof cout === 'number' && lib !== 'Open Ground') cout += ctx.cot;
       lib = nd + (lib !== 'Open Ground' ? ', ' + lib : '');
     }
   }
@@ -8444,9 +8467,12 @@ function coutEntree(m, a, b, n){
       if(v !== null){ cout = typeof cout === 'number' || v === 'NA' || v === 'ALL' ? v : null; lib += ' + ' + t.getName(); }
     }
   }
-  // Montée : h (infanterie) coût du terrain doublé par niveau ; H
-  // (véhicules) +4 MP par niveau, +2 par la route.
-  const niv = b.getBaseLevelofHex() - a.getBaseLevelofHex();
+  // Montée (B10.4) : h (infanterie) coût du terrain doublé par niveau ;
+  // H (véhicules) +4 MP par niveau, +2 par la route. Un ravin est au
+  // niveau -1 : en sortir est une montée (B19.4). Un pont porte la route
+  // au niveau du sol : pas de montée en le quittant par la route.
+  const pont = parRoute && (a._pontMvt || b._pontMvt);
+  const niv = pont ? 0 : b.getBaseLevelofHex() - a.getBaseLevelofHex();
   if(niv >= 1 && typeof cout === 'number'){
     cout += veh ? niv * (parRoute ? 2 : 4) : niv * (typeof cotHex === 'number' ? cotHex : 1);
     lib += `, +${niv} niveau${niv > 1 ? 'x' : ''}`;
