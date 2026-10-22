@@ -12368,12 +12368,7 @@ function _b64(u8){
   return btoa(s);
 }
 async function _netZip(texte){
-  const brut = new TextEncoder().encode(texte);
-  let f = brut;
-  if(typeof CompressionStream !== 'undefined'){
-    const st = new Blob([brut]).stream().pipeThrough(new CompressionStream('deflate-raw'));
-    f = {brut, comp: new Uint8Array(await new Response(st).arrayBuffer())};
-  }
+  const f = await _deflate(new TextEncoder().encode(texte));
   return _b64(new Uint8Array(await _zipWrite(new Map([['Dummy', f]])).arrayBuffer()));
 }
 async function _netDezip(b64){
@@ -13045,9 +13040,11 @@ function etatPartie(){
   return sortie;
 }
 
-function _telecharger(texte, nom){
-  const files = new Map([['savedGame', _vcskEncode(texte)]]);
-  for(const [n, d] of _annexes) files.set(n, d);
+// Comme VASSAL, les entrées de l'archive sont comprimées : le savedGame
+// obfusqué (hexadécimal) y perd plus de 90 % de sa taille.
+async function _telecharger(texte, nom){
+  const files = new Map([['savedGame', await _deflate(_vcskEncode(texte))]]);
+  for(const [n, d] of _annexes) files.set(n, await _deflate(d));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(_zipWrite(files));
   a.download = nom;
@@ -13114,16 +13111,29 @@ function _crc32(bytes){
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
+// Entrée d'archive comprimée (deflate) : {brut, comp} pour _zipWrite ;
+// sans CompressionStream, l'entrée reste brute (stockée).
+async function _deflate(brut){
+  if(typeof CompressionStream === 'undefined') return brut;
+  const st = new Blob([brut]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return {brut, comp: new Uint8Array(await new Response(st).arrayBuffer())};
+}
+
 function _zipWrite(files){
   const enc = new TextEncoder();
   const locals = [], centrals = [];
   let offset = 0;
+  // Date et heure MS-DOS de l'écriture.
+  const t = new Date();
+  const heure = (t.getHours() << 11) | (t.getMinutes() << 5) | (t.getSeconds() >> 1);
+  const jour = ((t.getFullYear() - 1980) << 9) | ((t.getMonth() + 1) << 5) | t.getDate();
   for(const [name, f] of files){
     // Une entrée {brut, comp} est déjà comprimée (deflate) : méthode 8.
     const data = f.comp || f, brut = f.brut || f, methode = f.comp ? 8 : 0;
     const nb = enc.encode(name), crc = _crc32(brut), size = data.length, usize = brut.length;
     const lh = new Uint8Array(30 + nb.length), lv = new DataView(lh.buffer);
     lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(8, methode, true);
+    lv.setUint16(10, heure, true); lv.setUint16(12, jour, true);
     lv.setUint32(14, crc, true); lv.setUint32(18, size, true); lv.setUint32(22, usize, true);
     lv.setUint16(26, nb.length, true);
     lh.set(nb, 30);
@@ -13131,6 +13141,7 @@ function _zipWrite(files){
     const cd = new Uint8Array(46 + nb.length), cv = new DataView(cd.buffer);
     cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
     cv.setUint16(10, methode, true);
+    cv.setUint16(12, heure, true); cv.setUint16(14, jour, true);
     cv.setUint32(16, crc, true); cv.setUint32(20, size, true); cv.setUint32(24, usize, true);
     cv.setUint16(28, nb.length, true); cv.setUint32(42, offset, true);
     cd.set(nb, 46);
