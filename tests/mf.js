@@ -61,8 +61,8 @@ const {ouvrir} = require('./commun.js');
     // est plat : on surélève un hexagone le temps du calcul.
     const niv = bois.getBaseLevelofHex;
     bois.getBaseLevelofHex = () => 1;
-    r.montee = coutEntree(m, og, bois, {col: 'inf', unite: 'MF'});
-    r.monteeChar = coutEntree(m, og, bois, {col: 'ft', unite: 'MP', mp: 17});
+    r.montee = (({cout, lib}) => ({cout, lib}))(coutEntree(m, og, bois, {col: 'inf', unite: 'MF'}));
+    r.monteeChar = (({cout, lib}) => ({cout, lib}))(coutEntree(m, og, bois, {col: 'ft', unite: 'MP', mp: 17}));
     bois.getBaseLevelofHex = niv;
     // 8. T-34 : ½ MP sur la route, puis Z (moitié de ses 17 MP) en bois.
     const rte = hexes.find(h => T(h) === 'Paved Road' && voisins(h).some(v => v && T(v) === 'Paved Road'));

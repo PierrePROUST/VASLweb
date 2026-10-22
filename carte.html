@@ -8453,7 +8453,8 @@ function coutEntree(m, a, b, n){
     && a.getHexsideLocation(s).getTerrain() && a.getHexsideLocation(s).getTerrain().isRoad();
   const routeB = _routeMvt(b);
   const caseC = ligne && _casesTEC(ligne, col);
-  let cout = parRoute && (routeB || _parRouteTEC(caseC))
+  const tarifRoute = parRoute && (routeB || _parRouteTEC(caseC));
+  let cout = tarifRoute
     ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu})
     : caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp}) : null;
   if(parRoute && !(c && c.isRoad())) lib += routeB && b._pontMvt ? ' (pont)' : ' (route)';
@@ -8490,7 +8491,7 @@ function coutEntree(m, a, b, n){
     cout = _plus(cout, veh ? niv * (parRoute ? 2 : 4) : _fois(_estNb(cotHex) ? cotHex : 1, niv));
     lib += `, +${niv} niveau${niv > 1 ? 'x' : ''}`;
   }
-  return {cout, lib};
+  return {cout, lib, hex: b, route: tarifRoute};
 }
 // Mur, haie, bocage sur le côté s de a (vers b) : nouveau coût, ou null.
 function _coteFranchi(a, b, s, col, n, cout){
@@ -8519,7 +8520,7 @@ function coutContournement(m, a, x, n){
   const niv = x.getBaseLevelofHex() - a.getBaseLevelofHex();
   if(niv >= 1 && _estNb(cout)){ cout = _plus(cout, veh ? 4 * niv : _fois(og, niv)); lib += `, +${niv} niveau${niv > 1 ? 'x' : ''}`; }
   if(veh && _estNb(cout)){ cout = _fois(cout, 2); lib += ' (VBM)'; }
-  return {cout, lib};
+  return {cout, lib, hex: x};
 }
 
 // Chemin le moins cher de a à b (Dijkstra borné) : [{hex, cout, lib}].
@@ -8568,9 +8569,11 @@ function _hexParNomLOS(m, nom){
 }
 const _voisins = (m, a, b) => _coteVers(m, a, b) >= 0;
 
-// Étapes d'un déplacement de P à Q : [{cout, lib, byp}] — byp : nom de
-// l'hexagone contourné à l'arrivée.
-function etapesDeplacement(m, P, Q, n, bypPrec){
+// Étapes d'un déplacement de P à Q : [{cout, lib, byp, hex}] — byp : nom
+// de l'hexagone contourné à l'arrivée ; hex : hexagone entré (pénalité
+// d'épaves et de véhicules). prec : les étapes déjà faites.
+function etapesDeplacement(m, P, Q, n, prec){
+  const bypPrec = prec[prec.length - 1].byp;
   const chemin = (a, b) => {
     if(a === b) return [];
     const ch = _voisins(m, a, b) ? [coutEntree(m, a, b, n)] : cheminMoinsCher(m, a, b, n);
@@ -8580,13 +8583,21 @@ function etapesDeplacement(m, P, Q, n, bypPrec){
   const X0 = P.cote ? (bypPrec && _hexParNomLOS(m, bypPrec)) || P.cote.find(_obstacleMvt) || P.hex : null;
   if(Q.cote){
     const obs = Q.cote.filter(_obstacleMvt);
-    // Suite du contournement le long du même obstacle : A4.31, une MF de
-    // plus (terrain ouvert) ; D2.33, 1 MP de VCA et 2 MP de VBM.
+    // Suite du contournement le long du même obstacle. Infanterie
+    // (A4.31) : un ou deux côtés contigus coûtent le terrain ouvert une
+    // fois ; au-delà de deux, le coût de l'hexagone double — le troisième
+    // côté coûte donc une fois de plus, les suivants rien. Véhicule
+    // (D2.33) : 1 MP de VCA et 2 MP de VBM par côté.
     if(X0 && obs.includes(X0)){
       const veh = n.unite === 'MP';
       const og = _valeurTEC(_casesTEC('ETO:Open Ground', n.col), {cot: 1, mp: n.mp});
-      return [{cout: veh && _estNb(og) ? _plus(1, _fois(og, 2)) : og,
-               lib: 'suite du contournement de ' + X0.getName() + (veh ? ' (VCA + VBM)' : ''), byp: X0.getName()}];
+      let k = 0;
+      for(let i = prec.length - 1; i > 0 && prec[i].byp === X0.getName(); i--) if(prec[i].pos !== '·') k++;
+      const nom = X0.getName(), rang = k + 1;
+      if(veh) return [{cout: _estNb(og) ? _plus(1, _fois(og, 2)) : og,
+                       lib: 'suite du contournement de ' + nom + ' (VCA + VBM)', byp: nom}];
+      return [{cout: rang === 3 ? og : 0, byp: nom,
+               lib: `contournement de ${nom}, côté ${rang}` + (rang === 3 ? ' : coût doublé (A4.31)' : '')}];
     }
     const A = X0 || P.hex;
     const X = obs.find(h => h !== A) || obs[0];
@@ -8605,7 +8616,7 @@ function etapesDeplacement(m, P, Q, n, bypPrec){
     if(Q.hex === X0){
       const autre = P.cote.find(h => h !== X0) || X0;
       const r = coutEntree(m, autre, X0, n);
-      return [{cout: r.cout, lib: 'entrée dans ' + r.lib}];
+      return [{cout: r.cout, lib: 'entrée dans ' + r.lib}];   // déjà dans l'hexagone : pas de pénalité D2.14
     }
     return chemin(X0, Q.hex);
   }
@@ -8628,7 +8639,7 @@ function _mvtTronquer(p, pos, vca){
   if(!p.mvt) return;
   const e = p.mvt.etapes;
   let i = e.length - 1;
-  while(i >= 0 && !(e[i].pos === pos && (vca == null || e[i].vca === vca))) i--;
+  while(i >= 0 && (e[i].depart || !(e[i].pos === pos && (vca == null || e[i].vca === vca)))) i--;
   if(i < 0){ delete p.mvt; return; }
   e.length = i + 1;
 }
@@ -8649,24 +8660,74 @@ function _mvtCumul(p){
   return _fmtCout(n) + (c.some(x => !_estNb(x)) ? '+?' : '');
 }
 
+// Marqueur Motion dans la pile d'un pion (D2.4) : ni démarrage, ni arrêt.
+function _enMotion(p, x, y, groupe){
+  const ici = vivants().filter(q => q.x === x && q.y === y);
+  return [...ici, ...(groupe || [])].some(q => /^Motion$/i.test((q.nom || '').trim()));
+}
+// Véhicules et épaves dans un hexagone (D2.14), hors du groupe qui bouge
+// et hors motos.
+function _vehiculesDans(m, h, groupe){
+  let k = 0;
+  for(const q of vivants()){
+    if(groupe.includes(q) || q.cache) continue;
+    const nom = (q.nom || '').trim();
+    const n = natureMouvement(q);
+    const veh = n && n.unite === 'MP' && n.col !== 'mc';
+    const epave = /\bWreck\b/i.test(nom) && !/^Burnt/i.test(nom);
+    if(!veh && !epave) continue;
+    const P = _posMvt(m, q.x, q.y);
+    if(!P.cote && P.hex === h) k++;
+  }
+  return k;
+}
+// Démarrage (D2.12) : 1 MP avant le premier hexagone ou le premier VCA
+// de la phase, sauf sous un marqueur Motion. Étape marquée « depart » :
+// Undo la retire avec le mouvement qui l'a provoquée.
+function _demarrer(p, e, pos, vca, motion){
+  if(e.length > 1 || motion) return 0;
+  e.push({pos, vca, cout: 1, lib: 'démarrage', depart: true, byp: e[0].byp});
+  return 1;
+}
+// Cumul annoncé ; pour un véhicule sans Motion, avec l'arrêt (D2.13).
+function _texteCumul(p, n, motion){
+  const c = _mvtCumul(p);
+  const arret = n.unite === 'MP' && !motion && !/ALL|\?/.test(c);
+  return `cumul ${c} ${n.unite}` + (arret ? `, ${_fmtCout(_plus(_mvtSomme(p), 1))} avec l'arrêt` : '');
+}
+const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
+
 // Après deplacer() : coût de l'hexagone entré et cumul, au chat et au log.
 function compterMouvement(avant){
   const m = _losPrete;
   // Carte LOS pas encore construite : le décompte attend qu'elle le soit.
   // Sans données de terrain (board inconnu), rien n'est compté.
   if(!m){ carteLOS().then(r => { if(_losPrete) compterMouvement(avant); }); return; }
+  const groupe = avant.map(a => a.p);
   const lignes = new Map();          // même texte → unités regroupées
   for(const a of avant){
     const p = a.p, n = !p.deleted && natureMouvement(p);
     if(!n) continue;
     const P = _posMvt(m, a.x, a.y), Q = _posMvt(m, p.x, p.y);
     if(P.cle === Q.cle || !Q.hex) continue;
+    const veh = n.unite === 'MP';
     const vca = _vcaPion(p);
     const e = _mvtDepart(p, P.cle, vca);
-    const ch = etapesDeplacement(m, P, Q, n, e[e.length - 1].byp);
+    const ch = etapesDeplacement(m, P, Q, n, e);
     if(!ch.length) continue;
+    const demarrage = veh ? _demarrer(p, e, P.cle, vca, _enMotion(p, a.x, a.y, groupe)) : 0;
+    // Épaves et véhicules dans l'hexagone entré : +1 MP chacun, +2 au
+    // tarif de la route (D2.14). Une moto n'en paie pas.
+    if(veh && n.col !== 'mc') for(const r of ch){
+      const k = r.hex ? _vehiculesDans(m, r.hex, groupe) : 0;
+      if(!k || !_estNb(r.cout)) continue;
+      r.cout = _plus(r.cout, k * (r.route ? 2 : 1));
+      r.lib += ` + ${k} véhicule(s)/épave(s)`;
+    }
     ch.forEach((r, i) => e.push(Object.assign({pos: i === ch.length - 1 ? Q.cle : '·', vca}, r)));
-    const txt = `+${ch.map(r => _fmtCout(r.cout)).join('+')} ${n.unite} (cumul ${_mvtCumul(p)} ${n.unite})`;
+    const motion = veh && _enMotion(p, p.x, p.y, groupe);
+    const txt = `+${ch.map(r => _fmtCout(r.cout)).join('+')} ${n.unite}`
+      + (demarrage ? ', démarrage +1' : '') + ` (${_texteCumul(p, n, motion)})`;
     if(!lignes.has(txt)) lignes.set(txt, []);
     lignes.get(txt).push(nomRapport(p));
   }
@@ -8687,8 +8748,11 @@ function compterVCA(p, T, S0, S1){
   const c = P.hex && !P.cote && P.hex.getCenterLocation().getTerrain();
   const dedans = !!c && (_obstacleMvt(P.hex) || /Rubble/.test(c.getName()));
   const e = _mvtDepart(p, P.cle, a);
+  const motion = _enMotion(p, p.x, p.y, [p]);
+  const demarrage = _demarrer(p, e, P.cle, a, motion);
   e.push({pos: P.cle, vca: b, cout: pas * (dedans ? 2 : 1), lib: 'VCA', byp: e[e.length - 1].byp});
-  rapport(`${nomRapport(p)} : VCA +${pas * (dedans ? 2 : 1)} MP (cumul ${_mvtCumul(p)} MP)`);
+  rapport(`${nomRapport(p)} : VCA +${pas * (dedans ? 2 : 1)} MP` + (demarrage ? ', démarrage +1' : '')
+        + ` (${_texteCumul(p, n, motion)})`);
 }
 
 // Après Undo : chaque chemin revient à la position et au VCA de l'unité.

@@ -1,6 +1,8 @@
 // Décompte des MF / MP : trous d'obus (1 ou 2 MF, B2.4), contournement
-// d'un bois par l'infanterie (A4.3) et par un véhicule (VBM, D2.3, D2.33),
-// changements de VCA (D2.11 : 1 MP par hexspine, 2 dans les bois) et Undo.
+// d'un bois par l'infanterie (A4.3, A4.31 : deux côtés au prix d'un, coût
+// doublé au-delà) et par un véhicule (VBM, D2.3, D2.33), changements de
+// VCA (D2.11), démarrage et arrêt (D2.12, D2.13, Motion), véhicules et
+// épaves dans l'hexagone entré (D2.14), Undo.
 // Board 5 : hexagones standard, bois et terrain ouvert.
 const nav = require('./navigateur.js');
 (async () => {
@@ -39,16 +41,17 @@ const nav = require('./navigateur.js');
     r.trouObusRetour = msg();
     og2.getCenterLocation().setTerrain(vrai);
 
-    // 2. Contournement d'un bois X : depuis un voisin A en terrain ouvert,
-    // sur un côté de X qui ne touche pas d'autre obstacle.
+    // 2. Contournement d'un bois X le long de quatre côtés contigus
+    // (s à s+3) qui ne touchent pas d'autre obstacle, depuis un voisin A
+    // en terrain ouvert, adjacent au premier côté.
     let cas = null;
     for(const X of hexes.filter(h => T(h) === 'Woods')){
       for(let s = 0; s < 6 && !cas; s++){
-        const c = voisinPar(X, s), c2 = voisinPar(X, (s + 1) % 6);
-        if(!c || !c2 || c.some(h => h !== X && _obstacleMvt(h)) || c2.some(h => h !== X && _obstacleMvt(h))) continue;
-        const Y = c.find(h => h !== X);
-        const A = [0, 1, 2, 3, 4, 5].map(k => m.getAdjacentHex(X, k)).find(v => v && v !== Y && T(v) === 'Open Ground' && _coteVers(m, v, Y) >= 0);
-        if(A) cas = {X, s, A, Y};
+        const cs = [0, 1, 2, 3].map(k => voisinPar(X, (s + k) % 6));
+        if(cs.some(c => !c || c.some(h => h !== X && _obstacleMvt(h)))) continue;
+        const Y = cs[0].find(h => h !== X);
+        const A = m.getAdjacentHex(X, (s + 5) % 6);
+        if(A && T(A) === 'Open Ground' && _coteVers(m, A, Y) >= 0) cas = {X, s, A, Y};
       }
       if(cas) break;
     }
@@ -58,7 +61,11 @@ const nav = require('./navigateur.js');
     await aller([sq], ...cote(cas.X, cas.s));
     r.entree = msg();
     await aller([sq], ...cote(cas.X, (cas.s + 1) % 6));
-    r.suite = msg();
+    r.cote2 = msg();
+    await aller([sq], ...cote(cas.X, (cas.s + 2) % 6));
+    r.cote3 = msg();
+    await aller([sq], ...cote(cas.X, (cas.s + 3) % 6));
+    r.cote4 = msg();
     await aller([sq], ...px(cas.X));
     r.dansLeBois = msg();
 
@@ -83,6 +90,27 @@ const nav = require('./navigateur.js');
     await aller([tk], ...px(cas.X));
     executerTouche(tk, cmd('CA ccw').touche); await tic();
     r.vcaBois = msg();
+
+    // 4. Undo du premier mouvement d'un véhicule : le démarrage part avec.
+    const og3 = [0, 1, 2, 3, 4, 5].map(k => m.getAdjacentHex(og, k)).find(v => v && v !== og2 && T(v) === 'Open Ground');
+    const tk2 = await poser('T-34 M40', og);
+    await aller([tk2], ...px(og2));
+    r.premier = msg();
+    annuler(); await tic();
+    r.undoPremier = tk2.mvt ? _mvtCumul(tk2) : 'aucun cumul';
+
+    // 5. Véhicules et épaves dans l'hexagone entré : tk2 entre là où est
+    // un autre véhicule (+1 MP).
+    const tk3 = await poser('T-34 M40', og2);
+    await aller([tk2], ...px(og2));
+    r.avecVehicule = msg();
+
+    // 6. Sous un marqueur Motion : ni démarrage, ni arrêt.
+    const tk4 = await poser('T-34 M40', og3);
+    poserDepuisPalette(_bdd.pions.find(s => s.n === 'Motion'), ...px(og3)); await tic();
+    const motion = vivants().slice(-1)[0];
+    await aller([tk4, motion], ...px(og));
+    r.motion = msg();
     return r;
   });
   console.log(JSON.stringify(r, null, 1), errs.length ? errs : 'sans erreur');
