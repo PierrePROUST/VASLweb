@@ -7698,10 +7698,17 @@ function _histoCmd(c){
 const _aAnnuler = () => {
   for(let i = _histo.length - 1; i >= 0; i--){
     const e = _histo[i];
-    if(e.annulable && !e.annule && e.inv.length) return e;
+    if(e.annulable && !e.annule && (e.inv.length || (e.js && e.js.length))) return e;
   }
   return null;
 };
+// Annulation propre à l'application, pour un coup sans commande VASSAL à
+// inverser (Start, Stop, Reverse du décompte des MP) : rattachée au coup
+// en cours, elle est jouée par Undo.
+function _histoJs(f){
+  const e = _histo[_histo.length - 1];
+  if(e && e.no === _actionNo && e.annulable) (e.js = e.js || []).push(f);
+}
 
 function majUndo(){ rafraichirActions(['undo']); }
 
@@ -7716,6 +7723,7 @@ function annuler(){
   const photo = _photo();
   e.annule = true;
   rejouerLog(e.inv);
+  if(e.js) for(const f of [...e.js].reverse()) f();
   _actionOuverte = false;
   _annulation = true;
   try {
@@ -8646,9 +8654,11 @@ function _mvtTronquer(p, pos, vca){
 function _mvtDepart(p, pos, vca){
   const e = p.mvt && p.mvt.etapes;
   if(!e || e[e.length - 1].pos !== pos || e[e.length - 1].vca !== vca) _mvtTronquer(p, pos, vca);
-  if(!p.mvt) p.mvt = {etapes: [{pos, vca}]};
+  if(!p.mvt) p.mvt = {etapes: [{pos, vca, etat: 'arret', recul: false}]};
   return p.mvt.etapes;
 }
+// État courant d'un véhicule : 'arret' ou 'marche', et marche arrière.
+const _etatMvt = e => e[e.length - 1];
 const _fmtMF = v => (Math.round(v * 2) / 2).toString().replace(/\.5$/, '½').replace(/^0½$/, '½');
 // Un coût : nombre, choix « 1 ou 2 », « ALL » (tous les MF/MP), « NA » (interdit) ou « ? ».
 const _fmtCout = c => _estNb(c) ? (typeof c === 'number' ? _fmtMF(c) : `${_fmtMF(c.a)} ou ${_fmtMF(c.b)}`)
@@ -8685,14 +8695,21 @@ function _vehiculesDans(m, h, groupe){
 // de la phase, sauf sous un marqueur Motion. Étape marquée « depart » :
 // Undo la retire avec le mouvement qui l'a provoquée.
 function _demarrer(p, e, pos, vca, motion){
-  if(e.length > 1 || motion) return 0;
-  e.push({pos, vca, cout: 1, lib: 'démarrage', depart: true, byp: e[0].byp});
-  return 1;
+  const d = _etatMvt(e);
+  if(d.etat === 'marche') return 0;
+  e.push({pos, vca, cout: motion ? 0 : 1, lib: 'démarrage', depart: true, byp: d.byp, etat: 'marche', recul: !!d.recul});
+  return motion ? 0 : 1;
 }
+// Marche arrière (D2.21) : coût d'entrée multiplié, ×4 pour un véhicule à
+// chenilles, ×3 pour un camion, ×2 pour une auto blindée. Le multiplicateur
+// propre à un pion (« REV × # » au dos) n'est pas connu. Motos et
+// attelages : pas de marche arrière.
+const _MULT_RECUL = {ft: 4, ht: 4, tr: 3, ac: 2};
 // Cumul annoncé ; pour un véhicule sans Motion, avec l'arrêt (D2.13).
 function _texteCumul(p, n, motion){
   const c = _mvtCumul(p);
-  const arret = n.unite === 'MP' && !motion && !/ALL|\?/.test(c);
+  const arret = n.unite === 'MP' && !motion && !/ALL|\?/.test(c)
+    && p.mvt && _etatMvt(p.mvt.etapes).etat === 'marche';
   return `cumul ${c} ${n.unite}` + (arret ? `, ${_fmtCout(_plus(_mvtSomme(p), 1))} avec l'arrêt` : '');
 }
 const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
@@ -8724,9 +8741,12 @@ function compterMouvement(avant){
       r.cout = _plus(r.cout, k * (r.route ? 2 : 1));
       r.lib += ` + ${k} véhicule(s)/épave(s)`;
     }
-    ch.forEach((r, i) => e.push(Object.assign({pos: i === ch.length - 1 ? Q.cle : '·', vca}, r)));
+    const d = _etatMvt(e), recul = veh && d.recul && _MULT_RECUL[n.col];
+    if(recul) for(const r of ch) if(_estNb(r.cout)){ r.cout = _fois(r.cout, recul); r.lib += ` (marche arrière ×${recul})`; }
+    ch.forEach((r, i) => e.push(Object.assign({pos: i === ch.length - 1 ? Q.cle : '·', vca,
+      etat: d.etat, recul: d.recul}, r)));
     const motion = veh && _enMotion(p, p.x, p.y, groupe);
-    const txt = `+${ch.map(r => _fmtCout(r.cout)).join('+')} ${n.unite}`
+    const txt = `+${ch.map(r => _fmtCout(r.cout)).join('+')} ${n.unite}` + (recul ? ` en marche arrière (×${recul})` : '')
       + (demarrage ? ', démarrage +1' : '') + ` (${_texteCumul(p, n, motion)})`;
     if(!lignes.has(txt)) lignes.set(txt, []);
     lignes.get(txt).push(nomRapport(p));
@@ -8750,9 +8770,61 @@ function compterVCA(p, T, S0, S1){
   const e = _mvtDepart(p, P.cle, a);
   const motion = _enMotion(p, p.x, p.y, [p]);
   const demarrage = _demarrer(p, e, P.cle, a, motion);
-  e.push({pos: P.cle, vca: b, cout: pas * (dedans ? 2 : 1), lib: 'VCA', byp: e[e.length - 1].byp});
+  const d = _etatMvt(e);
+  e.push({pos: P.cle, vca: b, cout: pas * (dedans ? 2 : 1), lib: 'VCA', byp: d.byp, etat: d.etat, recul: d.recul});
   rapport(`${nomRapport(p)} : VCA +${pas * (dedans ? 2 : 1)} MP` + (demarrage ? ', démarrage +1' : '')
         + ` (${_texteCumul(p, n, motion)})`);
+}
+
+// ── Start, Stop, Reverse : commandes du menu des véhicules, avant le
+// changement de VCA. Start : 1 MP (D2.12) ; Stop : 1 MP (D2.13) ; Reverse
+// en marche : arrêt puis démarrage dans l'autre sens (D2.12, D2.21).
+// Chaque commande annonce son coût au chat et au log, et s'annule par Undo.
+function commandeVehicule(p, quoi){
+  const n = natureMouvement(p);
+  if(!n || n.unite !== 'MP') return;
+  const m = _losPrete;
+  const P = m ? _posMvt(m, p.x, p.y) : {cle: lieu(p.x, p.y)};
+  const avait = !!p.mvt;
+  const vca = _vcaPion(p);
+  const e = _mvtDepart(p, P.cle, vca), n0 = e.length;
+  const d = _etatMvt(e);
+  const ajout = (cout, lib, etat, recul) => e.push({pos: P.cle, vca, cout, lib, byp: d.byp, etat, recul});
+  const morceaux = [];
+  if(quoi === 'start' && d.etat !== 'marche'){
+    ajout(1, 'démarrage', 'marche', d.recul);
+    morceaux.push('Start +1 MP' + (d.recul ? ' en marche arrière' : ''));
+  } else if(quoi === 'stop' && d.etat === 'marche'){
+    ajout(1, 'arrêt', 'arret', d.recul);
+    morceaux.push('Stop +1 MP');
+  } else if(quoi === 'reverse'){
+    const vers = !d.recul;
+    if(d.etat === 'marche'){
+      ajout(1, 'arrêt', 'arret', d.recul);
+      ajout(1, 'démarrage', 'marche', vers);
+      morceaux.push(`${vers ? 'Reverse' : 'Marche avant'} : arrêt +1, démarrage +1 MP`);
+    } else {
+      ajout(0, vers ? 'marche arrière' : 'marche avant', 'arret', vers);
+      morceaux.push(vers ? 'Reverse déclaré' : 'Marche avant déclarée');
+    }
+  }
+  if(!morceaux.length){ if(!avait && e.length === 1) delete p.mvt; return; }
+  rapport(`${nomRapport(p)} : ${morceaux.join(', ')} (${_texteCumul(p, n, _enMotion(p, p.x, p.y, [p]))})`);
+  const etapes = e;
+  _histoJs(() => {
+    if(p.mvt && p.mvt.etapes === etapes) etapes.length = n0;
+    if(!avait && p.mvt && p.mvt.etapes.length <= 1) delete p.mvt;
+  });
+}
+// Entrées du menu : Start ou Stop selon l'état, et Reverse.
+function itemsVehicule(p){
+  const n = natureMouvement(p);
+  if(!n || n.unite !== 'MP') return [];
+  const d = p.mvt ? _etatMvt(p.mvt.etapes) : {etat: 'arret', recul: false};
+  const cmd = (nom, quoi) => ({nom, cmd: {nom, faire: ({effets}) => effets.push(() => commandeVehicule(p, quoi))}});
+  const items = [d.etat === 'marche' ? cmd('Stop (1 MP)', 'stop') : cmd('Start (1 MP)', 'start')];
+  if(_MULT_RECUL[n.col]) items.push(d.recul ? cmd('Marche avant', 'reverse') : cmd(`Reverse (×${_MULT_RECUL[n.col]})`, 'reverse'));
+  return items;
 }
 
 // Après Undo : chaque chemin revient à la position et au VCA de l'unité.
@@ -9829,6 +9901,16 @@ function arbreCommandes(p){
   for(const c of visibles){
     const pp = parent.get(c.nom);
     (pp ? sousMenu(pp, 0) : racine).items.push({nom: c.nom, touche: c.touche, cmd: c, grise: restriction(c) === 'griser'});
+  }
+  // Véhicule : Start / Stop et Reverse, juste avant le changement de VCA.
+  const ajoutes = !accesRefuse(p) && typeof itemsVehicule === 'function' ? itemsVehicule(p) : [];
+  if(ajoutes.length){
+    const placer = items => {
+      const i = items.findIndex(it => /^CA c?cw$/.test(it.nom));
+      if(i >= 0){ items.splice(i, 0, ...ajoutes); return true; }
+      return items.some(it => it.items && placer(it.items));
+    };
+    if(!placer(racine.items)) racine.items.push(...ajoutes);
   }
   return {titre: p.el.title || p.nom, items: racine.items,
           vide: visibles.length ? null : accesRefuse(p) ? 'Aucune commande — pion masqué par un autre joueur' : 'Aucune commande'};
