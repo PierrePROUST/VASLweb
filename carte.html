@@ -313,18 +313,9 @@ body:not([data-terminal=pc]) #chatEnvoi{display:block;min-width:44px;min-height:
 #journal .jet img{width:22px;height:22px}
 #journal .jet .cat{font-weight:600}
 #journal .jet .tot{font-weight:700;color:var(--accent)}
-#journal .jet .spe{color:#f0b040}
-#journal .jet .san{color:#ff5a5a;font-weight:700}
+#journal .jet .spe{color:#f0b040;text-decoration:underline}
+#journal .jet .spe .san{color:#ff5a5a;font-weight:700}
 #journal .jet .qui{color:var(--doux)}
-#journal .jet.alerteJet{background:rgba(255,90,90,.16);border-left:3px solid #ff5a5a;padding-left:4px}
-.alerteJetCarte{position:absolute;z-index:61;top:56px;display:flex;align-items:center;gap:8px;padding:8px 10px;
-  background:rgba(60,14,14,.96);border:2px solid #ff5a5a;border-radius:8px;color:#fff;font-size:15px;
-  box-shadow:0 4px 18px rgba(0,0,0,.6);animation:alerteJet .9s ease-out 2}
-.alerteJetCarte.piege{background:rgba(66,40,6,.96);border-color:#f0b040}
-.alerteJetCarte b{font-size:16px}
-.alerteJetCarte .reg{font-size:12px;color:#ddd}
-.alerteJetCarte button{flex:none;min-width:36px;min-height:36px}
-@keyframes alerteJet{0%{transform:scale(1.08)}30%{transform:scale(1)}}
 .sep{width:1px;align-self:stretch;background:var(--bord);margin:0 4px}
 #corps{flex:1;display:flex;min-height:0}
 #corps #mapWrap{flex:1}
@@ -480,8 +471,6 @@ body.maj .pion.immob{pointer-events:auto}
         <label>SAN Allied <input type="number" id="sanAllied" min="0" max="12" placeholder="?"></label>
         <label title="Booby Trap (A/B/C)">Piège Axis <select id="bbAxis"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
         <label title="Booby Trap (A/B/C)">Piège Allied <select id="bbAllied"><option>?</option><option>A</option><option>B</option><option>C</option></select></label>
-        <label title="Bandeau sur la carte et vibration quand un DR tombe sur un SAN ou déclenche un piège">🔔 Alertes <input type="checkbox" id="alerteJet"></label>
-        <label title="Signal sonore avec l'alerte SAN / piège">🔊 Son <input type="checkbox" id="alerteSon"></label>
       </div>
       <div id="desAide" class="desAide"></div>
     </div>
@@ -12012,90 +12001,36 @@ function afficherChat(msg){
   const q = document.createElement('span');
   q.className = 'qui'; q.textContent = qui;
   ligne.appendChild(q);
+  // Annonces soulignées après le joueur, comme ASLChatter : le SAN ou le
+  // piège en tête, puis les annonces de règle, séparés par des virgules.
+  let san = null, sp;
   if(type === 'DR'){
-    const san = (reste.match(/^(Axis\/Allied|Axis|Allied) (SAN|Booby Trap)/) || [])[0];
+    san = (reste.match(/^(Axis\/Allied|Axis|Allied) (SAN|Booby Trap)/) || [])[0];
     // ASLChatter ne signale pas le SAN sur Rally, TK et CC, ni les pièges hors TC.
-    const montre = san && (/Booby/.test(san) ? cat === 'TC' : !['TK','CC','Rally'].includes(cat));
-    if(montre){
-      const s = document.createElement('span');
-      s.className = 'san'; s.textContent = '🎯 ' + san;
-      ligne.appendChild(s);
-      ligne.classList.add('alerteJet');
-      alerterJet(san, cat, qui, v[0] + v[1]);
+    if(san && !(/Booby/.test(san) ? cat === 'TC' : !['TK','CC','Rally'].includes(cat))) san = null;
+    sp = _annoncesDR(cat, v[0], v[1]);
+  } else sp = _annoncesdr(cat, v[0]);
+  if(san || sp.length){
+    const s = document.createElement('span');
+    s.className = 'spe';
+    if(san){
+      const e = document.createElement('span');
+      e.className = 'san'; e.textContent = san;
+      s.appendChild(e);
+      if(sp.length) s.append(', ');
     }
-    const sp = _annoncesDR(cat, v[0], v[1]);
-    if(sp.length){
-      const s = document.createElement('span');
-      s.className = 'spe'; s.textContent = sp.join(', ');
-      ligne.appendChild(s);
-    }
+    s.append(sp.join(', '));
+    ligne.appendChild(s);
   }
   ajouterLigne(ligne);
 }
 
-// ── Alerte SAN / piège : le jet passe vite au journal (et un filtre peut
-// l'y cacher) ; un bandeau sur la carte, un signal sonore et une
-// vibration le signalent au joueur dont le Sniper s'active ou dont le
-// piège se déclenche. Rien pendant un saut dans le log (⏭).
-const CLE_ALERTE = 'aslweb.alerteJet', CLE_SON = 'aslweb.alerteSon';
-let _alerteJet = _lireLocal(CLE_ALERTE, '1') !== '0';
-let _alerteSon = _lireLocal(CLE_SON, '1') !== '0';
-let _minuteurAlerte = 0, _audio = null;
-
-function alerterJet(san, cat, qui, total){
-  if(!_alerteJet || _rendreDiffere) return;
-  const piege = /Booby/.test(san);
-  const camp = san.replace(/ (SAN|Booby Trap)$/, '');
-  const titre = piege ? `💣 ${camp} Booby Trap` : `🎯 ${camp} SAN — Sniper`;
-  const regle = piege ? `TC DR ${total} : le piège se déclenche (B28.9)`
-                      : `DR ${total} : faire le dr d'activation du Sniper ${camp} (A14.2)`;
-  let b = document.getElementById('alerteJetCarte');
-  if(!b){
-    b = document.createElement('div');
-    b.id = 'alerteJetCarte';
-    b.setAttribute('role', 'alert');
-    b.addEventListener('pointerdown', e => e.stopPropagation());
-    document.getElementById('corps').appendChild(b);
-  }
-  b.className = 'alerteJetCarte' + (piege ? ' piege' : '');
-  b.innerHTML = `<span><b>${_esc(titre)}</b><br><span class="reg">${_esc(regle)} · ${_esc(cat)} de ${_esc(qui)}</span></span>`;
-  const x = document.createElement('button');
-  x.type = 'button'; x.textContent = '✕'; x.setAttribute('aria-label', 'Fermer l\'alerte');
-  x.addEventListener('click', fermerAlerteJet);
-  b.appendChild(x);
-  const w = document.getElementById('mapWrap');
-  b.style.left = (w.offsetLeft + Math.max(8, (w.clientWidth - b.offsetWidth) / 2)) + 'px';
-  b.style.maxWidth = (w.clientWidth - 16) + 'px';
-  clearTimeout(_minuteurAlerte);
-  _minuteurAlerte = setTimeout(fermerAlerteJet, 8000);
-  try { if(navigator.vibrate) navigator.vibrate([180, 90, 180]); } catch(e){}
-  if(_alerteSon) _bip(piege);
-}
-function fermerAlerteJet(){
-  clearTimeout(_minuteurAlerte);
-  const b = document.getElementById('alerteJetCarte');
-  if(b) b.remove();
-}
-// Deux notes brèves : montantes pour le SAN, graves pour le piège.
-function _bip(piege){
-  try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if(!AC) return;
-    _audio = _audio || new AC();
-    if(_audio.state === 'suspended') _audio.resume();
-    const t0 = _audio.currentTime;
-    (piege ? [330, 220] : [660, 990]).forEach((f, i) => {
-      const o = _audio.createOscillator(), g = _audio.createGain();
-      o.type = piege ? 'square' : 'sine';
-      o.frequency.value = f;
-      const t = t0 + i * 0.18;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.2, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-      o.connect(g).connect(_audio.destination);
-      o.start(t); o.stop(t + 0.17);
-    });
-  } catch(e){}
+// dr d'activation du Sniper (A14.3), comme ASLChatter.
+function _annoncesdr(cat, d){
+  if(cat !== 'SA') return [];
+  if(d === 1) return ['Eliminates SMC, Dummy stack, Sniper; Stuns & Recalls CE crew; breaks MMC & Inherent crew of certain vehicles; immobilizes unarmored vehicle (A14.3)'];
+  if(d === 2) return ['Eliminates Dummy stack; Wounds SMC; Stuns CE crew; pins MMC, Inherent crew of certain vehicles, Sniper (A14.3)'];
+  return [];
 }
 
 function _annoncesDR(cat, a, b){
@@ -12131,10 +12066,6 @@ function _annoncesDR(cat, a, b){
 function _brancherDes(){
   for(const id of ['sanAxis', 'sanAllied', 'bbAxis', 'bbAllied'])
     document.getElementById(id).addEventListener('change', changerInfo);
-  const ca = document.getElementById('alerteJet'), cs = document.getElementById('alerteSon');
-  ca.checked = _alerteJet; cs.checked = _alerteSon;
-  ca.addEventListener('change', () => { _alerteJet = ca.checked; _ecrireLocal(CLE_ALERTE, ca.checked ? '1' : '0'); if(!ca.checked) fermerAlerteJet(); });
-  cs.addEventListener('change', () => { _alerteSon = cs.checked; _ecrireLocal(CLE_SON, cs.checked ? '1' : '0'); });
   const DR = {I: 'IFT', H: 'TH', K: 'TK', M: 'MC', R: 'Rally', C: 'CC', T: 'TC'};
   const dr = {S: 'SA', D: 'RS'};
   document.addEventListener('keydown', e => {
