@@ -145,9 +145,14 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
    (Prep Fire, First Fire, Break, Pin, Conceal) allumées ou en partie. */
 .actionsPile{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;
   background:var(--barre);border-bottom:1px solid var(--bord)}
+.actionsPile{align-items:center}
 .actionsPile .act.bouton{min-height:28px;padding:2px 7px;font-size:12px;white-space:nowrap}
-.cmdEtat .rc{margin-left:5px;font-size:10px;opacity:.6}
-.act.cmdEtat.actif{background:rgba(217,164,65,.22)}
+.actionsPile .act.cmdEtat{padding:2px}
+.act.cmdEtat{padding:2px;line-height:0;border-width:2px}
+.iconeCmd{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:2px}
+.iconeCmd img{position:absolute;pointer-events:none}
+.iconeCmd .lbIcone{font-size:9px;line-height:1.1;text-align:center;white-space:normal}
+.act.cmdEtat.actif{background:rgba(217,164,65,.30);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .act.cmdEtat.mixte{border-style:dashed;border-color:var(--accent)}
 /* Fenêtres (identification, réseau, log) : plein écran au doigt. */
 body:not([data-terminal=pc]) .fenetre{left:0;top:0;transform:none;width:100%;height:100%;max-height:none;border-radius:0;
@@ -10001,6 +10006,8 @@ function commandesDe(type){
       // les barres rapides le cherchent au-dessus de l'unité.
       const slot = chemin.replace(/\\(.)/g, '$1').match(/PieceSlot:([^\/;]+)$/);
       if(id === 'placemark' && slot) cmds[cmds.length - 1].marqueur = {nom: slot[1].trim(), placement};
+      // Son image sert d'icône aux barres rapides (le DM pour Break).
+      if(id === 'placemark' || id === 'placeDM') cmds[cmds.length - 1].pose = chemin;
     } else if(id === 'macro'){
       // Trigger Action : macro;nom;commande;touche;condition;veille;actions;boucle…
       // La condition est évaluée sur les propriétés du pion au moment où
@@ -11564,6 +11571,33 @@ function _etatCommande(p, nom, cmd){
   if(nom === 'Conceal') return !!infoDissimulation(p).proprio;
   return !!(cmd && cmd.marqueur && _marqueurAuDessus(p, cmd.marqueur));
 }
+// Icône d'une commande d'état : le marqueur qu'elle pose (Prep Fire,
+// First Fire, Pin, le DM de Break) ou le « ? » de l'unité (Conceal), pris
+// dans la base VASL et réduit au côté voulu. Le nom reste écrit tant que
+// l'image n'est pas chargée, ou si elle est introuvable.
+function _iconeCommande(c, cote){
+  const boite = document.createElement('span');
+  boite.className = 'iconeCmd';
+  boite.style.width = boite.style.height = cote + 'px';
+  const txt = document.createElement('span');
+  txt.className = 'lbIcone'; txt.textContent = c.nom;
+  boite.appendChild(txt);
+  if(c.nom === 'Conceal'){
+    const im = c.pions.map(x => infoDissimulation(x.p).image).find(Boolean);
+    if(im) chargerImage(im).then(u => {
+      if(!u) return;
+      const i = new Image(); i.src = u; i.alt = '';
+      i.style.cssText = 'left:0;top:0;width:100%;height:100%';
+      boite.replaceChildren(i);
+    });
+  } else if(_bdd){
+    const ch = c.pions.map(x => x.cmd.pose).find(Boolean);
+    const n = ch && (ch.replace(/\\(.)/g, '$1').match(/PieceSlot:([^/]*)$/) || [])[1];
+    const x = ch && (_slotDuChemin(ch) || [..._bdd.parGpid.values()].find(y => y.n === n));
+    if(x) composerVignette(boite, lireSlot(x), cote);
+  }
+  return boite;
+}
 function basculerCommandeEtat(c){
   const l = c.pions.filter(x => !accesRefuse(x.p));
   if(!l.length){ refuser(c.pions[0].p); return; }
@@ -11594,18 +11628,15 @@ function _rangeeCommandes(boite, avecDeplacer){
     const t = libelleTouche(c.touche);
     b.title = c.nom + (t ? ` [${t}]` : '');
     if(c.etat){
+      // Le pion plutôt que le texte : le marqueur posé, ou le « ? ».
+      b.replaceChildren(_iconeCommande(c, _profil === 'pc' ? 32 : 36));
+      b.setAttribute('aria-label', c.nom);
       b.classList.add('cmdEtat');
       b.classList.toggle('actif', c.etat === 'oui');
       b.classList.toggle('mixte', c.etat === 'mixte');
       b.setAttribute('aria-pressed', c.etat === 'oui' ? 'true' : c.etat === 'mixte' ? 'mixed' : 'false');
       if(c.etat === 'oui') b.title += ' — appuyer de nouveau pour l\'enlever';
       else if(c.etat === 'mixte') b.title += ` — ${c.pions.filter(x => _etatCommande(x.p, c.nom, x.cmd)).length} sur ${c.pions.length}`;
-      // La touche, en petit, au PC.
-      if(t && _profil === 'pc'){
-        const k = document.createElement('span');
-        k.className = 'rc'; k.textContent = t.replace(/^Ctrl\+/, '');
-        b.appendChild(k);
-      }
     }
     b.addEventListener('click', () => {
       _freqCmd[c.nom] = (_freqCmd[c.nom] || 0) + 1;
