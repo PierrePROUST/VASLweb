@@ -11,7 +11,9 @@ sh tests/tout.sh            # compare à origin/map
 sh tests/tout.sh HEAD~3     # compare à une autre version
 ```
 
-`CHROMIUM=/chemin/vers/chrome` choisit le navigateur. Les sorties (JSON,
+`CHROMIUM=/chemin/vers/chrome` choisit le navigateur. Le navigateur se dit
+français (`fr-FR`) : l'interface reste celle qu'attendent les tests ;
+`LANGUE=en` la passe en anglais. Les sorties (JSON,
 captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 
 ## Non-régression (comparées à la référence)
@@ -51,6 +53,8 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-horscarte.js` | Board 5 : unité hors carte qui entre sur le board (coût du premier hexagone, le décompte ne plante plus) ; chef reconnu par son nom affiché |
 | `mf-relecture.js` | Board 5 : décompte des coups relus d'un .vlog (M/ d'un pion, M/ d'une pile VASSAL), au chat sans entrer dans le log ; changement de phase relu ; recul |
 | `mov-relecture.js` | Mark unmoved (MOV) après la relecture d'un D/ dont le nouvel état finit par une contre-oblique : état du pion entier, image gardée, Undo |
+| `couches-noms.js` | Couches dont l'image est un nom nu (« mofan », « mober », « mohro » d'un module plus ancien) : Fanatic, Berserk et Heroic dessinés et cumulés |
+| `munitions.js` | Munitions épuisées d'un véhicule (Sherman III(a)) : label « $finalammo$ » calculé, s / WP barrés en rouge, Toggle On/Off |
 | `mf-route.js` | Boards 5 et 24 : bois traversé d'une route (5I4 : 1 ou 2 MF par la route, 2 par le bois ; A4.132, B13.4), chemin (24W8 : 1 MF, B13.6), bois traversé d'un chemin (24W7) |
 | `mf-niveaux.js` | Board 5 : foxhole (entrer dessous 1 + 1 MF, en sortir +1 ; B27.4, B27.5), tranchées reliées (1 MF, B27.54), étage par le compteur « Building » (1 MF par niveau, B23.4), Undo |
 | `mf-escaliers.js` | Board 1 : arrivée au rez-de-chaussée sous le marqueur d'étage (B23.421) ; escalier imprimé (1U3), absent (1U2, B23.23), maison sans étage (1D4, B23.21), maison à deux niveaux 1F1-G1 (même étage : 2 MF), toit (B23.8) |

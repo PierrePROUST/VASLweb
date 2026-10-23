@@ -12,7 +12,16 @@ const options = () => {
   return o;
 };
 exports.chromium = pw.chromium;
-exports.lancer = () => pw.chromium.launch(options());
+// Les tests lisent l'interface en français : le terminal se dit français,
+// sauf LANGUE=en (l'interface passe alors à l'anglais).
+const LOCALE = process.env.LANGUE === 'en' ? 'en-US' : 'fr-FR';
+exports.lancer = async () => {
+  const b = await pw.chromium.launch(options());
+  const ctx = b.newContext.bind(b), page = b.newPage.bind(b);
+  b.newContext = (o = {}) => ctx(Object.assign({locale: LOCALE}, o));
+  b.newPage = (o = {}) => page(Object.assign({locale: LOCALE}, o));
+  return b;
+};
 // Le carte.html du dépôt, par défaut.
 exports.CARTE = path.resolve(__dirname, '..', 'carte.html');
 exports.fichier = a => path.resolve(a || exports.CARTE);

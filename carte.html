@@ -348,6 +348,7 @@ body:not([data-terminal=pc]) #chatEnvoi{display:block;min-width:44px;min-height:
 #pile{flex:1;overflow:auto;border-bottom:1px solid var(--bord)}
 #couches{padding:6px 8px;flex-wrap:wrap}
 #pile:empty::before{content:"Cliquer un pion pour voir sa pile.";display:block;padding:8px;color:var(--doux);font-size:12px}
+html[lang=en] #pile:empty::before{content:"Click a counter to see its stack."}
 .lig{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid #2c2c2c;
   touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
 .lig .mini{width:36px;height:36px;flex:none;margin-right:auto}
@@ -516,6 +517,280 @@ body.maj .pion.immob{pointer-events:auto}
 <input type="file" id="fileImport" style="display:none" onchange="handleFileImport(this)">
 
 <script>
+// ═══════════════════════════════════════════════════════════════
+// LANGUE DE L'INTERFACE
+// La langue du terminal décide : français s'il l'est (fr, fr-FR, fr-CA…),
+// l'interface reste telle quelle ; sinon, anglais, avec les termes de
+// VASSAL et de VASL (counter, stack, Undo, Logfile, Room…). « ?lang=fr »
+// ou « ?lang=en » dans l'adresse l'impose. Seule l'interface se traduit :
+// le journal, les rapports au chat, le log et les fichiers restent en
+// l'état, tels que les reçoivent VASL et les autres joueurs.
+// Le code garde ses libellés français ; T() les traduit à l'affichage,
+// et un MutationObserver traduit ce qui paraît dans la page (texte,
+// title, placeholder, aria-label), hors carte et journal.
+// ═══════════════════════════════════════════════════════════════
+const LANGUE = (() => {
+  const q = /[?&]lang=([a-z]{2})/i.exec(location.search);
+  const l = q ? q[1] : (navigator.languages && navigator.languages[0]) || navigator.language || 'fr';
+  return /^fr/i.test(l) ? 'fr' : 'en';
+})();
+
+// Libellés exacts (espaces regroupés).
+const EN = {
+  // Page et carte
+  'VASL — Carte': 'VASL — Map',
+  'Ouvrir un fichier .vsav ou .vlog, ou le déposer ici,': 'Open a .vsav or .vlog file, or drop it here,',
+  'pour afficher la carte du scénario.': 'to display the scenario map.',
+  'Glisser pour régler la largeur du panneau': 'Drag to resize the panel',
+  'Glisser pour régler la hauteur du journal': 'Drag to resize the chat log',
+  'Pion dissimulé': 'Concealed counter',
+  // Panneau : Pile, Palette, Dés
+  'Couches que le clic peut sélectionner ; les autres laissent passer le clic':
+    'Layers a click can select; the others let the click through',
+  'Sélection :': 'Selection:',
+  'Unités': 'Units', 'Marqueurs': 'Markers', 'Cartes et panneaux': 'Maps and panels',
+  'Rechercher un pion…': 'Search counters…', 'Rechercher un pion': 'Search counters',
+  'Piège Axis': 'Axis Booby Trap', 'Piège Allied': 'Allied Booby Trap',
+  'Pile': 'Stack', 'Palette': 'Counters', 'Dés': 'Dice',
+  'Fermer le panneau': 'Close panel', 'Fermer': 'Close',
+  '▲ Sommet': '▲ Top', '▼ Fond': '▼ Bottom',
+  'Commandes du pion (clic droit)': 'Counter commands (right-click)',
+  'Monter': 'Move up', 'Descendre': 'Move down',
+  'Retirer de la carte (la sélection, si ce pion en fait partie)': 'Delete from map (the selection, if this counter is in it)',
+  'Aucune commande — pion masqué par un autre joueur': 'No commands — counter hidden by another player',
+  'Aucune commande': 'No commands',
+  'Chargement de la base VASL…': 'Loading VASL counters…',
+  'Base indisponible.': 'Counter database unavailable.',
+  'Lâché hors de la carte : rien posé': 'Dropped off the map: nothing placed',
+  // Barres de commandes, éventail, poses
+  '⋮ Toutes': '⋮ All', 'Toutes les commandes': 'All commands',
+  'Commandes rapides': 'Quick commands',
+  'appuyer de nouveau pour l\'enlever': 'press again to remove it',
+  'Déplacer…': 'Move…', 'Déplacer : toucher ensuite la destination': 'Move: then tap the destination',
+  'Retirer de la carte': 'Delete from map',
+  'Pions de la pile': 'Counters in stack',
+  'Tout': 'All', 'Sélectionner toute la pile': 'Select the whole stack',
+  'sommet ▸': 'top ▸',
+  'Retirer de la sélection': 'Remove from selection', 'Ajouter à la sélection': 'Add to selection',
+  'poses multiples': 'multiple placements', 'Annuler': 'Cancel',
+  // Ligne de vue
+  'Ligne de vue': 'Line of sight', 'Cible': 'Target',
+  'Monter le niveau de la source': 'Raise source level', 'Descendre le niveau de la source': 'Lower source level',
+  'Monter le niveau de la cible': 'Raise target level', 'Descendre le niveau de la cible': 'Lower target level',
+  '⇈ Haut': '⇈ Top', 'Plus haut niveau hors toit, pour la cible': 'Highest non-rooftop level, for the target',
+  '✓ Valider': '✓ Check', 'Valider : rapport « Checked LOS » au chat': 'Check: “Checked LOS” report to the chat',
+  'Annuler la ligne de vue, sans rapport': 'Cancel the LOS, without report',
+  // Actions : menus, barres, feuilles
+  'Fichier': 'File', 'Partie': 'Game', 'Affichage': 'View', 'Outils': 'Tools', 'Réseau': 'Server', 'Aide': 'Help',
+  'Ouvrir .vsav / .vlog': 'Open Game (.vsav / .vlog)', 'Ouvrir': 'Open',
+  'Exporter .vsav': 'Save Game (.vsav)', 'Exporter': 'Save',
+  'Commencer un fichier de log': 'Begin Logfile…', 'Log': 'Log', '⏹ Log': '⏹ Log',
+  'Annuler le dernier coup (Undo)': 'Undo last move', 'Undo': 'Undo',
+  'Mark unmoved — lever le statut Moved de tous les pions': 'Mark all counters unmoved', 'Unmoved': 'Unmoved',
+  'Remove all — retirer tous les pions d\'un type…': 'Remove all counters of a given type…',
+  'Masquer les pions (montrer carte et overlays)': 'Hide counters (show map and overlays)',
+  'Masquer aussi les overlays (montrer la carte seule)': 'Hide overlays too (show map only)',
+  'Montrer tous les pions': 'Show all counters', 'Pions': 'Counters',
+  'Ligne de vue (LOS)': 'Line of sight (LOS)', 'LOS': 'LOS',
+  'Ligne de vue silencieuse': 'Silent LOS', 'LOS muette': 'Silent LOS',
+  'LOS détaillée (Verbose LOS mode)': 'Verbose LOS mode',
+  'Zoom arrière': 'Zoom out', 'Zoom avant': 'Zoom in',
+  'Ajuster la carte à la vue': 'Fit map to window', 'Ajuster': 'Fit',
+  'Hors ligne': 'Offline', 'Connexion…': 'Connecting…', 'Observateur': 'Observer', 'observateur': 'observer',
+  'Panneau Pile, Palette, Dés': 'Stack, Counters and Dice panel',
+  'Journal et chat': 'Chat log', 'Journal': 'Chat',
+  'SAN et pièges du scénario…': 'Scenario SAN and Booby Traps…', 'SAN': 'SAN',
+  'Palette des pions': 'Counters palette', 'Pile sélectionnée': 'Selected stack',
+  'Verrou des pions (un glissé déplace la carte)': 'Lock counters (dragging scrolls the map)', 'Verrou': 'Lock',
+  'Afficher l\'effectif des piles (vue de loin)': 'Show stack size (zoomed out)',
+  'Palette de commandes…': 'Command palette…', 'Commandes': 'Commands',
+  'Raccourcis clavier et gestes…': 'Keyboard shortcuts and gestures…',
+  'Sélection : unités': 'Selection: units', 'Sélection : marqueurs': 'Selection: markers',
+  'Sélection : cartes et panneaux': 'Selection: maps and panels',
+  'Affichage : automatique': 'Display: automatic', 'Affichage : PC': 'Display: PC',
+  'Affichage : tablette': 'Display: tablet', 'Affichage : téléphone': 'Display: phone',
+  'Début du log': 'Start of logfile', 'Fin du log': 'End of logfile',
+  'Coup précédent': 'Step back', 'Coup suivant': 'Step forward',
+  'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler':
+    'A move was made here during replay: Undo to cancel it',
+  'Plus…': 'More…', 'Plus': 'More', 'Carte': 'Map',
+  'Aperçu du chat sur la carte': 'Chat preview on the map',
+  'Dés : un appui DR, un appui long les catégories': 'Dice: tap for a DR, long press for categories',
+  'SAN et pièges…': 'SAN and Booby Traps…', 'SAN et pièges': 'SAN and Booby Traps',
+  'Pile et palette': 'Stack and counters', 'Vues': 'Views',
+  'DR [F2] — appui long ou glissé vers le haut : toutes les catégories': 'DR [F2] — long press or swipe up: all categories',
+  'Lancer un DR ; appui long : catégories de dés': 'Roll a DR; long press: dice categories',
+  // Chat
+  'Message au chat': 'Chat message', 'Message au chat (Entrée pour envoyer)': 'Chat message (Enter to send)',
+  'Envoyer': 'Send', 'Envoyer au chat': 'Send to chat', 'Écrire au chat': 'Write to chat',
+  'Messages': 'Messages', 'Rapports': 'Reports', 'Système': 'System',
+  'Filtres du journal': 'Chat log filters', 'Saisie rapide': 'Quick chat',
+  // Palette de commandes et aide
+  'Action ou pion…': 'Action or counter…', 'Rechercher une action ou un pion': 'Search for an action or a counter',
+  'poser': 'place',
+  'Raccourcis clavier et gestes': 'Keyboard shortcuts and gestures',
+  'Palette de commandes': 'Command palette', 'Menus': 'Menus',
+  'Pions et piles': 'Counters and stacks',
+  'Commandes du pion (menu)': 'Counter commands (menu)', 'clic droit · appui long': 'right-click · long press',
+  'Sélectionner la pile': 'Select stack', 'clic': 'click',
+  'Déplier / replier la pile': 'Expand / collapse stack', 'double-clic': 'double-click',
+  'Ajouter ou retirer un pion': 'Add or remove a counter', 'Ctrl+clic': 'Ctrl+click', 'Maj+clic': 'Shift+click',
+  'Rectangle de sélection': 'Selection box', 'Maj+glisser dans le vide': 'Shift+drag on empty map',
+  'Mettre au sommet de la pile': 'Move to top of stack', 'Mettre au fond': 'Move to bottom of stack',
+  'Monter d\'un cran': 'Move up one', 'Descendre d\'un cran': 'Move down one',
+  'Replier, puis désélectionner': 'Collapse, then deselect',
+  'Ligne de vue (pendant le tracé)': 'Line of sight (while drawing)',
+  'Niveau de la cible': 'Target level', 'Niveau de la source': 'Source level',
+  'Plus haut niveau hors toit': 'Highest non-rooftop level', 'Ctrl à l\'appui': 'Ctrl on press',
+  'Relecture': 'Replay', 'Coup suivant / précédent': 'Step forward / back',
+  'Page suivante / précédente': 'Page Down / Page Up',
+  // Identification et utilisateurs
+  'Identification': 'Login',
+  'Utilisateur': 'User', 'Nom du nouvel utilisateur': 'New user name', 'nom affiché': 'display name',
+  'Mot de passe': 'Password', 'mot de passe': 'password',
+  'Se connecter': 'Log in', 'Utilisateurs…': 'Users…', 'Utilisateurs': 'Users',
+  'Nouvel utilisateur…': 'New user…',
+  'Pour un joueur VASL, le mot de passe est celui de VASL : il ouvre ses pions dissimulés et en HIP.':
+    'For a VASL player, the password is the VASL one: it reveals their concealed and HIP counters.',
+  'Mot de passe administrateur incorrect.': 'Incorrect administrator password.',
+  'Saisir le mot de passe.': 'Enter the password.', 'Ce mot de passe est réservé.': 'This password is reserved.',
+  'Nom requis : 24 caractères au plus, sans ; / \\ , < > & ".': 'Name required: 24 characters at most, without ; / \\ , < > & ".',
+  'Cet utilisateur existe déjà : le choisir dans la liste.': 'This user already exists: pick it from the list.',
+  'Mot de passe incorrect pour cet utilisateur.': 'Incorrect password for this user.',
+  'Connecté :': 'Logged in as:', 'Pions masqués': 'Hidden counters', '(vous)': '(you)',
+  'Oublier': 'Forget', 'fichier': 'file', 'Aucun utilisateur': 'No users',
+  'Changer d\'utilisateur…': 'Change user…',
+  'Comme dans VASL, tous les pions se déplacent librement ; un pion dissimulé ou en HIP n\'est visible et commandable que par son joueur et par l\'administrateur.':
+    'As in VASL, every counter moves freely; a concealed or HIP counter can only be seen and commanded by its player and by the administrator.',
+  // Partie à distance
+  'Partie à distance': 'Server',
+  'Comme le serveur de VASSAL : l\'hôte ouvre une salle et donne son code ; qui la rejoint reçoit la partie du propriétaire, puis chaque coup joué part chez les autres.':
+    'Like the VASSAL server: the host opens a room and gives its code; whoever joins receives the owner\'s game, then every move is sent to the others.',
+  'Vous jouez sous le nom': 'You are playing as',
+  'Liaison': 'Connection', 'Internet (WebRTC, d\'un poste à l\'autre)': 'Internet (WebRTC, peer to peer)',
+  'Onglets de ce navigateur': 'Tabs of this browser',
+  'Nom de la salle (pour héberger)': 'Room name (to host)', 'Code de la salle (pour rejoindre)': 'Room code (to join)',
+  'ex. k7m2qa': 'e.g. k7m2qa',
+  'Héberger': 'Host', 'Rejoindre': 'Join', 'Identification…': 'Login…',
+  'Internet : la mise en relation passe par le serveur public de PeerJS, puis les postes échangent directement. L\'hôte doit garder sa page ouverte : elle tient lieu de serveur.':
+    'Internet: peers meet through the public PeerJS server, then exchange directly. The host must keep their page open: it acts as the server.',
+  'Salle': 'Room', '— code': '— code', 'Connexion en cours… — code': 'Connecting… — code', 'Copier': 'Copy',
+  'Onglets de ce navigateur.': 'Tabs of this browser.', 'Onglets de ce navigateur, vous hébergez.': 'Tabs of this browser, you are hosting.',
+  'Internet (WebRTC).': 'Internet (WebRTC).', 'Internet (WebRTC), vous hébergez.': 'Internet (WebRTC), you are hosting.',
+  'Joueur': 'Player', 'propriétaire': 'owner', 'En attente du serveur…': 'Waiting for the server…',
+  'Synchroniser': 'Synchronize', 'Fermer la salle': 'Close room', 'Quitter la salle': 'Leave room',
+  'Donner le code à l\'adversaire. Fermer cette page ferme la salle.': 'Give the code to your opponent. Closing this page closes the room.',
+  'Synchroniser redemande l\'état de la partie au propriétaire de la salle.': 'Synchronize asks the room owner for the game state again.',
+  'Saisir le code donné par l\'hôte.': 'Enter the code given by the host.',
+  'Copié': 'Copied', 'Copie impossible : noter le code.': 'Cannot copy: write the code down.',
+  'Synchronisation impossible pour l\'instant.': 'Cannot synchronize for now.',
+  'bibliothèque PeerJS injoignable': 'PeerJS library unreachable',
+  'salle introuvable — vérifier le code': 'room not found — check the code',
+  'ce code de salle est déjà pris': 'this room code is already taken', 'erreur WebRTC': 'WebRTC error',
+  'serveur de rendez-vous PeerJS injoignable': 'PeerJS rendezvous server unreachable',
+  'salle injoignable': 'room unreachable', 'code de salle invalide': 'invalid room code',
+  // Fichier de log
+  'Nom du fichier': 'File name', 'Commencer': 'Begin',
+  'Les coups joués, reçus ou relus à partir de cette position y seront enregistrés ; « Log » à nouveau termine le fichier et l\'écrit.':
+    'Moves played, received or replayed from this position will be recorded in it; “Log” again ends the file and writes it.',
+  'La relecture commence. Commencer un nouveau fichier de log ?': 'Replay begins. Begin a new logfile?',
+  'Partie ouverte. Commencer un nouveau fichier de log ?': 'Game opened. Begin a new logfile?',
+  'Relecture terminée. Commencer un nouveau fichier de log ?': 'Replay finished. Begin a new logfile?',
+  'Fichier de log': 'Logfile', 'Oui': 'Yes', 'Non': 'No', 'Ne plus demander': 'Don\'t ask again'
+};
+
+// Libellés à trous : « {} » prend n'importe quel texte, lui-même traduit.
+const EN_MOTIFS = [
+  ['{} [{}]', '{} [{}]'],
+  ['Terminer le log « {} » et l\'écrire', 'End Logfile “{}” and write it'],
+  ['Partie à distance — {}', 'Server — {}'],
+  ['Utilisateur : {} — changer ou gérer les utilisateurs', 'User: {} — change or manage users'],
+  ['Pile ({})', 'Stack ({})'],
+  ['{} unité(s) sur {}', '{} of {} unit(s)'],
+  ['Cible {}', 'Target {}'],
+  ['↓ {} nouveaux', '↓ {} new'], ['↓ {} nouveau', '↓ {} new'],
+  ['{} pions', '{} counters'], ['{} pion', '{} counter'],
+  ['{} pion(s)', '{} counter(s)'], ['{} pion(s) (200 premiers)', '{} counter(s) (first 200)'],
+  ['{} — {}', '{} — {}'],
+  ['{} — glisser dans la liste pour changer son rang, vers la carte pour le déplacer',
+   '{} — drag within the list to change its position, onto the map to move it'],
+  ['{}, sélectionné', '{}, selected'],
+  ['{} (gpid {}) — glisser vers la carte, ou cliquer pour poser au centre ; au doigt, toucher puis toucher la carte',
+   '{} (gpid {}) — drag onto the map, or click to place it in the centre; by touch, tap then tap the map'],
+  ['➡️ {} — touchez la destination', '➡️ {} — tap the destination'],
+  ['♟ {} — touchez la carte pour poser', '♟ {} — tap the map to place'],
+  ['Message en tant que {}', 'Message as {}'],
+  ['voit tous les pions masqués', 'sees all hidden counters'],
+  ['{} pion(s) masqué(s)', '{} hidden counter(s)'],
+  ['compte de ce poste', 'account on this device'],
+  ['Choisir l\'utilisateur, puis saisir son mot de passe. Les pions dissimulés et HIP ne sont visibles que de leur joueur ; cette carte en contient de {} joueur(s).',
+   'Choose the user, then enter their password. Concealed and HIP counters are only visible to their player; this map has some from {} player(s).'],
+  ['Choisir l\'utilisateur, puis saisir son mot de passe. Les pions dissimulés et HIP ne sont visibles que de leur joueur.',
+   'Choose the user, then enter their password. Concealed and HIP counters are only visible to their player.'],
+  ['Retirer {} pions de la carte ?', 'Delete {} counters from the map?'],
+  ['Le log « {} » n\'est pas écrit ({} coup(s)). L\'écrire maintenant ?', 'Logfile “{}” is not written ({} move(s)). Write it now?']
+].map(([fr, en]) => {
+  const parts = fr.split('{}').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return {re: new RegExp('^' + parts.join('(.+?)') + '$'), en};
+});
+
+// Touches, comme VASSAL les nomme.
+const EN_TOUCHES = [[/Maj\+/g, 'Shift+'], [/Méta\+/g, 'Meta+'], [/\bÉchap\b/g, 'Esc'], [/Entrée/g, 'Enter'],
+  [/Suppr/g, 'Delete'], [/Espace/g, 'Space'], [/Page précédente/g, 'Page Up'], [/Page suivante/g, 'Page Down']];
+const _estTouche = s => /^(?:(?:Ctrl|Alt|Maj|Méta)\+)*(?:[^\s+]{1,4}|Échap|Entrée|Suppr|Espace|Num\d|Page (?:précédente|suivante))(?: \/ .+)?$/.test(s);
+
+function T(s){
+  if(LANGUE === 'fr' || typeof s !== 'string') return s;
+  const k = s.replace(/\s+/g, ' ').trim();
+  if(!k) return s;
+  if(Object.hasOwn(EN, k)) return EN[k];
+  if(_estTouche(k)) return EN_TOUCHES.reduce((t, [re, en]) => t.replace(re, en), k);
+  for(const m of EN_MOTIFS){
+    const r = m.re.exec(k);
+    if(!r) continue;
+    let i = 1;
+    const t = m.en.replace(/\{\}/g, () => T(r[i++]));
+    if(t !== k) return t;
+  }
+  return s;
+}
+
+// Traduction de la page : textes et attributs, hors carte et journal
+// (noms des pions, messages des joueurs, rapports).
+const _ATTR_TRADUITS = ['title', 'placeholder', 'aria-label'];
+const _HORS_TRADUCTION = '#mapInner, #journal, #apercuChat .txt, script, style';
+function _traduireAttr(el, a){
+  const v = el.getAttribute(a);
+  if(v){ const t = T(v); if(t !== v) el.setAttribute(a, t); }
+}
+function _traduireNoeud(n){
+  if(n.nodeType === 3){
+    const p = n.parentElement;
+    if(!p || p.closest(_HORS_TRADUCTION)) return;
+    const v = n.nodeValue, t = T(v);
+    // Les espaces autour du libellé restent.
+    if(t !== v) n.nodeValue = /^\s*/.exec(v)[0] + t + /\s*$/.exec(v)[0];
+    return;
+  }
+  if(n.nodeType !== 1 || n.closest(_HORS_TRADUCTION)) return;
+  for(const a of _ATTR_TRADUITS) _traduireAttr(n, a);
+  for(const c of n.childNodes) _traduireNoeud(c);
+}
+function _brancherLangue(){
+  document.documentElement.lang = LANGUE;
+  if(LANGUE === 'fr') return;
+  document.title = T(document.title);
+  _traduireNoeud(document.body);
+  new MutationObserver(l => {
+    for(const m of l){
+      if(m.type === 'childList') m.addedNodes.forEach(_traduireNoeud);
+      else if(m.type === 'characterData') _traduireNoeud(m.target);
+      else if(!m.target.closest(_HORS_TRADUCTION)) _traduireAttr(m.target, m.attributeName);
+    }
+  }).observe(document.body, {childList: true, subtree: true, characterData: true,
+                             attributes: true, attributeFilter: _ATTR_TRADUITS});
+}
+
 // ═══════════════════════════════════════════════════════════════
 // VASL — CARTE ET PIONS
 // Repris de baseVaslWeb : lecture du .vsav, disposition des boards
@@ -6268,6 +6543,10 @@ function _typeEtEtat(seg){
           etat: seg.substring(m.index + m[0].length)};
 }
 
+// Liste de noms d'images nus (« mofan », « a,b ») : au moins un nom, et
+// rien qu'un « ; » échappé aurait pu y glisser.
+const _listeNoms = s => /\w/.test(s || '') && s.split(',').every(n => /^[\w()+. -]*$/.test(n.trim()));
+
 // Couches d'images (traits emb2 / Embellishment). L'état est le niveau :
 // positif la couche est dessinée, négatif elle est en sommeil.
 function _parseLayers(ts){
@@ -6277,8 +6556,10 @@ function _parseLayers(ts){
     if(!/^emb2;/.test(ts.typ[i])) continue;
     const ch = ts.typ[i].split(';');
     // La liste d'images est le 17e champ d'un emb2. Ses chemins n'ont pas
-    // toujours d'extension ni de dossier à deux lettres (« tables\/turn_axis »).
-    let liste = ch.length > 17 && /\//.test(ch[16]) ? ch[16] : null;
+    // toujours d'extension ni de dossier à deux lettres (« tables\/turn_axis »,
+    // ou « mofan », « mober », « mohro » : Fanatic, Berserk, Heroic des
+    // pions posés avec un module plus ancien).
+    let liste = ch.length > 17 && (/\//.test(ch[16]) || _listeNoms(ch[16])) ? ch[16] : null;
     if(!liste) liste = ch.find(c => /\.(svg|gif|png)/i.test(c));
     if(!liste) liste = ch.find(c => /(^|,)\s*\\?[A-Za-z]{2}\\?\/[\w()+.-]+/.test(c));
     if(!liste) continue;
@@ -6364,6 +6645,7 @@ function _proprietes(ts){
   // Comme getProperty, le trait le plus externe répond le premier : un
   // nom porté deux fois (DBCounterType) garde la valeur de l'extérieur.
   const def = (k, v) => { if(!(k in pr)) pr[k] = v; };
+  const calc = [];
   for(let i = 0; i < ts.typ.length; i++){
     const ch = ts.typ[i].split(';');
     if(ch[0] === 'emb2'){
@@ -6385,9 +6667,53 @@ function _proprietes(ts){
       def(net(ch[1]), net(ts.eta[i]));
     } else if(ch[0] === 'mark' && ch[1]){
       def(net(ch[1]), net(ts.eta[i]));
+    } else if(ch[0] === 'calcProp' && ch[1] && !(net(ch[1]) in pr)){
+      calc.push([net(ch[1]), _seq(ts.typ[i], ';')[2] || '']);
     }
   }
+  // CalculatedProperty : une expression sur les autres propriétés, qui
+  // peut en citer une autre calculée (« finalammo » cite « ammoText ») ;
+  // autant de passes que de propriétés calculées résout leurs chaînes.
+  for(let n = 0; n < calc.length; n++)
+    for(const [k, e] of calc){
+      const v = evaluerExpression(e, pr);
+      pr[k] = v === undefined ? '' : String(v);
+    }
   return pr;
+}
+
+// Texte visible d'un fragment HTML de label.
+const _texteHtml = s => s.replace(/<[^>]*>/g, '').replace(/&nbsp;?/g, '\u00a0')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+
+// Label HTML (JLabel de Swing) : seules les balises de texte passent —
+// couleur, barré, gras, italique, souligné, retour à la ligne. Le texte
+// vient du fichier : rien d'autre n'en est repris (DOMParser n'exécute
+// ni ne charge rien).
+function _htmlLabel(html){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const copier = n => {
+    if(n.nodeType === 3) return [document.createTextNode(n.nodeValue)];
+    if(n.nodeType !== 1) return [];
+    const enfants = [...n.childNodes].flatMap(copier);
+    const tag = n.tagName.toLowerCase();
+    let e = null;
+    if(tag === 'br') return [document.createElement('br')];
+    if(tag === 'font'){
+      e = document.createElement('span');
+      const c = n.getAttribute('color');
+      if(c && /^#?\w+$/.test(c)) e.style.color = c;
+    } else if(tag === 'strike' || tag === 's' || tag === 'del') e = document.createElement('s');
+    else if(['b', 'i', 'u', 'sub', 'sup'].includes(tag)) e = document.createElement(tag);
+    if(!e) return enfants;
+    e.append(...enfants);
+    return [e];
+  };
+  return [...doc.body.childNodes].flatMap(copier);
+}
+function remplirLabel(e, t){
+  if(t.html) e.replaceChildren(..._htmlLabel(t.html));
+  else e.textContent = t.texte;
 }
 
 function _etiquettes(ts){
@@ -6396,13 +6722,16 @@ function _etiquettes(ts){
   const pr = _proprietes(ts);
   for(let i = 0; i < ts.typ.length; i++){
     if(!/^label;/.test(ts.typ[i])) continue;
-    // Un label en HTML est rendu en texte brut : il vient du fichier.
-    const texte = _texteLabel(ts.eta[i]).replace(/<[^>]*>/g, '')
-      .replace(/\$([^$\s]+)\$/g, (m, n) => pr[n] !== undefined ? pr[n] : '').trim();
+    // « $nom$ » prend la valeur de la propriété. Un texte « <html>… »
+    // (munitions épuisées des véhicules : « s WP », barrés en rouge) garde
+    // sa mise en forme, réduite par _htmlLabel aux balises de texte.
+    const brut = _texteLabel(ts.eta[i]).replace(/\$([^$\s]+)\$/g, (m, n) => pr[n] !== undefined ? pr[n] : '');
+    const html = /^\s*<html>/i.test(brut) ? brut : null;
+    const texte = _texteHtml(brut).trim();
     if(!texte) continue;
     const ch = ts.typ[i].split(';');
     const rgb = v => /^\d+,\d+,\d+$/.test(v || '') ? `rgb(${v})` : null;
-    out.push({i, texte, taille: parseInt(ch[3], 10) || 10,
+    out.push({i, texte, html, taille: parseInt(ch[3], 10) || 10,
               fond: rgb(ch[4]), couleur: rgb(ch[5]) || '#000',
               posV: ch[6] || 't', decV: parseInt(ch[7], 10) || 0,
               posH: ch[8] || 'c', decH: parseInt(ch[9], 10) || 0,
@@ -7217,7 +7546,7 @@ async function majApparence(p, d){
   // joueur qui a dissimulé l'unité la voit, marquée d'un petit « ? ».
   // L'administrateur voit tout.
   const voile = d.masque && !_admin && d.masqueProprio !== idJoueur() ? d.masque : null;
-  p.el.title = voile ? 'Pion dissimulé' : d.nom + (d.masque ? ' (?)' : '');
+  p.el.title = voile ? T('Pion dissimulé') : d.nom + (d.masque ? ' (?)' : '');
   p.proprietaire = d.proprietaire;
   p.masqueProprio = d.masqueProprio;
   p.hipProprio = d.hipProprio;
@@ -7326,7 +7655,7 @@ async function majApparence(p, d){
   if(!voile) for(const t of d.etiquettes){
     const e = document.createElement('div');
     e.className = 'couche etiq';
-    e.textContent = t.texte;
+    remplirLabel(e, t);
     const famille = /serif/i.test(t.police) && !/sans/i.test(t.police) ? 'Georgia,serif'
                   : /mono/i.test(t.police) ? 'monospace' : 'Arial,Helvetica,sans-serif';
     e.style.font = `${t.style & 2 ? 'italic ' : ''}${t.style & 1 ? 'bold ' : ''}`
@@ -11636,7 +11965,7 @@ function _rangeeCommandes(boite, avecDeplacer){
       b.classList.toggle('mixte', c.etat === 'mixte');
       b.setAttribute('aria-pressed', c.etat === 'oui' ? 'true' : c.etat === 'mixte' ? 'mixed' : 'false');
       if(c.etat === 'oui') b.title += ' — appuyer de nouveau pour l\'enlever';
-      else if(c.etat === 'mixte') b.title += ` — ${c.pions.filter(x => _etatCommande(x.p, c.nom, x.cmd)).length} sur ${c.pions.length}`;
+      else if(c.etat === 'mixte') b.title += ` — ${c.pions.filter(x => _etatCommande(x.p, c.nom, x.cmd)).length} unité(s) sur ${c.pions.length}`;
     }
     b.addEventListener('click', () => {
       _freqCmd[c.nom] = (_freqCmd[c.nom] || 0) + 1;
@@ -11668,7 +11997,7 @@ function _rangeeCommandes(boite, avecDeplacer){
 function retirerSelection(){
   const l = _visesBarre().filter(p => !accesRefuse(p));
   if(!l.length){ const v = _visesBarre(); if(v.length) refuser(v[0]); return; }
-  if(l.length >= 3 && !confirm(`Retirer ${l.length} pions de la carte ?`)) return;
+  if(l.length >= 3 && !confirm(T(`Retirer ${l.length} pions de la carte ?`))) return;
   for(const p of l) retirer(p, l.length > 1);
   if(l.length > 1) chatLog(`✖️ ${l.length} pions retirés`);
 }
@@ -13404,7 +13733,7 @@ function terminerLog(){
 // encore être écrit.
 function fermerLog(){
   if(!enregistreLog()) return;
-  if(_logEnr.length && confirm(`Le log « ${_logNom} » n'est pas écrit (${_nbActions()} coup(s)). L'écrire maintenant ?`))
+  if(_logEnr.length && confirm(T(`Le log « ${_logNom} » n'est pas écrit (${_nbActions()} coup(s)). L'écrire maintenant ?`)))
     ecrireVlog();
   _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = [];
   const f = document.getElementById('fenLog');
@@ -13822,7 +14151,7 @@ function _composerIconePion(){
     for(const t of d.etiquettes){
       const e = document.createElement('div');
       e.className = 'etiq';
-      e.textContent = t.texte;
+      remplirLabel(e, t);
       e.style.font = `${t.style & 2 ? 'italic ' : ''}${t.style & 1 ? 'bold ' : ''}${t.taille}px/1.15 Arial,Helvetica,sans-serif`;
       e.style.color = t.couleur;
       e._label = t;
@@ -14866,8 +15195,8 @@ function ouvrirPaletteCommandes(){
     res = [];
     for(const [id, a] of actions){
       if(a.visible && !a.visible()) continue;
-      const lib = String(_v(a.lib));
-      const s = q ? _scoreFlou(lib + ' ' + (_v(a.court) || ''), q) : 1;
+      const lib = T(String(_v(a.lib)));
+      const s = q ? _scoreFlou(lib + ' ' + (T(_v(a.court)) || ''), q) : 1;
       if(s >= 0) res.push({s: s + 5, lib, rc: _v(a.touche) || '', off: !!(a.actif && !a.actif()), faire: () => executerAction(id)});
     }
     if(q && _bdd){
@@ -14978,6 +15307,7 @@ function reevaluerProfil(){
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  _brancherLangue();
   _setupDropZone();
   _setupPanZoom();
   _brancherCouches();
