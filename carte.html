@@ -14082,9 +14082,9 @@ const ACTIONS = {
              faire: (ancre, e) => armerFil(e && e.ctrlKey && e.shiftKey ? 'l' : 'L'), allume: () => !!_filArme,
              // Au doigt, un appui long propose la LOS silencieuse et le mode détaillé.
              menuLong: ['los', 'losMuet', 'verbeux']},
-  losMuet:  {lib: 'Ligne de vue silencieuse', court: 'LOS muette', ico: '👁', touche: 'Ctrl+Maj+F10',
+  losMuet:  {lib: 'Ligne de vue silencieuse', court: 'LOS muette', ico: '🙈', touche: 'Ctrl+Maj+F10',
              faire: () => armerFil('l'), allume: () => _filArme === 'l'},
-  verbeux:  {lib: 'LOS détaillée (Verbose LOS mode)', coche: () => _losVerbeux, faire: basculerVerbeux},
+  verbeux:  {ico: '📝', lib: 'LOS détaillée (Verbose LOS mode)', coche: () => _losVerbeux, faire: basculerVerbeux},
   zoomMoins:{lib: 'Zoom arrière', ico: '−', faire: zoomOut},
   zoomPlus: {lib: 'Zoom avant', ico: '+', faire: zoomIn},
   zoomTxt:  {etiquette: () => Math.round(zoom * 100) + ' %', classe: 'zoom'},
@@ -14105,16 +14105,16 @@ const ACTIONS = {
   des:      {lib: 'Dés', court: 'Dés', ico: '🎲', faire: () => montrerOnglet('des')},
   verrou:   {lib: 'Verrou des pions (un glissé déplace la carte)', court: 'Verrou', ico: '🔒',
              coche: () => _verrouPions, faire: () => basculerVerrou()},
-  effectif: {lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
+  effectif: {ico: '🔢', lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
   commandes:{lib: 'Palette de commandes…', court: 'Commandes', ico: '⌘', touche: 'Ctrl+K', faire: () => ouvrirPaletteCommandes()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
-  couche_unite:    {lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
-  couche_marqueur: {lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
-  couche_carte:    {lib: 'Sélection : cartes et panneaux', coche: () => COUCHES_SEL.carte, faire: () => basculerCouche('carte')},
-  profil_auto:     {lib: 'Affichage : automatique', coche: () => _profilChoisi === 'auto', faire: () => choisirProfil('auto')},
-  profil_pc:       {lib: 'Affichage : PC', coche: () => _profilChoisi === 'pc', faire: () => choisirProfil('pc')},
-  profil_tablette: {lib: 'Affichage : tablette', coche: () => _profilChoisi === 'tablette', faire: () => choisirProfil('tablette')},
-  profil_mobile:   {lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
+  couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
+  couche_marqueur: {ico: '🏷', lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
+  couche_carte:    {ico: '📋', lib: 'Sélection : cartes et panneaux', coche: () => COUCHES_SEL.carte, faire: () => basculerCouche('carte')},
+  profil_auto:     {ico: '🔄', lib: 'Affichage : automatique', coche: () => _profilChoisi === 'auto', faire: () => choisirProfil('auto')},
+  profil_pc:       {ico: '🖥', lib: 'Affichage : PC', coche: () => _profilChoisi === 'pc', faire: () => choisirProfil('pc')},
+  profil_tablette: {ico: '📟', lib: 'Affichage : tablette', coche: () => _profilChoisi === 'tablette', faire: () => choisirProfil('tablette')},
+  profil_mobile:   {ico: '📱', lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
   // Relecture d'un .vlog : visible seulement s'il reste des coups.
   relecture:{groupe: ['lgDebut', 'lgArr', 'logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
   lgDebut:  {lib: 'Début du log', ico: '⏮', faire: () => allerLog(0), actif: () => _logPos > _logPlancher},
@@ -14531,7 +14531,7 @@ Object.assign(ACTIONS, {
   vuePions:  {lib: 'Palette des pions', court: 'Pions', ico: '♟', pion: true, faire: () => vueMobile('pions'), allume: () => _vue() === 'pions'},
   vueJournal:{lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => vueMobile('journal'), allume: () => _vue() === 'journal',
               badge: () => _nonLus},
-  apercuChat:{lib: 'Aperçu du chat sur la carte', coche: () => _apercuChat, faire: () => basculerApercuChat()},
+  apercuChat:{ico: '💭', lib: 'Aperçu du chat sur la carte', coche: () => _apercuChat, faire: () => basculerApercuChat()},
   titre:     {etiquette: () => _source ? _nomFichier : 'VASL — Carte', classe: 'titreScen'},
   desMenu:   {lib: 'Dés : un appui DR, un appui long les catégories', court: 'Dés', ico: '🎲',
               faire: () => lancerDR('Other'), menuLong: null},
@@ -14607,9 +14607,12 @@ DISPOSITIONS.mobile = {
     nav.className = 'navBas';
     nav.setAttribute('aria-label', 'Vues');
     // Carte ; affichage de la carte avec ou sans pions ; palette ; Remove
-    // all ; journal ; le reste. Plus large que l'écran, la barre défile au
-    // doigt, de droite à gauche.
-    for(const id of ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'plus']) nav.appendChild(rendreAction(id, 'rail'));
+    // all ; journal. Plus large que l'écran, la barre défile au doigt, de
+    // droite à gauche.
+    // Puis toutes les actions de la feuille « Plus », chacune par son icône.
+    const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal'];
+    for(const id of [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus'])
+      nav.appendChild(rendreAction(id, 'rail'));
     const bords = () => {
       nav.classList.toggle('suiteGauche', nav.scrollLeft > 2);
       nav.classList.toggle('suiteDroite', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2);

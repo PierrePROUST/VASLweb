@@ -1,5 +1,5 @@
 // Téléphone : barre du bas (Carte, carte sans pions, Pions, ALL, Journal,
-// Plus), qui défile au doigt de droite à gauche.
+// puis toutes les actions de Plus), qui défile au doigt de droite à gauche.
 const {ouvrir} = require('./commun.js');
 (async () => {
   const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
@@ -11,10 +11,15 @@ const {ouvrir} = require('./commun.js');
   // défilement : un glissé de droite à gauche
   const [x, y] = await pos('.navBas');
   await touche('touchStart', [[300, y, 1]]);
-  for(let i = 1; i <= 10; i++) await touche('touchMove', [[300 - 20 * i, y, 1]]);
+  for(let i = 1; i <= 10; i++) await touche('touchMove', [[300 - 25 * i, y, 1]]);
   await touche('touchEnd', []); await pg.waitForTimeout(400);
   out.defile = await pg.evaluate(() => [Math.round(document.querySelector('.navBas').scrollLeft), document.querySelector('.navBas').className]);
   await pg.screenshot({path: 'nav1.png', clip: {x: 0, y: 640, width: 360, height: 100}});
+  out.sansIcone = await pg.evaluate(() => [...document.querySelectorAll('.navBas .act')].filter(e => !e.querySelector('.ic, img, .icPion') || (e.querySelector('.ic') && !e.querySelector('.ic').textContent.trim() && !e.querySelector('.icPion'))).map(e => e.dataset.action));
+  // L'élan du défilement s'achève, puis on revient au début.
+  await pg.waitForTimeout(1200);
+  await pg.evaluate(() => { document.querySelector('.navBas').scrollLeft = 0; });
+  await pg.waitForTimeout(300);
   // carte sans pions, puis ALL
   const v0 = await pg.evaluate(() => _vueCarte);
   await tap('.navBas [data-action="masquer"]');
