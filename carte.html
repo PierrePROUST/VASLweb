@@ -228,7 +228,17 @@ body.avecBarrePile .boutonVerrou{display:none}
 .barreHaut .act.ico{min-width:44px;height:40px;font-size:18px}
 .navBas{display:flex;justify-content:space-around;background:var(--barre);border-top:1px solid var(--bord);
   padding:0 var(--marge-d) var(--marge-b) var(--marge-g)}
-.navBas .act.rail{flex:1;width:auto;min-height:54px;font-size:11px}
+.navBas{overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scroll-snap-type:x proximity;scrollbar-width:none;
+  overscroll-behavior-x:contain;justify-content:flex-start}
+.navBas::-webkit-scrollbar{display:none}
+.navBas .act.rail{flex:1 0 64px;width:auto;height:54px;font-size:11px;scroll-snap-align:start}
+/* Un fondu au bord qui cache encore des icônes : la barre défile. */
+.navBas.suiteDroite{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
+.navBas.suiteGauche{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent)}
+.navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
 .relectureBas{display:flex;justify-content:center;background:#202020}
 .relectureBas:has(.groupeAct[hidden]){display:none}
 .relectureBas .act.ico{height:34px;min-width:40px}
@@ -14596,7 +14606,17 @@ DISPOSITIONS.mobile = {
     const nav = document.createElement('nav');
     nav.className = 'navBas';
     nav.setAttribute('aria-label', 'Vues');
-    for(const id of ['vueCarte', 'vuePile', 'vuePions', 'vueJournal', 'plus']) nav.appendChild(rendreAction(id, 'rail'));
+    // Carte ; affichage de la carte avec ou sans pions ; palette ; Remove
+    // all ; journal ; le reste. Plus large que l'écran, la barre défile au
+    // doigt, de droite à gauche.
+    for(const id of ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'plus']) nav.appendChild(rendreAction(id, 'rail'));
+    const bords = () => {
+      nav.classList.toggle('suiteGauche', nav.scrollLeft > 2);
+      nav.classList.toggle('suiteDroite', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2);
+    };
+    nav.addEventListener('scroll', bords, {passive: true});
+    _apresRedimension.push(bords);
+    setTimeout(bords, 0);
     b.append(rl, nav);
     vueMobile('carte');
     _boutonVerrou();
