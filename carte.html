@@ -140,6 +140,10 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
 .ckEv{position:absolute;right:-6px;top:-6px;width:28px;height:28px;padding:0;border-radius:14px;font-size:16px;
   line-height:26px;background:#1e1e1e}
 .inserEv{position:absolute;width:3px;background:var(--accent);border-radius:2px;pointer-events:none}
+.croixFermer{flex:none;width:30px;height:30px;min-width:30px;padding:0;border-radius:50%;background:#c0392b;color:#fff;
+  border:2px solid #fff;font:700 15px/26px system-ui,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.6)}
+.eventail .croixFermer{position:absolute;right:-12px;top:-12px;z-index:2}
+.barrePile .croixFermer{position:sticky;right:0;margin-left:auto}
 .actionsEv{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--bord)}
 /* Commandes rapides en tête du panneau Pile (PC) ; commandes d'état
    (Prep Fire, First Fire, Break, Pin, Conceal) allumées ou en partie. */
@@ -1976,6 +1980,9 @@ function _clicVide(e){
   if(e.pointerType && e.pointerType !== 'mouse'){
     // Sélection tolérante : la pile la plus proche, à moins de 30 px.
     const k = pileProche(e.clientX, e.clientY);
+    // L'appui qui vient de fermer l'éventail ferme aussi la pile, sans en
+    // reprendre une voisine.
+    if(Date.now() - _eventailFermeA < 800){ _eventailFermeA = 0; replierTout(); if(_sel.size || _pileSel) selectionnerPile(null); return; }
     if(k){ appuiSurPile(k); return; }
     if(_doubleAppuiVide(e)) return;
     replierTout();
@@ -12067,7 +12074,8 @@ function _rangeeCommandes(boite, avecDeplacer){
     ouvrirMenu(haut, r.left, r.bottom, _profil === 'pc' ? 'mouse' : 'touch');
   });
   if(avecDeplacer && vises.length) outil('Déplacer…', 'Déplacer : toucher ensuite la destination', () => armerDeplacement());
-  if(vises.length) outil('✕', 'Retirer de la carte', () => retirerSelection(), 'danger');
+  // 🗑 et non ✕ : la croix rouge ferme le panneau, elle ne retire rien.
+  if(vises.length) outil('🗑', 'Retirer de la carte', () => retirerSelection(), 'danger');
 }
 
 // Retire la sélection (ou la pile courante) ; confirmation dès 3 pions.
@@ -12109,6 +12117,7 @@ function majBarrePile(){
   mini.addEventListener('click', () => { if(_pileSel) ouvrirEventail(_pileSel); });
   b.appendChild(mini);
   _rangeeCommandes(b, true);
+  b.appendChild(_croixFermer('Fermer la pile'));
   _placerBarrePile();
   _placerVolants();
 }
@@ -12184,7 +12193,7 @@ function majEventail(){
   const actions = document.createElement('div');
   actions.className = 'actionsEv';
   _rangeeCommandes(actions, false);
-  el.append(bande, actions);
+  el.append(_croixFermer('Fermer la pile'), bande, actions);
   document.body.appendChild(el);
   bande.scrollTop = defil;
   placerEventail();
@@ -12290,10 +12299,30 @@ _apresRedimension.push(() => { placerEventail(); _placerBarrePile(); if(_fil) de
 _apresProfil.push(() => { fermerEventail(); majBarrePile(); });
 document.addEventListener('pointerdown', e => {
   if(_eventail && !e.target.closest('#eventail, .feuille, .voile, #barrePile')) {
-    // Un appui sur la pile elle-même la laisse ouverte (le geste la rouvre).
+    // Un appui sur une pile la rouvre (son geste) ; à côté, dans le vide,
+    // il ferme tout : la sélection tolérante ne doit pas la reprendre.
     fermerEventail();
+    if(!e.target.closest('.pion')) _eventailFermeA = Date.now();
   }
 }, true);
+let _eventailFermeA = 0;
+
+// Fermer la pile au doigt : l'éventail, la barre de pile et la sélection.
+function fermerPile(){
+  fermerEventail();
+  if(_sel.size || _pileSel) selectionnerPile(null);
+  majBarrePile();
+}
+// Croix rouge cerclée, en haut à droite d'un panneau de pile.
+function _croixFermer(titre = 'Fermer'){
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'croixFermer';
+  x.textContent = '✕';
+  x.title = titre; x.setAttribute('aria-label', titre);
+  x.addEventListener('pointerdown', e => e.stopPropagation());
+  x.addEventListener('click', e => { e.stopPropagation(); fermerPile(); });
+  return x;
+}
 
 // ── Poses et déplacements en deux appuis : un bandeau dit quoi faire,
 // l'appui suivant sur la carte (ou sur une pile) agit.
