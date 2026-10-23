@@ -1980,12 +1980,9 @@ function _clicVide(e){
   if(e.pointerType && e.pointerType !== 'mouse'){
     // Sélection tolérante : la pile la plus proche, à moins de 30 px.
     const k = pileProche(e.clientX, e.clientY);
-    // Une pile est ouverte (éventail, barre de pile) : l'appui à côté la
-    // ferme, sans reprendre ni elle ni une voisine. La tolérance ne sert
-    // qu'à prendre une pile quand aucune ne l'est.
-    const ouverte = _sel.size || _pileSel || Date.now() - _eventailFermeA < 800;
-    _eventailFermeA = 0;
-    if(ouverte){ replierTout(); fermerPile(); _dernierAppui = {k: null, t: 0}; return; }
+    // L'appui qui vient de fermer l'éventail ferme aussi la pile, sans en
+    // reprendre une voisine.
+    if(Date.now() - _eventailFermeA < 800){ _eventailFermeA = 0; replierTout(); if(_sel.size || _pileSel) selectionnerPile(null); return; }
     if(k){ appuiSurPile(k); return; }
     if(_doubleAppuiVide(e)) return;
     replierTout();
