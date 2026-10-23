@@ -6357,6 +6357,7 @@ function _proprietes(ts){
   // Comme getProperty, le trait le plus externe répond le premier : un
   // nom porté deux fois (DBCounterType) garde la valeur de l'extérieur.
   const def = (k, v) => { if(!(k in pr)) pr[k] = v; };
+  const calc = [];
   for(let i = 0; i < ts.typ.length; i++){
     const ch = ts.typ[i].split(';');
     if(ch[0] === 'emb2'){
@@ -6378,9 +6379,53 @@ function _proprietes(ts){
       def(net(ch[1]), net(ts.eta[i]));
     } else if(ch[0] === 'mark' && ch[1]){
       def(net(ch[1]), net(ts.eta[i]));
+    } else if(ch[0] === 'calcProp' && ch[1] && !(net(ch[1]) in pr)){
+      calc.push([net(ch[1]), _seq(ts.typ[i], ';')[2] || '']);
     }
   }
+  // CalculatedProperty : une expression sur les autres propriétés, qui
+  // peut en citer une autre calculée (« finalammo » cite « ammoText ») ;
+  // autant de passes que de propriétés calculées résout leurs chaînes.
+  for(let n = 0; n < calc.length; n++)
+    for(const [k, e] of calc){
+      const v = evaluerExpression(e, pr);
+      pr[k] = v === undefined ? '' : String(v);
+    }
   return pr;
+}
+
+// Texte visible d'un fragment HTML de label.
+const _texteHtml = s => s.replace(/<[^>]*>/g, '').replace(/&nbsp;?/g, '\u00a0')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+
+// Label HTML (JLabel de Swing) : seules les balises de texte passent —
+// couleur, barré, gras, italique, souligné, retour à la ligne. Le texte
+// vient du fichier : rien d'autre n'en est repris (DOMParser n'exécute
+// ni ne charge rien).
+function _htmlLabel(html){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const copier = n => {
+    if(n.nodeType === 3) return [document.createTextNode(n.nodeValue)];
+    if(n.nodeType !== 1) return [];
+    const enfants = [...n.childNodes].flatMap(copier);
+    const tag = n.tagName.toLowerCase();
+    let e = null;
+    if(tag === 'br') return [document.createElement('br')];
+    if(tag === 'font'){
+      e = document.createElement('span');
+      const c = n.getAttribute('color');
+      if(c && /^#?\w+$/.test(c)) e.style.color = c;
+    } else if(tag === 'strike' || tag === 's' || tag === 'del') e = document.createElement('s');
+    else if(['b', 'i', 'u', 'sub', 'sup'].includes(tag)) e = document.createElement(tag);
+    if(!e) return enfants;
+    e.append(...enfants);
+    return [e];
+  };
+  return [...doc.body.childNodes].flatMap(copier);
+}
+function remplirLabel(e, t){
+  if(t.html) e.replaceChildren(..._htmlLabel(t.html));
+  else e.textContent = t.texte;
 }
 
 function _etiquettes(ts){
@@ -6389,13 +6434,16 @@ function _etiquettes(ts){
   const pr = _proprietes(ts);
   for(let i = 0; i < ts.typ.length; i++){
     if(!/^label;/.test(ts.typ[i])) continue;
-    // Un label en HTML est rendu en texte brut : il vient du fichier.
-    const texte = _texteLabel(ts.eta[i]).replace(/<[^>]*>/g, '')
-      .replace(/\$([^$\s]+)\$/g, (m, n) => pr[n] !== undefined ? pr[n] : '').trim();
+    // « $nom$ » prend la valeur de la propriété. Un texte « <html>… »
+    // (munitions épuisées des véhicules : « s WP », barrés en rouge) garde
+    // sa mise en forme, réduite par _htmlLabel aux balises de texte.
+    const brut = _texteLabel(ts.eta[i]).replace(/\$([^$\s]+)\$/g, (m, n) => pr[n] !== undefined ? pr[n] : '');
+    const html = /^\s*<html>/i.test(brut) ? brut : null;
+    const texte = _texteHtml(brut).trim();
     if(!texte) continue;
     const ch = ts.typ[i].split(';');
     const rgb = v => /^\d+,\d+,\d+$/.test(v || '') ? `rgb(${v})` : null;
-    out.push({i, texte, taille: parseInt(ch[3], 10) || 10,
+    out.push({i, texte, html, taille: parseInt(ch[3], 10) || 10,
               fond: rgb(ch[4]), couleur: rgb(ch[5]) || '#000',
               posV: ch[6] || 't', decV: parseInt(ch[7], 10) || 0,
               posH: ch[8] || 'c', decH: parseInt(ch[9], 10) || 0,
@@ -7319,7 +7367,7 @@ async function majApparence(p, d){
   if(!voile) for(const t of d.etiquettes){
     const e = document.createElement('div');
     e.className = 'couche etiq';
-    e.textContent = t.texte;
+    remplirLabel(e, t);
     const famille = /serif/i.test(t.police) && !/sans/i.test(t.police) ? 'Georgia,serif'
                   : /mono/i.test(t.police) ? 'monospace' : 'Arial,Helvetica,sans-serif';
     e.style.font = `${t.style & 2 ? 'italic ' : ''}${t.style & 1 ? 'bold ' : ''}`
@@ -13703,7 +13751,7 @@ function _composerIconePion(){
     for(const t of d.etiquettes){
       const e = document.createElement('div');
       e.className = 'etiq';
-      e.textContent = t.texte;
+      remplirLabel(e, t);
       e.style.font = `${t.style & 2 ? 'italic ' : ''}${t.style & 1 ? 'bold ' : ''}${t.taille}px/1.15 Arial,Helvetica,sans-serif`;
       e.style.color = t.couleur;
       e._label = t;
