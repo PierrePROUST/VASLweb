@@ -21,6 +21,9 @@ const {ouvrir} = require('./commun.js');
   await pg.evaluate(() => zoomFit()); await pg.waitForTimeout(300);
   [x, y] = await centre('T9'); await tap(x, y);
   await tap(x - 20, y - 20); out.aCote = await etat();
+  // barre de pile (un seul pion), au zoom « Ajuster » : un appui à 20 px à côté la ferme
+  [x, y] = await centre('T6'); await tap(x, y); out.barreOuverte = await etat();
+  await pg.waitForTimeout(400); await tap(x + 20, y); out.barreACote = await etat();
   console.log(JSON.stringify(out), errs);
   await b.close();
 })();
