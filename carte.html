@@ -141,6 +141,14 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
   line-height:26px;background:#1e1e1e}
 .inserEv{position:absolute;width:3px;background:var(--accent);border-radius:2px;pointer-events:none}
 .actionsEv{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--bord)}
+/* Commandes rapides en tête du panneau Pile (PC) ; commandes d'état
+   (Prep Fire, First Fire, Break, Pin, Conceal) allumées ou en partie. */
+.actionsPile{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;
+  background:var(--barre);border-bottom:1px solid var(--bord)}
+.actionsPile .act.bouton{min-height:28px;padding:2px 7px;font-size:12px;white-space:nowrap}
+.cmdEtat .rc{margin-left:5px;font-size:10px;opacity:.6}
+.act.cmdEtat.actif{background:rgba(217,164,65,.22)}
+.act.cmdEtat.mixte{border-style:dashed;border-color:var(--accent)}
 /* Fenêtres (identification, réseau, log) : plein écran au doigt. */
 body:not([data-terminal=pc]) .fenetre{left:0;top:0;transform:none;width:100%;height:100%;max-height:none;border-radius:0;
   padding:var(--marge-h) var(--marge-d) var(--marge-b) var(--marge-g);font-size:15px}
@@ -9989,6 +9997,10 @@ function commandesDe(type){
           if(q && id === 'replace') retirer(p, true);
         });
       });
+      // Le marqueur posé porte le nom de son PieceSlot (Prep Fire, Pin…) :
+      // les barres rapides le cherchent au-dessus de l'unité.
+      const slot = chemin.replace(/\\(.)/g, '$1').match(/PieceSlot:([^\/;]+)$/);
+      if(id === 'placemark' && slot) cmds[cmds.length - 1].marqueur = {nom: slot[1].trim(), placement};
     } else if(id === 'macro'){
       // Trigger Action : macro;nom;commande;touche;condition;veille;actions;boucle…
       // La condition est évaluée sur les propriétés du pion au moment où
@@ -11152,6 +11164,16 @@ function afficherPile(){
   if(!_pileSel) return;
   const s = pile(_pileSel).filter(p => !p.cache).reverse();
   if(!s.length) return;
+  // Au PC, les commandes rapides de la sélection (ou de la pile) en tête
+  // du panneau ; au doigt, la barre de pile les porte déjà.
+  if(_profil === 'pc'){
+    const a = document.createElement('div');
+    a.className = 'actionsPile';
+    a.setAttribute('role', 'toolbar');
+    a.setAttribute('aria-label', 'Commandes rapides');
+    _rangeeCommandes(a, false);
+    if(a.childElementCount) box.appendChild(a);
+  }
   const tete = document.createElement('div');
   tete.className = 'bordPile';
   tete.textContent = '▲ Sommet';
@@ -11490,6 +11512,8 @@ window.addEventListener('keydown', e => {
 // ── Commandes rapides : celles, nommées et dotées d'une touche, des pions
 // donnés, avec les filtres du menu ; classées par fréquence d'usage, puis
 // dans l'ordre des traits.
+// Les commandes d'état de COMMANDES_ETAT viennent en tête, dans cet ordre,
+// suivies de trois autres (cinq s'il n'y en a aucune).
 function commandesRapides(pions, n = 5){
   const vues = new Map();
   let rang = 0;
@@ -11500,11 +11524,61 @@ function commandesRapides(pions, n = 5){
       if(c.items){ aplatir(c.items); continue; }
       if(!c.touche || c.grise) continue;
       const k = c.nom + '\u0001' + c.touche;
-      if(!vues.has(k)) vues.set(k, {nom: c.nom, touche: c.touche, cmd: c.cmd, p, rang: rang++});
+      if(!vues.has(k)) vues.set(k, {nom: c.nom, touche: c.touche, cmd: c.cmd, p, pions: [], rang: rang++});
+      vues.get(k).pions.push({p, cmd: c.cmd});
     } };
     aplatir(a.items);
   }
-  return [...vues.values()].sort((a, b) => (_freqCmd[b.nom] || 0) - (_freqCmd[a.nom] || 0) || a.rang - b.rang).slice(0, n);
+  const l = [...vues.values()];
+  const etat = COMMANDES_ETAT.flatMap(nom => l.filter(c => c.nom === nom));
+  for(const c of etat){
+    const oui = c.pions.filter(x => _etatCommande(x.p, c.nom, x.cmd)).length;
+    c.etat = oui === 0 ? 'non' : oui === c.pions.length ? 'oui' : 'mixte';
+  }
+  const autres = l.filter(c => !etat.includes(c))
+                  .sort((a, b) => (_freqCmd[b.nom] || 0) - (_freqCmd[a.nom] || 0) || a.rang - b.rang);
+  return [...etat, ...autres.slice(0, etat.length ? 3 : n)];
+}
+
+// ── Commandes d'état, en tête des barres rapides : Prep Fire, First Fire
+// et Pin posent leur marqueur, Break brise l'unité (et pose le DM),
+// Conceal la dissimule. Leur bouton est allumé quand toutes les unités
+// visées sont dans cet état ; un appui les y met toutes, un second les
+// en sort — il retire le marqueur, ou renvoie la touche (Break, Conceal).
+const COMMANDES_ETAT = ['Prep Fire', 'First Fire', 'Break', 'Pin', 'Conceal'];
+// Le marqueur de ce nom au-dessus de p, dans son lieu. Celui qu'on pose
+// au sommet (placement 0 : Prep Fire, First Fire) vaut pour toutes les
+// unités du lieu ; les autres (Pin) pour l'unité qu'ils coiffent, jusqu'à
+// l'unité suivante.
+function _marqueurAuDessus(p, m){
+  const s = pile(cle(p));
+  for(const q of s.slice(s.indexOf(p) + 1)){
+    if(_lieuSepare(q)) break;
+    if(!q.deleted && q.nom === m.nom) return q;
+    if(m.placement && q.couche === 'unite' && !infoDissimulation(q).compteur) break;
+  }
+  return null;
+}
+function _etatCommande(p, nom, cmd){
+  if(nom === 'Break') return /broken/i.test(p.nom);
+  if(nom === 'Conceal') return !!infoDissimulation(p).proprio;
+  return !!(cmd && cmd.marqueur && _marqueurAuDessus(p, cmd.marqueur));
+}
+function basculerCommandeEtat(c){
+  const l = c.pions.filter(x => !accesRefuse(x.p));
+  if(!l.length){ refuser(c.pions[0].p); return; }
+  const dans = x => _etatCommande(x.p, c.nom, x.cmd);
+  if(l.every(dans)){
+    const marques = [...new Set(l.map(x => x.cmd.marqueur && _marqueurAuDessus(x.p, x.cmd.marqueur)).filter(Boolean))];
+    if(marques.length){
+      for(const q of marques) retirer(q, true);
+      chatLog(`✖️ ${c.nom} retiré${marques.length > 1 ? ` (${marques.length})` : ''}`);
+    } else commander(l.map(x => x.p), c.touche);
+    return;
+  }
+  // Une à une : le marqueur posé au sommet de la pile (Prep Fire, First
+  // Fire) vaut pour les unités suivantes du même lieu.
+  for(const x of l) if(!dans(x)) commander([x.p], c.touche);
 }
 // Pions visés par les barres : la sélection, sinon la pile courante.
 const _visesBarre = () => _sel.size ? trierParPile([..._sel])
@@ -11517,12 +11591,29 @@ function _rangeeCommandes(boite, avecDeplacer){
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'act bouton cmdRapide';
     b.textContent = c.nom;
-    b.title = c.nom + (libelleTouche(c.touche) ? ` [${libelleTouche(c.touche)}]` : '');
+    const t = libelleTouche(c.touche);
+    b.title = c.nom + (t ? ` [${t}]` : '');
+    if(c.etat){
+      b.classList.add('cmdEtat');
+      b.classList.toggle('actif', c.etat === 'oui');
+      b.classList.toggle('mixte', c.etat === 'mixte');
+      b.setAttribute('aria-pressed', c.etat === 'oui' ? 'true' : c.etat === 'mixte' ? 'mixed' : 'false');
+      if(c.etat === 'oui') b.title += ' — appuyer de nouveau pour l\'enlever';
+      else if(c.etat === 'mixte') b.title += ` — ${c.pions.filter(x => _etatCommande(x.p, c.nom, x.cmd)).length} sur ${c.pions.length}`;
+      // La touche, en petit, au PC.
+      if(t && _profil === 'pc'){
+        const k = document.createElement('span');
+        k.className = 'rc'; k.textContent = t.replace(/^Ctrl\+/, '');
+        b.appendChild(k);
+      }
+    }
     b.addEventListener('click', () => {
       _freqCmd[c.nom] = (_freqCmd[c.nom] || 0) + 1;
       try { localStorage.setItem('aslweb.freqCmd', JSON.stringify(_freqCmd)); } catch(e){}
-      if(_sel.size) commanderSelection(c.touche);
+      if(c.etat) basculerCommandeEtat(c);
+      else if(_sel.size) commanderSelection(c.touche);
       else commander(vises.filter(p => !accesRefuse(p) && commandesDe(_typeEtEtat(p.seg).type).cmds.some(x => x.touche === c.touche)), c.touche);
+      afficherPile();
     });
     boite.appendChild(b);
   }
@@ -11534,7 +11625,10 @@ function _rangeeCommandes(boite, avecDeplacer){
     boite.appendChild(b);
     return b;
   };
-  if(haut) outil('⋮ Toutes', 'Toutes les commandes', () => ouvrirMenu(haut, 0, 0, 'touch'));
+  if(haut) outil('⋮ Toutes', 'Toutes les commandes', e => {
+    const r = e.currentTarget.getBoundingClientRect();
+    ouvrirMenu(haut, r.left, r.bottom, _profil === 'pc' ? 'mouse' : 'touch');
+  });
   if(avecDeplacer && vises.length) outil('Déplacer…', 'Déplacer : toucher ensuite la destination', () => armerDeplacement());
   if(vises.length) outil('✕', 'Retirer de la carte', () => retirerSelection(), 'danger');
 }
