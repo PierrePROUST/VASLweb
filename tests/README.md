@@ -52,6 +52,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mov-relecture.js` | Mark unmoved (MOV) après la relecture d'un D/ dont le nouvel état finit par une contre-oblique : état du pion entier, image gardée, Undo |
 | `couches-noms.js` | Couches dont l'image est un nom nu (« mofan », « mober », « mohro » d'un module plus ancien) : Fanatic, Berserk et Heroic dessinés et cumulés |
 | `munitions.js` | Munitions épuisées d'un véhicule (Sherman III(a)) : label « $finalammo$ » calculé, s / WP barrés en rouge, Toggle On/Off |
+| `insignes.js` | Images incluses d'un pion SVG (silhouette et insigne de classe : runes SS…) toutes intégrées, aucun chemin relatif laissé |
 | `mf-route.js` | Boards 5 et 24 : bois traversé d'une route (5I4 : 1 ou 2 MF par la route, 2 par le bois ; A4.132, B13.4), chemin (24W8 : 1 MF, B13.6), bois traversé d'un chemin (24W7) |
 | `mf-niveaux.js` | Board 5 : foxhole (entrer dessous 1 + 1 MF, en sortir +1 ; B27.4, B27.5), tranchées reliées (1 MF, B27.54), étage par le compteur « Building » (1 MF par niveau, B23.4), Undo |
 | `mf-escaliers.js` | Board 1 : arrivée au rez-de-chaussée sous le marqueur d'étage (B23.421) ; escalier imprimé (1U3), absent (1U2, B23.23), maison sans étage (1D4, B23.21), maison à deux niveaux 1F1-G1 (même étage : 2 MF), toit (B23.8) |

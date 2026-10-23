@@ -6998,10 +6998,14 @@ async function _chargerImage(path){
     let svg = await r.text();
     svg = svg.replace(/@font-face\s*\{[^}]*\}/g, '')
              .replace(/font-family\s*:\s*Nimbus Sans L/g, 'font-family:Helvetica,Arial,sans-serif');
+    // Images incluses, relatives au dossier du pion : la silhouette
+    // (« svg/ge468Ss.png ») et l'insigne de classe en haut à droite
+    // (« ./svg/class_ss.svg » : runes SS, élite, 1re ligne…). Dans un
+    // blob, un chemin relatif ne mène nulle part : chacune est intégrée.
     const dir = path.substring(0, path.lastIndexOf('/') + 1);
-    const sil = svg.match(/href="(\.\/)?(svg\/[^"]+\.(?:png|svg|gif))"/i);
-    if(sil){
-      const ref = sil[0].slice(6, -1), rel = sil[2];
+    const refs = new Map();
+    for(const m of svg.matchAll(/href="((?:\.\/)?(svg\/[^"]+\.(?:png|svg|gif)))"/gi)) refs.set(m[1], m[2]);
+    for(const [ref, rel] of refs){
       const ext = rel.split('.').pop().toLowerCase();
       const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'gif' ? 'image/gif' : 'image/png';
       try {
@@ -7010,9 +7014,9 @@ async function _chargerImage(path){
         const buf = new Uint8Array(await pr.arrayBuffer());
         let bin = '';
         for(let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-        svg = svg.split(ref).join('data:' + mime + ';base64,' + btoa(bin));
+        svg = svg.split('"' + ref + '"').join('"data:' + mime + ';base64,' + btoa(bin) + '"');
       } catch(e){
-        svg = svg.replace(/<image[^>]*href="\.?\/?svg\/[^"]*"[^>]*\/?>/g, '');
+        svg = svg.replace(new RegExp('<image[^>]*href="' + ref.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + '"[^>]*\\/?>', 'g'), '');
       }
     }
     return URL.createObjectURL(new Blob([_ensureViewBox(svg)], {type: 'image/svg+xml'}));
