@@ -231,7 +231,10 @@ body.avecBarrePile .boutonVerrou{display:none}
 .navBas{overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scroll-snap-type:x proximity;scrollbar-width:none;
   overscroll-behavior-x:contain;justify-content:flex-start}
 .navBas::-webkit-scrollbar{display:none}
-.navBas .act.rail{flex:1 0 64px;width:auto;height:54px;font-size:11px;scroll-snap-align:start}
+/* Icônes rapprochées : 46 px de large, au-dessus de la cible tactile de 44 px. */
+.navBas{gap:2px;padding-left:calc(var(--marge-g) + 4px);padding-right:calc(var(--marge-d) + 4px);
+  scroll-padding-inline:calc(var(--marge-g) + 4px) calc(var(--marge-d) + 4px)}
+.navBas .act.rail{flex:0 0 46px;width:46px;height:50px;margin:0;font-size:11px;scroll-snap-align:start}
 /* Un fondu au bord qui cache encore des icônes : la barre défile. */
 .navBas.suiteDroite{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
