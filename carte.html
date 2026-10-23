@@ -6255,6 +6255,10 @@ function _typeEtEtat(seg){
           etat: seg.substring(m.index + m[0].length)};
 }
 
+// Liste de noms d'images nus (« mofan », « a,b ») : au moins un nom, et
+// rien qu'un « ; » échappé aurait pu y glisser.
+const _listeNoms = s => /\w/.test(s || '') && s.split(',').every(n => /^[\w()+. -]*$/.test(n.trim()));
+
 // Couches d'images (traits emb2 / Embellishment). L'état est le niveau :
 // positif la couche est dessinée, négatif elle est en sommeil.
 function _parseLayers(ts){
@@ -6264,8 +6268,10 @@ function _parseLayers(ts){
     if(!/^emb2;/.test(ts.typ[i])) continue;
     const ch = ts.typ[i].split(';');
     // La liste d'images est le 17e champ d'un emb2. Ses chemins n'ont pas
-    // toujours d'extension ni de dossier à deux lettres (« tables\/turn_axis »).
-    let liste = ch.length > 17 && /\//.test(ch[16]) ? ch[16] : null;
+    // toujours d'extension ni de dossier à deux lettres (« tables\/turn_axis »,
+    // ou « mofan », « mober », « mohro » : Fanatic, Berserk, Heroic des
+    // pions posés avec un module plus ancien).
+    let liste = ch.length > 17 && (/\//.test(ch[16]) || _listeNoms(ch[16])) ? ch[16] : null;
     if(!liste) liste = ch.find(c => /\.(svg|gif|png)/i.test(c));
     if(!liste) liste = ch.find(c => /(^|,)\s*\\?[A-Za-z]{2}\\?\/[\w()+.-]+/.test(c));
     if(!liste) continue;
