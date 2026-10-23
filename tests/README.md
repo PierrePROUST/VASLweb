@@ -63,6 +63,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `fermer.js` | Téléphone : la pile se ferme d'un appui à côté (zoom « Ajuster » compris) ou par la croix rouge |
+| `liste.js` | Liste de la pile au téléphone (et profil PC sur écran étroit) : appui sur la carte et croix rouge la ferment |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
 | `nav.js` | Barre du bas du téléphone : ses icônes (toutes celles de Plus comprises, aucune vide), défilement au doigt, carte sans pions, Remove all |
 | `chat0.js` | Journal non ramené en bas, profil gelé pendant la saisie |

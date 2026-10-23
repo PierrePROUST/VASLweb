@@ -174,7 +174,11 @@ body:not([data-terminal=pc]) .fenetre input:not([type=checkbox]),body:not([data-
 }
 /* ── Profils tactiles : boutons plus grands. */
 body:not([data-terminal=pc]) .act.ico{min-width:var(--cible);height:var(--cible)}
-.fermeCote{flex:none!important;min-width:var(--cible);font-size:16px}
+/* Croix du panneau : là où il recouvre la carte (profils tactiles, PC étroit). */
+.coteOnglets button.fermeCote{flex:none;align-self:center;display:none;width:30px;height:30px;min-width:30px;margin:0 6px;
+  padding:0;border-radius:50%;background:#c0392b;color:#fff;border:2px solid #fff;font:700 15px/26px system-ui,sans-serif}
+body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
+@media (max-width:700px){ .coteOnglets button.fermeCote{display:block} }
 .act.rail{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex:none;
   width:var(--tailleRail,52px);height:var(--tailleRail,52px);min-height:0;padding:0;margin:1px;font-size:10px;
   line-height:1.1;background:none;border-color:transparent;white-space:nowrap;overflow:hidden}
@@ -255,7 +259,7 @@ body[data-terminal=mobile] #coteOnglets{justify-content:flex-end}
 body[data-terminal=mobile] #couches{display:none}
 body[data-terminal=mobile] #cote{position:absolute;left:0;right:0;bottom:0;z-index:70;width:auto;border-left:none;
   border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.5)}
-body[data-terminal=mobile][data-vue=pile] #cote{height:58%;border-radius:12px 12px 0 0}
+body[data-terminal=mobile][data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
 body[data-terminal=mobile][data-vue=pions] #cote{top:0}
 body[data-terminal=mobile] #bas:not([hidden]){position:fixed;left:0;right:0;z-index:80;display:flex;flex-direction:column;
   top:calc(var(--vv-haut,0px) + 48px + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
@@ -2044,6 +2048,9 @@ function _setupPanZoom(){
   const pts = _pointeursCarte;
   let pinch = null;
   wrap.addEventListener('pointerdown', e => {
+    // Un appui sur la carte ferme le panneau posé par-dessus (liste de la
+    // pile, palette), sauf pendant une pose en deux appuis ; le geste continue.
+    if(coteRecouvre() && !_modeCarte && !_filArme) fermerCote();
     // Un pion garde son geste (sélection, glissé) : seul, son doigt ne
     // déplace pas la carte.
     const pion = !!(e.target.closest && e.target.closest('.pion'))
@@ -14362,7 +14369,10 @@ let _profilChoisi = _lirePref('aslweb.profil') || 'auto';
 let _profil = null;
 function detecterProfil(){
   if(_profilChoisi !== 'auto') return _profilChoisi;
-  const tactile = matchMedia('(pointer: coarse)').matches && !matchMedia('(hover: hover)').matches;
+  // Pointeur principal grossier : un écran tactile, même si le navigateur
+  // annonce aussi le survol (certains Android, les stylets) ; sinon le
+  // téléphone prenait l'interface du PC, sans moyen de fermer ses panneaux.
+  const tactile = matchMedia('(pointer: coarse)').matches;
   if(!tactile) return 'pc';
   return Math.min(innerWidth, innerHeight) >= 600 ? 'tablette' : 'mobile';
 }
@@ -14444,13 +14454,13 @@ function construireOnglets(liste){
     b.addEventListener('click', () => montrerOnglet(n));
     o.appendChild(b);
   }
-  if(_profil !== 'pc'){
-    const x = document.createElement('button');
-    x.type = 'button'; x.className = 'fermeCote';
-    x.textContent = '✕'; x.setAttribute('aria-label', 'Fermer le panneau');
-    x.addEventListener('click', () => _profil === 'mobile' ? vueMobile('carte') : basculerCote(false));
-    o.appendChild(x);
-  }
+  // Croix rouge cerclée : partout où le panneau recouvre la carte
+  // (téléphone, tiroir de la tablette, PC sur un écran étroit).
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'fermeCote croixFermer';
+  x.textContent = '✕'; x.title = 'Fermer le panneau'; x.setAttribute('aria-label', 'Fermer le panneau');
+  x.addEventListener('click', e => { e.stopPropagation(); fermerCote(); });
+  o.appendChild(x);
   if(!liste.includes(_ongletCote)) _ongletCote = liste[0];
   montrerOnglet(_ongletCote, true);
 }
@@ -14483,6 +14493,15 @@ function basculerCote(ouvrir){
   rafraichirActions(['pions']);
   _surRedimension();
 }
+// Le panneau recouvre-t-il la carte ? (Il est alors posé par-dessus.)
+const coteRecouvre = () => {
+  const c = document.getElementById('cote');
+  return !c.classList.contains('ferme') && getComputedStyle(c).position === 'absolute';
+};
+function fermerCote(){
+  if(_profil === 'mobile') vueMobile('carte'); else basculerCote(false);
+}
+
 function basculerJournal(montrer){
   const b = document.getElementById('bas');
   b.hidden = montrer === undefined ? !b.hidden : !montrer;
