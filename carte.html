@@ -7738,7 +7738,7 @@ function _inverse(c){
     return out.length ? out : null;
   }
   if(c.startsWith('D/')){
-    const t = _decoupeBrut(c.substring(2));
+    const t = _champsD(c.substring(2), true);
     return t.length >= 3 ? [`D/${t[0]}/${t[2]}/${t[1]}`] : null;
   }
   if(c.startsWith('M/')){
@@ -7820,6 +7820,22 @@ function annuler(){
 function _decoupeCmd(s){
   return _decoupeBrut(s).map(t => t.length > 1 && t[0] === "'" && t[t.length - 1] === "'" ? t.slice(1, -1) : t);
 }
+// Champs d'un D/. L'état d'un pion VASL se termine souvent par une
+// contre-oblique (« …;OldMap;Main Map\ ») : VASSAL l'écrit telle quelle
+// devant le « / » qui sépare le nouvel état de l'ancien, et ce « \/ »
+// passe pour un « / » échappé. Les deux états ont autant de traits : la
+// coupure est le « \/ » qui les équilibre, la contre-oblique restant au
+// nouvel état. brut : apostrophes gardées, comme _decoupeBrut.
+function _champsD(s, brut){
+  const t = brut ? _decoupeBrut(s) : _decoupeCmd(s);
+  if(t.length !== 2) return t;
+  const e = t[1];
+  for(let i = e.indexOf('\\/'); i >= 0; i = e.indexOf('\\/', i + 1)){
+    const a = e.substring(0, i + 1), b = e.substring(i + 2);
+    if(_traits(a).length === _traits(b).length) return [t[0], a, b];
+  }
+  return t;
+}
 const _nul = v => (v === 'null' || v === '' ? null : v);
 const parUid = uid => pions.find(p => p.uid === uid && !p.deleted);
 // Contenu d'une pile VASSAL d'après son état « carte;x;y;id0;…;@@couche ».
@@ -7872,7 +7888,7 @@ function rejouerLog(segs){
     } else if(s.startsWith('-/')){
       n += _retirer(s.substring(2));
     } else if(s.startsWith('D/')){
-      const t = _decoupeCmd(s.substring(2));
+      const t = _champsD(s.substring(2));
       if(_pilesVassal.has(t[0])){
         if(t[1]) _pilesVassal.set(t[0], _idsPile(t[1]));
         continue;
