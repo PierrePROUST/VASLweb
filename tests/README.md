@@ -11,7 +11,9 @@ sh tests/tout.sh            # compare à origin/map
 sh tests/tout.sh HEAD~3     # compare à une autre version
 ```
 
-`CHROMIUM=/chemin/vers/chrome` choisit le navigateur. Les sorties (JSON,
+`CHROMIUM=/chemin/vers/chrome` choisit le navigateur. Le navigateur se dit
+français (`fr-FR`) : l'interface reste celle qu'attendent les tests ;
+`LANGUE=en` la passe en anglais. Les sorties (JSON,
 captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 
 ## Non-régression (comparées à la référence)
