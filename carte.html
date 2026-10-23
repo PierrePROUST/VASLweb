@@ -372,6 +372,16 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 /* Trait Immobilized : Fire Lane en surimpression… Le clic simple passe
    au travers ; Maj enfoncée, la pièce redevient saisissable. */
 .pion.immob,.pion.immob-jamais{pointer-events:none}
+/* Show Info (TextInfo de VASL) : bande blanche à droite du pion. Les
+   copies du pion (aperçu, panneau Pile) ne la reprennent pas. */
+.infoTxt{display:none}
+#mapInner .infoTxt{display:block;position:absolute;white-space:nowrap;
+  background:#fff;color:#000;border:1px solid #000;box-sizing:border-box;pointer-events:none;
+  font-family:Dialog,Arial,Helvetica,sans-serif;transform:translateY(-50%)}
+.infoTxt .rouge{color:#f00}
+.infoTxt .radio{border:1px solid #000;border-radius:50%;padding:0 .18em;margin:0 .05em}
+/* Exposant de TextInfo : même taille, remonté d'une demi-hauteur de capitale. */
+.infoTxt sup{font-size:1em;vertical-align:.45em;line-height:0}
 /* HidePiecesButton de VASL (Ctrl+F10) — vue 1 : carte et pièces non
    empilées (overlays déplaçables, Fire Lane) ; vue 2 : carte et pièces
    « overlay ». Une pièce masquée ne prend ni clic ni survol. */
@@ -6911,6 +6921,8 @@ function lirePiece(seg){
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
     img, nom: nom || img.split('/').pop(), nomBase: pm ? pm[2].replace(/\\/g,'').trim() : '', couches, faceCouche, rot, masque, hip, masqueNation,
     vt: _pieceVaslTools(ts), rotations, immob: _immobilise(ts),
+    info: (() => { const t = ts && ts.typ.find(x => /^info;/.test(x));
+                   return t ? t.substring(5).replace(/\\(.)/g, '$1') : null; })(),
     // Propriété « overlay » (minuscule) : seule visible en vue « carte
     // seule » de VASL — les overlays d'escalier (StairOverlayProperties).
     // Les overlays de terrain portent « Overlay », que VASL ne voit pas.
@@ -7539,6 +7551,48 @@ async function _majPieceVaslTools(p, d, gen){
   rendrePile(cle(p));
 }
 
+// ── Show Info (TextInfo de VASL) : la bande s'affiche à 6 px du bord
+// droit du pion, centrée en hauteur, en Dialog 11. Le texte suit les
+// conventions de TextInfo.drawInfo : « , » vaut deux espaces, un jeton
+// commençant par « r » est en rouge, « R » seul est cerclé (sans radio),
+// « ^ » ouvre et ferme un exposant, « [red]…[/red] » colore en rouge.
+function basculerInfo(p){
+  p.infoVisible = !p.infoVisible;
+  majApparence(p);
+}
+function _elementInfo(info, cote){
+  const e = document.createElement('div');
+  e.className = 'couche infoTxt';
+  const taille = 11 * SC;
+  e.style.cssText = `left:${cote + 6 * SC}px;top:${cote / 2}px;font-size:${taille}px;`
+    + `height:${Math.round(taille * 1.8)}px;line-height:${Math.round(taille * 1.8) - 2}px;padding:0 ${7 * SC}px`;
+  let haut = false, cible = e;
+  for(const tok of info.split(/([\^,])/)){
+    if(!tok) continue;
+    if(tok === '^'){
+      haut = !haut;
+      if(haut){ cible = document.createElement('sup'); e.appendChild(cible); } else cible = e;
+      continue;
+    }
+    if(tok === ','){ cible.appendChild(document.createTextNode('\u00a0\u00a0')); continue; }
+    let t = tok, rouge = false;
+    if(t[0] === 'r'){ t = t.substring(1); rouge = true; }
+    if(t === 'R'){
+      const r = document.createElement('span'); r.className = 'radio'; r.textContent = 'R';
+      cible.appendChild(r); continue;
+    }
+    // Balises [red]…[/red] à l'intérieur d'un jeton.
+    for(const [j, bout] of t.split(/\[\/?red\]/).entries()){
+      if(!bout) continue;
+      const sp = document.createElement('span');
+      if(rouge || (j % 2 === 1 && /\[red\]/.test(t))) sp.className = 'rouge';
+      sp.textContent = bout;
+      cible.appendChild(sp);
+    }
+  }
+  return e;
+}
+
 // Face, surimpressions et orientation, d'après le segment courant.
 async function majApparence(p, d){
   // Deux mises à jour peuvent se croiser (création, puis arrivée de la
@@ -7656,6 +7710,7 @@ async function majApparence(p, d){
       couches.push(o);
     }
   }
+  if(!voile && p.infoVisible && d.info) couches.push(_elementInfo(d.info, p.sz));
   if(!voile) for(const t of d.etiquettes){
     const e = document.createElement('div');
     e.className = 'couche etiq';
@@ -10402,6 +10457,11 @@ function commandesDe(type){
         const groupe = _sel.has(p) ? trierParPile([..._sel].filter(q => !q.cache)) : [p];
         deplacer(groupe, p.x + dx, p.y + dy);
       }));
+    } else if(id === 'info'){
+      // TextInfo de VASL (« info;texte ») : « Show Info », Ctrl+I, montre ou
+      // cache la bande de caractéristiques du véhicule. Affichage local :
+      // l'état ne change pas, rien ne part dans le log.
+      ajouter(i, 'Show Info', _touche(73, 2), ({p, effets}) => effets.push(() => basculerInfo(p)));
     } else if(id === 'moved'){
       // MarkMoved de VASL : commande « Moved », Ctrl+M — état true/false.
       ajouter(i, 'Moved', _touche(77, 2), ({S}) => {
