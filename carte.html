@@ -162,6 +162,13 @@ body:not([data-terminal=pc]) .act.ico{min-width:var(--cible);height:var(--cible)
   width:52px;min-height:52px;padding:3px 2px;margin:2px;font-size:10px;line-height:1.1;background:none;
   border-color:transparent;white-space:nowrap;overflow:hidden}
 .act.rail .ic{font-size:20px;line-height:24px}
+.act.rail .lb{display:none}
+.icPion{display:inline-block;position:relative;width:28px;height:28px;overflow:hidden;vertical-align:middle}
+.icPion .modelePion{position:absolute;left:0;top:0;width:48px;height:48px;transform:scale(calc(28 / 48));transform-origin:0 0}
+.modelePion{position:relative;width:48px;height:48px;overflow:hidden}
+.modelePion img{position:absolute}
+.act.ico .icPion{width:20px;height:20px}
+.act.ico .icPion .modelePion{transform:scale(calc(20 / 48))}
 .act.rail img{height:22px}
 .act.rail .lb{max-width:50px;overflow:hidden;text-overflow:ellipsis}
 .act.rail.actif{background:#333;border-color:var(--accent)}
@@ -7404,10 +7411,10 @@ function _pionInconnu(){
 // au bord du pion désigné (posV, posH), décalage (le vertical compte vers
 // le bas), puis justification selon la taille du texte. La rotation se
 // fait autour du centre du pion.
-function placerLabel(e, sz){
+function placerLabel(e, sz, k = SC){
   const t = e._label;
   const w = e.offsetWidth, h = e.offsetHeight;
-  let x = t.decH * SC, y = t.decV * SC;
+  let x = t.decH * k, y = t.decV * k;
   if(t.posV === 't') y -= sz/2; else if(t.posV === 'b') y += sz/2;
   if(t.posH === 'l') x -= sz/2; else if(t.posH === 'r') x += sz/2;
   if(t.justV === 'b') y -= h; else if(t.justV === 'c') y -= h/2;
@@ -13539,7 +13546,7 @@ const ACTIONS = {
   utilisateur: {lib: () => `Utilisateur : ${_nomUtilisateur()} — changer ou gérer les utilisateurs`,
              court: _nomUtilisateur, ico: '👤', texteBarre: true, faire: demanderUtilisateur,
              classe: () => _admin ? 'admin' : ''},
-  pions:    {lib: 'Panneau Pile, Palette, Dés', court: 'Pions', ico: '♟', faire: () => basculerCote(),
+  pions:    {lib: 'Panneau Pile, Palette, Dés', court: 'Pions', ico: '♟', pion: true, faire: () => basculerCote(),
              coche: () => !document.getElementById('cote').classList.contains('ferme')},
   journal:  {lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => basculerJournal(),
              coche: () => !document.getElementById('bas').hidden},
@@ -13605,7 +13612,9 @@ function rendreAction(id, forme = 'icone'){
   } else {
     el.type = 'button';
     el.className = 'act ' + forme + (a.de ? ' de' : '');
-    if(a.img){
+    if(a.pion && forme !== 'bouton'){
+      el.appendChild(iconePion());
+    } else if(a.img){
       const im = document.createElement('img');
       im.alt = '';
       el.appendChild(im);
@@ -13640,6 +13649,52 @@ function rendreAction(id, forme = 'icone'){
   });
   _majAction(el, a, id);
   return el;
+}
+
+// ── Icône des pions : le chef 10-3 de l'OB « Other UNC (Korea) » de la
+// palette VASL (gpid 3b5:8394, prototype unLDR1(KFW)), son label Name
+// réglé sur « Monclar ». Composée une fois, comme une vignette de la
+// palette, puis copiée ; en attendant la base, le signe ♟.
+const ICONE_PION = {gpid: '3b5:8394', nom: 'Monclar'};
+let _modeleIconePion = null;
+function _composerIconePion(){
+  if(!_modeleIconePion) _modeleIconePion = chargerBDD().then(async bdd => {
+    const x = bdd.parGpid.get(ICONE_PION.gpid);
+    const def = x && developperDefinition(x.cmd);
+    if(!def) return null;
+    const i = def.T.findIndex(t => /^label;/.test(t) && t.split(';')[2] === 'Name');
+    if(i >= 0) def.S[i] = ICONE_PION.nom;
+    const d = lirePiece('+/icone/' + encoderTraits(def.T) + '/' + encoderTraits(def.S));
+    const m = document.createElement('div');
+    m.className = 'modelePion';
+    await composerVignette(m, d, 48);
+    // Les labels se mesurent dans la page, à l'échelle du pion (48 px).
+    const cache = document.createElement('div');
+    cache.style.cssText = 'position:fixed;left:-200px;top:0;visibility:hidden';
+    cache.appendChild(m);
+    document.body.appendChild(cache);
+    for(const t of d.etiquettes){
+      const e = document.createElement('div');
+      e.className = 'etiq';
+      e.textContent = t.texte;
+      e.style.font = `${t.style & 2 ? 'italic ' : ''}${t.style & 1 ? 'bold ' : ''}${t.taille}px/1.15 Arial,Helvetica,sans-serif`;
+      e.style.color = t.couleur;
+      e._label = t;
+      m.appendChild(e);
+      placerLabel(e, 48, 1);
+    }
+    cache.remove();
+    return m;
+  }).catch(() => null);
+  return _modeleIconePion;
+}
+function iconePion(){
+  const b = document.createElement('span');
+  b.className = 'ic icPion';
+  b.setAttribute('aria-hidden', 'true');
+  b.textContent = '♟';
+  _composerIconePion().then(m => { if(m){ b.textContent = ''; b.appendChild(m.cloneNode(true)); } });
+  return b;
 }
 
 // Une feuille du bas qui liste des actions, en grand.
@@ -13680,7 +13735,7 @@ function _majAction(el, a, id){
   if(lb){
     lb.textContent = forme === 'menu' || forme === 'ligne' ? lib
                    : forme === 'bouton' || (forme === 'icone' && (a.texteBarre || (!a.ico && !a.img))) ? _v(a.court || a.lib)
-                   : forme === 'rail' ? _v(a.court || a.lib) : '';
+                   : '';
   }
   const rc = el.querySelector('.rc');
   if(rc) rc.textContent = t;
@@ -13924,7 +13979,7 @@ Object.assign(ACTIONS, {
   plus:      {lib: 'Plus…', court: 'Plus', ico: '☰', faire: () => ouvrirFeuillePlus()},
   vueCarte:  {lib: 'Carte', court: 'Carte', ico: '🗺', faire: () => vueMobile('carte'), allume: () => _vue() === 'carte'},
   vuePile:   {lib: 'Pile sélectionnée', court: 'Pile', ico: '▤', faire: () => vueMobile('pile'), allume: () => _vue() === 'pile'},
-  vuePions:  {lib: 'Palette des pions', court: 'Pions', ico: '♟', faire: () => vueMobile('pions'), allume: () => _vue() === 'pions'},
+  vuePions:  {lib: 'Palette des pions', court: 'Pions', ico: '♟', pion: true, faire: () => vueMobile('pions'), allume: () => _vue() === 'pions'},
   vueJournal:{lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => vueMobile('journal'), allume: () => _vue() === 'journal',
               badge: () => _nonLus},
   apercuChat:{lib: 'Aperçu du chat sur la carte', coche: () => _apercuChat, faire: () => basculerApercuChat()},
@@ -13932,7 +13987,7 @@ Object.assign(ACTIONS, {
   desMenu:   {lib: 'Dés : un appui DR, un appui long les catégories', court: 'Dés', ico: '🎲',
               faire: () => lancerDR('Other'), menuLong: null},
   sanPieges: {lib: 'SAN et pièges…', court: 'SAN', ico: '🎯', faire: () => ouvrirFeuilleSan()},
-  tiroir:    {lib: 'Pile et palette', court: 'Pions', ico: '♟', faire: () => basculerCote(),
+  tiroir:    {lib: 'Pile et palette', court: 'Pions', ico: '♟', pion: true, faire: () => basculerCote(),
               allume: () => !document.getElementById('cote').classList.contains('ferme')}
 });
 
