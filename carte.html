@@ -2057,7 +2057,10 @@ function _setupPanZoom(){
       && !(_verrouPions && e.pointerType && e.pointerType !== 'mouse');
     // Maj + glissé dans le vide, à la souris : rectangle de sélection.
     if(!pion && e.shiftKey && e.button === 0 && (e.pointerType === 'mouse' || !e.pointerType)){ _lasso(e); return; }
-    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, pion, x0: e.clientX, y0: e.clientY, t0: Date.now(), btn: e.button});
+    // surPion : l'appui a commencé sur un pion ; avec le verrou, son doigt
+    // déplace la carte (pion faux) mais ce n'est pas un appui dans le vide.
+    const surPion = !!(e.target.closest && e.target.closest('.pion'));
+    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, pion, surPion, x0: e.clientX, y0: e.clientY, t0: Date.now(), btn: e.button});
     if(!pion){ try { wrap.setPointerCapture(e.pointerId); } catch(err){} }
     if(!pion || pts.size > 1) wrap.classList.add('pan');
     if(pts.size === 2){
@@ -2089,7 +2092,7 @@ function _setupPanZoom(){
     if(pts.size < 2) pinch = null;
     if(!pts.size) wrap.classList.remove('pan');
     // Un appui bref dans le vide, sans glisser ni pincer : clic sur la carte.
-    if(p && !p.pion && e.type === 'pointerup' && !pince && p.btn === 0
+    if(p && !p.pion && !p.surPion && e.type === 'pointerup' && !pince && p.btn === 0
        && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 6) _clicVide(e);
     if(!pts.size) pince = false;
   };
@@ -12157,13 +12160,16 @@ let _eventail = null;            // {k, el}
 const EVENTAIL_COTE = 60, EVENTAIL_PAR_RANG = 6;
 function ouvrirEventail(k){
   if(_filArme) return;
+  // Un seul éventail à la fois : l'ancien se ferme d'abord, sans quoi il
+  // restait à l'écran, figé, sans que rien ne puisse le fermer.
+  if(_eventail) fermerEventail();
   _eventail = {k, el: null};
   majEventail();
   majBarrePile();
 }
 function fermerEventail(){
+  document.querySelectorAll('.eventail').forEach(e => e.remove());
   if(!_eventail) return;
-  if(_eventail.el) _eventail.el.remove();
   _eventail = null;
   majBarrePile();
 }
