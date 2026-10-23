@@ -159,9 +159,9 @@ body:not([data-terminal=pc]) .fenetre input:not([type=checkbox]),body:not([data-
 body:not([data-terminal=pc]) .act.ico{min-width:var(--cible);height:var(--cible)}
 .fermeCote{flex:none!important;min-width:var(--cible);font-size:16px}
 .act.rail{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;flex:none;
-  width:52px;min-height:52px;padding:3px 2px;margin:2px;font-size:10px;line-height:1.1;background:none;
-  border-color:transparent;white-space:nowrap;overflow:hidden}
-.act.rail .ic{font-size:20px;line-height:24px}
+  width:var(--tailleRail,52px);height:var(--tailleRail,52px);min-height:0;padding:0;margin:1px;font-size:10px;
+  line-height:1.1;background:none;border-color:transparent;white-space:nowrap;overflow:hidden}
+.act.rail .ic{font-size:calc(var(--tailleRail,52px) * .44);line-height:1}
 .act.rail .lb{display:none}
 .icPion{display:inline-block;position:relative;width:28px;height:28px;overflow:hidden;vertical-align:middle}
 .icPion .modelePion{position:absolute;left:0;top:0;width:48px;height:48px;transform:scale(calc(28 / 48));transform-origin:0 0}
@@ -169,14 +169,19 @@ body:not([data-terminal=pc]) .act.ico{min-width:var(--cible);height:var(--cible)
 .modelePion img{position:absolute}
 .act.ico .icPion{width:20px;height:20px}
 .act.ico .icPion .modelePion{transform:scale(calc(20 / 48))}
-.act.rail img{height:22px}
+.act.rail img{height:calc(var(--tailleRail,52px) * .46)}
+.act.rail .icPion{width:calc(var(--tailleRail,52px) * .6);height:calc(var(--tailleRail,52px) * .6)}
+.act.rail .icPion .modelePion{transform:scale(var(--echPionRail,.65))}
 .act.rail .lb{max-width:50px;overflow:hidden;text-overflow:ellipsis}
 .act.rail.actif{background:#333;border-color:var(--accent)}
 .desBoutons.grand .act.bouton{min-height:56px;font-size:17px}
 /* Tablette : rail à gauche, tiroir à droite, journal replié. */
-body[data-terminal=tablette] #chromeGauche{width:58px;display:flex;flex-direction:column;background:var(--barre);
-  border-right:1px solid var(--bord);padding-top:var(--marge-h);padding-left:var(--marge-g);overflow-y:auto}
-.rail{display:flex;flex-direction:column;align-items:center}
+body[data-terminal=tablette] #chromeGauche{display:flex;flex-direction:column;background:var(--barre);
+  border-right:1px solid var(--bord);padding:calc(var(--marge-h) + 4px) 2px 4px calc(var(--marge-g) + 2px);overflow-y:auto}
+body[data-terminal=tablette][data-orient=portrait] #chromeGauche{display:none}
+.rail{display:flex;flex-direction:column;align-items:center;gap:2px}
+body[data-orient=portrait] .rail{flex-direction:row;justify-content:center;flex-wrap:wrap;background:var(--barre);
+  border-bottom:1px solid var(--bord);padding:calc(var(--marge-h) + 2px) calc(var(--marge-d) + 8px) 2px calc(var(--marge-g) + 8px)}
 body[data-terminal=tablette] #poigneeCote{display:none}
 body[data-terminal=tablette] #cote{position:absolute;right:0;top:0;bottom:0;z-index:70;width:min(360px,85vw);
   box-shadow:-6px 0 20px rgba(0,0,0,.5);padding-right:var(--marge-d)}
@@ -14027,13 +14032,12 @@ DISPOSITIONS.tablette = {
   rail: ['ouvrir', 'undo', 'los', 'unmoved', 'all', 'masquer', 'reseau', 'tiroir', 'plus'],
   panneau: ['pile', 'palette'],
   construire(){
-    const g = document.getElementById('chromeGauche');
     const r = document.createElement('div');
-    r.className = 'rail';
+    r.id = 'rail'; r.className = 'rail';
     r.setAttribute('role', 'toolbar');
-    r.setAttribute('aria-orientation', 'vertical');
     for(const id of this.rail) r.appendChild(rendreAction(id, 'rail'));
-    g.appendChild(r);
+    document.getElementById('chromeGauche').appendChild(r);
+    placerRail();
     _relectureVolante();
     _fabDes();
     document.getElementById('bas').classList.add('replie');
@@ -14064,6 +14068,26 @@ DISPOSITIONS.mobile = {
     _boutonVerrou();
   }
 };
+
+// Rail de la tablette, selon l'écran : en paysage, une colonne à gauche ;
+// en portrait, une ligne en haut, qui laisse toute la largeur à la carte.
+// Les boutons se serrent et prennent la taille que la place permet, de 40
+// (cible tactile) à 48 px en colonne, à 56 px en ligne.
+function placerRail(){
+  const r = document.getElementById('rail');
+  if(!r || _profil !== 'tablette') return;
+  const portrait = window.innerHeight > window.innerWidth;
+  document.body.dataset.orient = portrait ? 'portrait' : 'paysage';
+  const dest = document.getElementById(portrait ? 'chromeHaut' : 'chromeGauche');
+  if(r.parentElement !== dest) dest.appendChild(r);
+  r.setAttribute('aria-orientation', portrait ? 'horizontal' : 'vertical');
+  const n = r.children.length || 1;
+  const place = portrait ? window.innerWidth - 16 : document.getElementById('corps').clientHeight - 8;
+  const t = Math.max(40, Math.min(portrait ? 56 : 48, Math.floor(place / n) - 2));
+  document.documentElement.style.setProperty('--tailleRail', t + 'px');
+  document.documentElement.style.setProperty('--echPionRail', String(t * .6 / 48));
+}
+_apresRedimension.push(placerRail);
 
 // Vue du téléphone : la carte seule, ou une vue par-dessus elle.
 function vueMobile(v){
@@ -14187,6 +14211,7 @@ function _defaireProfil(){
   bas.hidden = false;
   document.getElementById('poigneeJournal').hidden = false;
   delete document.body.dataset.vue;
+  delete document.body.dataset.orient;
   document.body.classList.remove('saisie');
   if(_etatChat) _poserEtatChat(null);
   const champs = document.getElementById('infoScen');
