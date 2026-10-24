@@ -66,7 +66,8 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `liste.js` | Liste de la pile au téléphone (et profil PC sur écran étroit) : appui sur la carte et croix rouge la ferment |
 | `orphelin.js` | Un seul éventail à la fois (double appui, verrou des pions) ; la croix le ferme |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
-| `nav.js` | Barre du bas du téléphone : ses icônes (toutes celles de Plus comprises, aucune vide), défilement au doigt, carte sans pions, Remove all |
+| `loupepc.js` | PC : pendant un glissé à la souris, la loupe ne montre que l'hexagone survolé |
+| `nav.js` | Colonne d'icônes du téléphone (à gauche) : ses icônes (toutes celles de Plus comprises, aucune vide), défilement au doigt, carte sans pions, Remove all |
 | `chat0.js` | Journal non ramené en bas, profil gelé pendant la saisie |
 | `chat2.js` | Relecture d'un log de 50 messages chat compact ouvert ; message reçu en vue Carte ; Retour |
 | `chat3.js` | Seules les 5 phrases ; une phrase envoyée d'un appui, brouillon gardé |

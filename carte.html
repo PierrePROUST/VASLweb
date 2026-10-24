@@ -248,6 +248,18 @@ body.avecBarrePile .boutonVerrou{display:none}
   mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
 .navBas.suiteGauche{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent)}
+.navGauche.navBas{flex-direction:column;width:var(--railMobile);overflow-x:hidden;overflow-y:auto;touch-action:pan-y;
+  scroll-snap-type:y proximity;overscroll-behavior-y:contain;gap:2px;padding:4px 2px calc(var(--marge-b) + 4px) calc(var(--marge-g) + 2px);
+  scroll-padding-block:4px;border-top:none;border-right:1px solid var(--bord);-webkit-mask-image:none;mask-image:none}
+.navGauche.navBas .act.rail{flex:0 0 46px;width:46px;height:46px}
+.navGauche.suiteBas{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent)}
+.navGauche.suiteHaut{-webkit-mask-image:linear-gradient(to top,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to top,#000 calc(100% - 28px),transparent)}
+.navGauche.suiteHaut.suiteBas{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 28px,#000 calc(100% - 28px),transparent);
+  mask-image:linear-gradient(to bottom,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
+:root{--railMobile:52px}
+body[data-terminal=mobile] #chromeGauche{display:flex;background:var(--barre)}
 .navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
 .relectureBas{display:flex;justify-content:center;background:#202020}
@@ -257,15 +269,16 @@ body[data-terminal=mobile] #poigneeCote,body[data-terminal=mobile] #poigneeJourn
 body[data-terminal=mobile] #coteOnglets button[data-onglet]{display:none}
 body[data-terminal=mobile] #coteOnglets{justify-content:flex-end}
 body[data-terminal=mobile] #couches{display:none}
-body[data-terminal=mobile] #cote{position:absolute;left:0;right:0;bottom:0;z-index:70;width:auto;border-left:none;
+body[data-terminal=mobile] #cote{position:absolute;left:var(--railMobile);right:0;bottom:0;z-index:70;width:auto;border-left:none;
   border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.5)}
 body[data-terminal=mobile][data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
 body[data-terminal=mobile][data-vue=pions] #cote{top:0}
-body[data-terminal=mobile] #bas:not([hidden]){position:fixed;left:0;right:0;z-index:80;display:flex;flex-direction:column;
+body[data-terminal=mobile] #bas:not([hidden]){position:fixed;left:var(--railMobile);right:0;z-index:80;display:flex;flex-direction:column;
   top:calc(var(--vv-haut,0px) + 48px + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
-/* Saisie au doigt : le chat touche le clavier ; navigation et relecture,
-   dessous de toute façon, s'effacent. */
-body:not([data-terminal=pc]).saisie .navBas,body:not([data-terminal=pc]).saisie .relectureBas{display:none}
+/* Saisie au doigt : le chat touche le clavier ; la relecture, dessous de
+   toute façon, s'efface ; la colonne d'icônes de gauche reste. Le chat
+   et les vues du téléphone laissent cette colonne visible. */
+body:not([data-terminal=pc]).saisie .navBas:not(.navGauche),body:not([data-terminal=pc]).saisie .relectureBas{display:none}
 body[data-terminal=mobile].saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
 /* Chat compact : une feuille au-dessus du bas de l'écran, la carte visible. */
 body[data-terminal=mobile] #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
@@ -429,6 +442,7 @@ body.maj .pion.immob{pointer-events:auto}
   font:600 11px/16px system-ui,sans-serif;white-space:nowrap}
 .loupe{position:fixed;z-index:9990;pointer-events:none;text-align:center}
 .loupe canvas{border-radius:50%;border:2px solid var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.7);display:block}
+.loupe.hexSeul canvas{border-radius:0;border:none;box-shadow:none;filter:drop-shadow(0 4px 10px rgba(0,0,0,.7))}
 .loupe span{display:inline-block;margin-top:3px;background:#000;color:#fff;font:600 12px/16px system-ui,sans-serif;
   padding:0 5px;border-radius:3px;white-space:nowrap}
 .lasso{position:fixed;z-index:9400;pointer-events:none;border:2px solid var(--accent);background:rgba(217,164,65,.12)}
@@ -11426,7 +11440,8 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
     if(a){ cible.style.left = a.x*SC + 'px'; cible.style.top = a.y*SC + 'px'; }
     // Au doigt, le fantôme et la cible passent sous le doigt : une loupe
     // montre, au-dessus, l'hexagone visé.
-    if(doigt) dessinerLoupe(ev.clientX, ev.clientY, a, rects);
+    // À la souris, la loupe ne montre que l'hexagone survolé.
+    dessinerLoupe(ev.clientX, ev.clientY, a, rects, !doigt);
     if(opts.pendant) opts.pendant(ev, a);
   };
   const creerFantome = () => {
@@ -11503,14 +11518,19 @@ function _hautHexAu(x, y){
   }
   return 2 * HEX_HY;
 }
-function dessinerLoupe(cx, cy, a, rects){
+// À la souris (hexSeul), la loupe ne montre que l'hexagone survolé, à sa
+// forme, à côté du curseur.
+const LOUPE_HEX = 150;
+function dessinerLoupe(cx, cy, a, rects, hexSeul){
   let l = document.getElementById('loupe');
   if(!a){ cacherLoupe(); return; }
-  // Diamètre à l'écran : 200 px, moins sur un écran étroit.
-  const d = Math.min(LOUPE, window.innerWidth - 16);
+  // Diamètre à l'écran : 200 px au doigt (moins sur un écran étroit), 150
+  // à la souris.
+  const d = hexSeul ? LOUPE_HEX : Math.min(LOUPE, window.innerWidth - 16);
+  if(l && l.offsetWidth !== d){ l.remove(); l = null; }
   if(!l){
     l = document.createElement('div');
-    l.id = 'loupe'; l.className = 'loupe';
+    l.id = 'loupe'; l.className = 'loupe' + (hexSeul ? ' hexSeul' : '');
     l.innerHTML = `<canvas width="${d * 2}" height="${d * 2}"></canvas><span></span>`;
     l.style.width = d + 'px';
     l.querySelector('canvas').style.width = l.querySelector('canvas').style.height = d + 'px';
@@ -11518,13 +11538,26 @@ function dessinerLoupe(cx, cy, a, rects){
   }
   const cv = l.querySelector('canvas'), g = cv.getContext('2d');
   // Point visé et côté de la zone montrée, en pixels de #mapInner : un
-  // hexagone et demi de part et d'autre.
-  const px = a.x * SC, py = a.y * SC, hex = _hautHexAu(a.x, a.y) * SC;
-  const cote = 2 * LOUPE_RAYON_HEX * hex;
+  // hexagone et demi de part et d'autre ; à la souris, l'hexagone seul,
+  // centré sur son centre même si l'ancrage est un de ses côtés.
+  const hex = _hautHexAu(a.x, a.y) * SC;
+  const centre = hexSeul && _hexParNom.get((a.label || '').split('/')[0]) || a;
+  const px = centre.x * SC, py = centre.y * SC;
+  // Un hexagone à côtés plats en haut et en bas : 2/√3 fois plus large que haut.
+  const cote = hexSeul ? hex * 2 / Math.sqrt(3) * 1.04 : 2 * LOUPE_RAYON_HEX * hex;
   const x0 = px - cote / 2, y0 = py - cote / 2, k = cv.width / cote;
   g.setTransform(1, 0, 0, 1, 0, 0);
-  g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height);
+  g.clearRect(0, 0, cv.width, cv.height);
+  const contourHex = () => {
+    const R = hex / Math.sqrt(3), h = hex / 2;
+    g.beginPath();
+    [[R, 0], [R / 2, h], [-R / 2, h], [-R, 0], [-R / 2, -h], [R / 2, -h]]
+      .forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](px + x, py + y));
+    g.closePath();
+  };
   g.setTransform(k, 0, 0, k, -x0 * k, -y0 * k);
+  if(hexSeul){ g.save(); contourHex(); g.clip(); }
+  else { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height); g.setTransform(k, 0, 0, k, -x0 * k, -y0 * k); }
   for(const b of document.querySelectorAll('#mapInner canvas.boardLayer')){
     const L = parseFloat(b.style.left), T = parseFloat(b.style.top), W = parseFloat(b.style.width), H = parseFloat(b.style.height);
     if(L > x0 + cote || T > y0 + cote || L + W < x0 || T + H < y0) continue;
@@ -11536,11 +11569,30 @@ function dessinerLoupe(cx, cy, a, rects){
     if(L > x0 + cote || T > y0 + cote || L + W < x0 || T + W < y0) continue;
     try { g.drawImage(p.face, L, T, W, W); } catch(e){}
   }
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  // L'ancrage visé : un cercle de 0,7 hexagone de diamètre.
-  g.strokeStyle = '#d9a441'; g.lineWidth = 4;
-  g.beginPath(); g.arc(cv.width / 2, cv.height / 2, hex * k * 0.35, 0, 2 * Math.PI); g.stroke();
+  if(hexSeul){
+    // Le bord de l'hexagone, et l'ancrage visé s'il est sur un côté.
+    g.restore();
+    g.strokeStyle = '#d9a441'; g.lineWidth = 3 / k;
+    contourHex(); g.stroke();
+    if(a !== centre && (a.x !== centre.x || a.y !== centre.y)){
+      g.beginPath(); g.arc(a.x * SC, a.y * SC, hex * 0.12, 0, 2 * Math.PI); g.stroke();
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+  } else {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    // L'ancrage visé : un cercle de 0,7 hexagone de diamètre.
+    g.strokeStyle = '#d9a441'; g.lineWidth = 4;
+    g.beginPath(); g.arc(cv.width / 2, cv.height / 2, hex * k * 0.35, 0, 2 * Math.PI); g.stroke();
+  }
   l.querySelector('span').textContent = a.label || '';
+  if(hexSeul){
+    // À droite du curseur, un peu au-dessus ; à gauche faute de place.
+    let x = cx + 28, y = cy - d - 12;
+    if(x + d > window.innerWidth - 8) x = cx - d - 28;
+    if(y < 4) y = cy + 28;
+    l.style.left = x + 'px'; l.style.top = y + 'px';
+    return;
+  }
   // Au-dessus du doigt ; trop près du haut de l'écran, en dessous.
   let haut = cy - d - 60;
   if(haut < 4) haut = cy + 60;
@@ -14661,23 +14713,25 @@ DISPOSITIONS.mobile = {
     rl.appendChild(rendreAction('relecture', 'icone'));
     b.appendChild(_construireApercuChat());
     const nav = document.createElement('nav');
-    nav.className = 'navBas';
+    nav.className = 'navBas navGauche';
     nav.setAttribute('aria-label', 'Vues');
-    // Carte ; affichage de la carte avec ou sans pions ; palette ; Remove
-    // all ; journal. Plus large que l'écran, la barre défile au doigt, de
-    // droite à gauche.
-    // Puis toutes les actions de la feuille « Plus », chacune par son icône.
+    nav.setAttribute('aria-orientation', 'vertical');
+    // Une colonne d'icônes sur la gauche de l'écran : carte ; affichage de
+    // la carte avec ou sans pions ; palette ; Remove all ; journal ; puis
+    // toutes les actions de la feuille « Plus », chacune par son icône.
+    // Plus haute que l'écran, la colonne défile au doigt, de haut en bas.
     const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal'];
     for(const id of [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus'])
       nav.appendChild(rendreAction(id, 'rail'));
     const bords = () => {
-      nav.classList.toggle('suiteGauche', nav.scrollLeft > 2);
-      nav.classList.toggle('suiteDroite', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2);
+      nav.classList.toggle('suiteHaut', nav.scrollTop > 2);
+      nav.classList.toggle('suiteBas', nav.scrollTop + nav.clientHeight < nav.scrollHeight - 2);
     };
     nav.addEventListener('scroll', bords, {passive: true});
     _apresRedimension.push(bords);
     setTimeout(bords, 0);
-    b.append(rl, nav);
+    b.append(rl);
+    document.getElementById('chromeGauche').appendChild(nav);
     vueMobile('carte');
     _boutonVerrou();
   }
