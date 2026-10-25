@@ -6895,6 +6895,14 @@ function lirePiece(seg){
   // 120 px, marqueur de tour de 48 px).
   const faceCouche = !img;
   if(!img) img = _faceFromLayers(couches) || '';
+  else {
+    // Couche active de nationalité posée en (0, 0) : une autre face, qui
+    // recouvre l'image de base (LMG malf : ge/geLMGb sur ge/geLMG).
+    // imagesCouches ne la dessine pas en surimpression : sans cela, la
+    // LMG restait intacte.
+    const f = couches.find(c => c.actif && !c.dx && !c.dy && /^[a-z]{2}\//.test(_imgCouche(c) || ''));
+    if(f) img = _imgCouche(f);
+  }
   nom = _nomAvecLabels(ts, nom || img.split('/').pop());
   // Orientation : angle de chaque trait rotate (Covered Arc des canons et
   // véhicules, boussole…). Il s'applique à tout ce qui est à l'intérieur.
