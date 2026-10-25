@@ -192,6 +192,11 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .act.rail .icPion{width:calc(var(--tailleRail,52px) * .6);height:calc(var(--tailleRail,52px) * .6)}
 .act.rail .icPion .modelePion{transform:scale(var(--echPionRail,.65))}
 .act.rail .lb{max-width:50px;overflow:hidden;text-overflow:ellipsis}
+/* Boutons LOS de VASL : l'icône thread.gif (16 px, trait noir) sur fond
+   clair, et la lettre du bouton à côté, ou dessous dans le rail. */
+.act.lettre img{background:#e4e1d6;border-radius:3px;padding:1px;image-rendering:pixelated}
+.act.rail.lettre img{height:calc(var(--tailleRail,52px) * .36)}
+.act.rail.lettre .lb{display:block;font:600 12px/1 system-ui,sans-serif}
 .act.rail.actif{background:#333;border-color:var(--accent)}
 .desBoutons.grand .act.bouton{min-height:56px;font-size:17px}
 /* Téléphone : barre du haut, navigation en bas, une vue à la fois. */
@@ -7304,11 +7309,13 @@ async function _chargerImage(path){
     // Le module désigne bien des images sans extension (« MS/Gutted »,
     // « ML/NoMove ») et certaines n'existent qu'en SVG, d'autres qu'en GIF :
     // on essaie le chemin donné, puis les autres formats.
+    // Une URL complète (icône des ressources de VASSAL) est prise telle quelle.
+    const url = /^https?:/.test(path);
     const base = path.replace(/\.(svg|gif|png)$/i, '');
-    const essais = [...new Set([path, base + '.svg', base + '.gif', base + '.png'])];
+    const essais = url ? [path] : [...new Set([path, base + '.svg', base + '.gif', base + '.png'])];
     let r = null;
     for(const e of essais){
-      r = await fetch(VASL_IMAGES_URL + e);
+      r = await fetch(url ? e : VASL_IMAGES_URL + e);
       if(r.ok){ path = e; break; }
     }
     if(!r.ok) throw new Error('HTTP ' + r.status);
@@ -14423,12 +14430,9 @@ const _enRelecture = () => _etapes.length > 0;
 // s'empilent pas — overlays déplaçables, Fire Lane — (ShowMapAndOverlay).
 // Les overlays restent toujours visibles : la vue « carte seule » de VASL
 // n'est pas reprise. Rien n'est retiré, l'affichage seul change.
-// Le bouton porte le pion North de la palette VASL, allumé quand les
-// pions sont masqués.
-const ICONE_NORTH = {gpid: '291', ico: '🧭'};
 const VUES_CARTE = [
-  {lib: 'Masquer les pions (montrer carte et overlays)'},
-  {lib: 'Montrer tous les pions'}
+  {lib: 'Masquer les pions (montrer carte et overlays)', img: 'showall.png'},
+  {lib: 'Montrer tous les pions', img: 'showmapandoverlay.png'}
 ];
 let _vueCarte = 0;
 function basculerVueCarte(){
@@ -14499,6 +14503,10 @@ function _dessinerReperes(){
   if(_reperes.sniper) cercles(_estSniper, 2 * HEX_HY * 1.5);
 }
 
+// Boutons LOS de VASL (VASLThread) : l'icône thread.gif de VASSAL et la
+// lettre du bouton, « L » pour la LOS, « l » pour la LOS silencieuse.
+const ICONE_LOS = 'https://raw.githubusercontent.com/vassalengine/vassal/master/vassal-app/src/main/resources/images/thread.gif';
+
 const ACTIONS = {
   ouvrir:   {lib: 'Ouvrir .vsav / .vlog', court: 'Ouvrir', ico: '📂', faire: doOpen},
   vsav:     {lib: 'Exporter .vsav', court: 'Exporter', ico: '💾', faire: ecrireVsav, actif: () => !!_source},
@@ -14519,11 +14527,11 @@ const ACTIONS = {
              faire: () => basculerRepere('sniper'), allume: () => _reperes.sniper},
   masquer:  {lib: () => VUES_CARTE[_vueCarte].lib, court: 'Pions', img: () => VUES_CARTE[_vueCarte].img,
              touche: 'Ctrl+F10', faire: basculerVueCarte, allume: () => _vueCarte > 0},
-  los:      {lib: 'LOS (ligne de vue)', court: 'LOS', touche: 'F10',
+  los:      {lib: 'LOS (ligne de vue)', court: 'L', img: ICONE_LOS, lettre: true, touche: 'F10',
              faire: (ancre, e) => armerFil(e && e.ctrlKey && e.shiftKey ? 'l' : 'L'), allume: () => !!_filArme,
              // Au doigt, un appui long propose la LOS silencieuse et le mode détaillé.
              menuLong: ['los', 'losMuet', 'verbeux']},
-  losMuet:  {lib: 'LOS inv (ligne de vue silencieuse)', court: 'LOS inv', touche: 'Ctrl+Maj+F10',
+  losMuet:  {lib: 'LOS inv (ligne de vue silencieuse)', court: 'l', img: ICONE_LOS, lettre: true, touche: 'Ctrl+Maj+F10',
              faire: () => armerFil('l'), allume: () => _filArme === 'l'},
   verbeux:  {ico: '📝', lib: 'LOS détaillée (Verbose LOS mode)', coche: () => _losVerbeux, faire: basculerVerbeux},
   zoomMoins:{lib: 'Zoom arrière', ico: '−', faire: zoomOut},
@@ -14606,7 +14614,7 @@ function rendreAction(id, forme = 'icone'){
     el.innerHTML = '<span class="ck"></span><span class="lb"></span><span class="rc"></span>';
   } else {
     el.type = 'button';
-    el.className = 'act ' + forme + (a.de ? ' de' : '');
+    el.className = 'act ' + forme + (a.de ? ' de' : '') + (a.lettre ? ' lettre' : '');
     if(a.pion && forme !== 'bouton'){
       el.appendChild(iconePion(a.pion === true ? undefined : a.pion));
     } else if(a.img){
@@ -14650,8 +14658,10 @@ function rendreAction(id, forme = 'icone'){
 // palette VASL (gpid 3b5:8394, prototype unLDR1(KFW)), son label Name
 // réglé sur « Monclar ». Composée une fois, comme une vignette de la
 // palette, puis copiée ; en attendant la base, le signe ♟. Une action
-// peut donner son propre pion (« pion: {gpid} »).
+// peut donner son propre pion (« pion: {gpid} ») : le North de la vue
+// Carte.
 const ICONE_PION = {gpid: '3b5:8394', nom: 'Monclar'};
+const ICONE_NORTH = {gpid: '291', ico: '🗺'};
 const _modelesIconePion = new Map();     // gpid → Promise<modèle | null>
 function _composerIconePion(spec = ICONE_PION){
   if(!_modelesIconePion.has(spec.gpid)) _modelesIconePion.set(spec.gpid, chargerBDD().then(async bdd => {
@@ -14731,6 +14741,7 @@ function _majAction(el, a, id){
   if(lb){
     lb.textContent = forme === 'menu' || forme === 'ligne' ? lib
                    : forme === 'bouton' || (forme === 'icone' && a.texteBarre)
+                     || ((forme === 'icone' || forme === 'rail') && a.lettre)
                      || ((forme === 'icone' || forme === 'rail') && !a.ico && !a.img && !a.pion) ? _v(a.court || a.lib)
                    : '';
   }
@@ -14989,7 +15000,7 @@ const _vue = () => document.body.dataset.vue || 'carte';
 
 Object.assign(ACTIONS, {
   plus:      {lib: 'Plus…', court: 'Plus', ico: '☰', faire: () => ouvrirFeuillePlus()},
-  vueCarte:  {lib: 'Carte', court: 'Carte', ico: '🗺', faire: () => vueMobile('carte'), allume: () => _vue() === 'carte'},
+  vueCarte:  {lib: 'Carte', court: 'Carte', ico: '🗺', pion: ICONE_NORTH, faire: () => vueMobile('carte'), allume: () => _vue() === 'carte'},
   vuePile:   {lib: 'Pile sélectionnée', court: 'Pile', ico: '▤', faire: () => vueMobile('pile'), allume: () => _vue() === 'pile'},
   vuePions:  {lib: 'Palette des pions', court: 'Pions', ico: '♟', pion: true, faire: () => vueMobile('pions'), allume: () => _vue() === 'pions'},
   vueJournal:{lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => vueMobile('journal'), allume: () => _vue() === 'journal',
