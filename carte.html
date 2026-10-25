@@ -470,7 +470,8 @@ body.maj .pion.immob{pointer-events:auto}
 #mapInner.losActif .pion{opacity:.33}
 #reperes{position:absolute;left:0;top:0;z-index:8400;pointer-events:none;overflow:visible}
 #filLOS{position:absolute;left:0;top:0;z-index:8500;pointer-events:none;overflow:visible}
-.etiqLOS{position:absolute;z-index:8600;pointer-events:none;transform-origin:0 0;white-space:nowrap;
+#liensPions{position:absolute;left:0;top:0;z-index:3;pointer-events:none;overflow:visible}
+.etiqLOS,.etiqLien{position:absolute;z-index:8600;pointer-events:none;transform-origin:0 0;white-space:nowrap;
   background:#000;color:#fff;font:11px/14px Dialog,Arial,sans-serif;padding:1px 1px 0}
 /* Sur petit écran, le panneau couvre la carte, et elle seule : il est
    placé dans #corps, sous les barres et au-dessus du journal. */
@@ -1884,6 +1885,7 @@ function setZoom(z, fx, fy){
   wrap.scrollTop  = wy*zoom - (fy - wr.top);
   rafraichirActions(['zoomTxt']);
   if(_fil) dessinerFil();
+  if(_liens.size) dessinerLiens();
   if(_eventail) placerEventail();
   // L'effectif des piles ne se montre que de loin.
   if(_effectifPiles && loin !== _vueDeLoin()) rendreToutes();
@@ -7931,6 +7933,7 @@ function rendrePile(k, tous){
   });
   _decorPile(k, s, rects, deplie);
   if(_reperes.brises || _reperes.sniper) dessinerReperes();
+  if(_liens.size) _planifierLiens();
   // Les pièces non empilées posées au même endroit restent au-dessus.
   if(s.length && !s[0].seul)
     for(const q of vivants()) if(q.seul && !q.cache && q.x === s[0].x && q.y === s[0].y)
@@ -8101,6 +8104,7 @@ function importerPions(texte, label, annexes){
     + (outils ? ` ; ${outils} outil(s) VASL Tools masqué(s)` : ''));
 
   lireInfo(_source);
+  lireLiens(_source);
   // Un .vlog s'ouvre, comme dans VASSAL, sur l'état de départ : on le
   // parcourt ensuite coup par coup.
   preparerRelecture(segs.slice(iLog));
@@ -8160,6 +8164,8 @@ function _dessousRetire(p){
 // Commande(s) inverse(s), ou null si elle n'en a pas.
 function _inverse(c){
   if(/^\+\/[^/]+\/stack\//.test(c)) return null;
+  // LinkPiecesCommand ↔ UnlinkPiecesCommand.
+  if(_CMD_LIEN.test(c)) return [c.startsWith('UN') ? c.substring(2) : 'UN' + c];
   if(c.startsWith('+/')) return ['-/' + c.split('/')[1]];
   if(c.startsWith('-/')){
     const uid = c.substring(2);
@@ -8310,6 +8316,8 @@ function rejouerLog(segs){
       n++;
     } else if(s.startsWith('LOS\t')){
       filDistant(s);
+    } else if(_appliquerLien(s)){
+      n++;
     } else if(s.startsWith('INFO\t')){
       _infoEtat = s.substring(5); majChampsInfo();
       n++;
@@ -8417,6 +8425,135 @@ function _empiler(p, dessous){
   s.forEach((q, k) => { q.ordre = k; });
 }
 
+// ═══ LIENS ENTRE PIÈCES — PieceLinker de VASL ═══
+// Ctrl+Alt+L lie les deux pièces sélectionnées, Ctrl+Alt+U les délie.
+// Un lien va dans les deux sens : deux commandes « LINK_PIECE:a,b » et
+// « LINK_PIECE:b,a » (UNLINK_PIECE pour délier), consignées et envoyées
+// comme les autres ; la sauvegarde les reprend (getRestoreCommand). Une
+// pièce liée sélectionnée montre un trait rouge vers chacune de ses
+// pièces liées et la portée en hexagones ; une pièce HIP de l'adversaire
+// ne montre pas les siens, ni n'apparaît au bout d'un autre.
+let _liens = new Map();        // uid → [uid…], dans l'ordre des liens
+const _CMD_LIEN = /^(UN)?LINK_PIECE:([^,]*),(.*)$/;
+
+function _appliquerLien(c){
+  const m = _CMD_LIEN.exec(c);
+  if(!m) return false;
+  const [, un, de, a] = m;
+  const l = _liens.get(de) || [];
+  // addLink : ni lien d'une pièce à elle-même, ni lien en double.
+  if(!un && de !== a && !l.includes(a)) _liens.set(de, [...l, a]);
+  // removeLink : un seul lien restant, la pièce perd toute sa liste.
+  if(un && _liens.has(de)){
+    if(l.length === 1) _liens.delete(de); else _liens.set(de, l.filter(u => u !== a));
+  }
+  _planifierLiens();
+  return true;
+}
+
+// Les liens d'une sauvegarde, comme ses commandes de restauration.
+function lireLiens(segs){
+  _liens = new Map();
+  for(const s of segs) _appliquerLien(s.replace(/\\+$/, ''));
+}
+const segmentsLiens = () => [..._liens].flatMap(([de, l]) => l.map(a => `LINK_PIECE:${de},${a}`));
+
+// keyPressed : lie (ou délie) les deux pièces, dans les deux sens.
+function lierPions(a, b, delier){
+  if(!a || !b || a === b) return false;
+  const k = delier ? 'UNLINK_PIECE:' : 'LINK_PIECE:';
+  [k + a.uid + ',' + b.uid, k + b.uid + ',' + a.uid].forEach(c => { _appliquerLien(c); _logCmd(c); });
+  return true;
+}
+function lierSelection(delier){
+  const s = [..._sel].filter(p => !p.deleted && !p.cache);
+  if(s.length !== 2) return false;
+  lierPions(s[0], s[1], delier);
+  chatLog(`${delier ? '✂️' : '🔗'} ${s[0].nom} ${delier ? 'délié de' : 'lié à'} ${s[1].nom}`);
+  return true;
+}
+
+// Portée entre deux pièces sur la carte LOS (map.range), 0 hors carte.
+function _porteeLien(a, b){
+  const m = _losPrete;
+  if(!m) return null;
+  try {
+    const pa = _versLOS(a), pb = _versLOS(b);
+    if(!m.onMap(pa.x, pa.y) || !m.onMap(pb.x, pb.y)) return 0;
+    const ha = m.gridToHex(pa.x, pa.y), hb = m.gridToHex(pb.x, pb.y);
+    return ha && hb ? LosMap.range(ha, hb, m.getMapConfiguration()) : 0;
+  } catch(e){ return 0; }
+}
+
+// Un seul dessin par image, quel que soit le nombre de piles rendues.
+let _liensPlanifies = false;
+function _planifierLiens(){
+  if(_liensPlanifies) return;
+  _liensPlanifies = true;
+  requestAnimationFrame(() => { _liensPlanifies = false; dessinerLiens(); });
+}
+
+// draw : sous les pions (drawAboveCounters faux), un trait de 2 px ;
+// l'étiquette « Range: n » à 30 px à droite et en dessous de la pièce
+// sélectionnée, de taille fixe à l'écran.
+function dessinerLiens(){
+  document.querySelectorAll('.etiqLien').forEach(e => e.remove());
+  let s = document.getElementById('liensPions');
+  const vu = p => p && !p.deleted && !p.cache && pions.includes(p);
+  const paires = [];
+  for(const [de, l] of _liens){
+    const a = parUid(de);
+    if(!vu(a) || !_sel.has(a)) continue;
+    for(const u of l){ const b = parUid(u); if(vu(b)) paires.push([a, b]); }
+  }
+  if(!paires.length){ if(s) s.remove(); return; }
+  if(!s){
+    s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.id = 'liensPions';
+    document.getElementById('mapInner').appendChild(s);
+  }
+  s.setAttribute('width', _mapW); s.setAttribute('height', _mapH);
+  s.innerHTML = '';
+  // La portée attend la carte LOS : on redessine quand elle est prête.
+  if(!_losPrete && _losBoards) carteLOS().then(({map}) => { if(map && _losPrete) _planifierLiens(); });
+  for(const [a, b] of paires){
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', a.x * SC); l.setAttribute('y1', a.y * SC);
+    l.setAttribute('x2', b.x * SC); l.setAttribute('y2', b.y * SC);
+    l.setAttribute('stroke', '#ff0000'); l.setAttribute('stroke-width', 2);
+    l.setAttribute('vector-effect', 'non-scaling-stroke');
+    s.appendChild(l);
+    const r = _porteeLien(a, b);
+    if(r === null) continue;
+    const e = document.createElement('div');
+    e.className = 'etiqLien';
+    e.textContent = 'Range: ' + r;
+    e.style.left = (a.x * SC + 29 / zoom) + 'px';
+    e.style.top = (a.y * SC + (29 - LOS_POLICE + LOS_DESCENTE) / zoom) + 'px';
+    e.style.transform = `scale(${1 / zoom})`;
+    document.getElementById('mapInner').appendChild(e);
+  }
+}
+
+_apresSelection.push(() => { if(_liens.size) _planifierLiens(); });
+
+// Fire Lane (A9.22) depuis le menu d'une MG : le pion Firelane de la
+// palette (onglet Unit, panneau Basic) est posé dans l'hexagone de la MG,
+// lié à elle comme par Ctrl+Alt+L, et sélectionné pour être orienté.
+const GPID_FIRELANE = '8';
+const estMG = p => /^(?:[LMH]MG|\.50-cal)(?![A-Za-z])/.test(lirePiece(p.seg).nomBase || '');
+function poserFireLane(mg){
+  if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
+  const x = _bdd.parGpid.get(GPID_FIRELANE) || [..._bdd.parGpid.values()].find(y => y.n === 'Firelane');
+  const def = x && developperDefinition(x.cmd);
+  if(!def){ chatLog(`⚠️ ${mg.nom} : pion Firelane introuvable`); return null; }
+  const q = poserTraits(def.T, def.S, mg.x, mg.y, mg, 0);
+  lierPions(mg, q);
+  chatLog(`➕ Fire Lane posée et liée à ${mg.nom}`);
+  selectionner([q]);
+  return q;
+}
+
 // ═══ JEU : DÉPLACER, POSER, RETIRER ═══
 // Chaque action est appliquée puis consignée au log, comme VASSAL :
 // un M/ par pion déplacé, du fond vers le sommet, chacun désignant la
@@ -8490,7 +8627,7 @@ function _commandesLog(tok){
 }
 
 function _instantane(){
-  return {info: _infoEtat, piles: new Map(_pilesVassal),
+  return {info: _infoEtat, piles: new Map(_pilesVassal), liens: new Map(_liens),
           pions: pions.map(p => ({p, seg: p.seg, x: p.x, y: p.y, ordre: p.ordre, deleted: p.deleted, ailleurs: p.ailleurs}))};
 }
 
@@ -8508,6 +8645,7 @@ function _restaurer(snap){
     if(segChange && !p.deleted) majApparence(p);
   }
   _pilesVassal = new Map(snap.piles);
+  _liens = new Map(snap.liens); _planifierLiens();
   if(_infoEtat !== snap.info){ _infoEtat = snap.info; majChampsInfo(); }
   if(_fil && _fil.distant) _effacerFil();
 }
@@ -10503,6 +10641,7 @@ function commandesDe(type){
       const chemin = f[3] || '';
       const placement = parseInt(f[11], 10) || 0;
       const apres = lireTouche(f[8]);
+      const acq = id === 'placeACQ' || /(^|[^a-z])ACQ($|[^a-z])/i.test(ch[1] || '');
       ajouter(i, ch[1], lireTouche(ch[2]), ({p, S, effets}) => {
         // PlaceDM ne pose rien sur une pièce dont le nom intérieur contient
         // « broken », lu avant que la touche n'atteigne les traits
@@ -10519,6 +10658,9 @@ function commandesDe(type){
           }
           const q = placerMarqueur(p, chemin, placement);
           if(q && apres) executerTouche(q, apres);
+          // L'ACQ d'un véhicule ou d'un canon lui est liée, comme par
+          // Ctrl+Alt+L. La plupart la posent par un PlaceMarker « + ACQ ».
+          if(q && acq) lierPions(p, q);
           if(q && id === 'replace') retirer(p, true);
         });
       });
@@ -11138,6 +11280,9 @@ function arbreCommandes(p){
   // Infanterie : Load / Unload en tête du menu (D6.4, D6.5).
   const transport = !accesRefuse(p) && typeof itemsTransport === 'function' ? itemsTransport(p) : [];
   if(transport.length) racine.items.unshift(...transport);
+  // MG : Fire Lane, posée et liée à la MG.
+  if(!accesRefuse(p) && estMG(p))
+    racine.items.push({nom: 'Fire Lane', cmd: {nom: 'Fire Lane', faire: ({effets}) => effets.push(() => poserFireLane(p))}});
   return {titre: p.el.title || p.nom, items: racine.items,
           vide: visibles.length ? null : accesRefuse(p) ? 'Aucune commande — pion masqué par un autre joueur' : 'Aucune commande'};
 }
@@ -11300,6 +11445,13 @@ function _brancherCommandes(){
     }
     if((!_pileSel && !_sel.size) || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if(['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+    // PieceLinker : Ctrl+Alt+L lie, Ctrl+Alt+U délie.
+    if(e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && (e.code === 'KeyL' || e.code === 'KeyU')){
+      e.preventDefault(); e.stopImmediatePropagation();
+      fermerMenu();
+      lierSelection(e.code === 'KeyU');
+      return;
+    }
     const k = toucheClavier(e);
     if(ciblesTouche(k).length){
       e.preventDefault(); e.stopImmediatePropagation();
@@ -14090,6 +14242,7 @@ function etatPartie(){
       sortie.push(seg); continue;
     }
     if(seg.startsWith('INFO\t')){ sortie.push('INFO\t' + _infoEtat); continue; }
+    if(_CMD_LIEN.test(seg.replace(/\\+$/, ''))) continue;          // régénérés
     const m = seg.match(/^\+\/([^/]+)\//);
     const p = m && parUidMap.get(m[1]);
     if(!p){ sortie.push(seg); continue; }
@@ -14098,7 +14251,7 @@ function etatPartie(){
   }
   // Pions posés ou créés par le log : avant la fin de sauvegarde.
   const neufs = pions.filter(p => (!p.deleted || p.ailleurs) && !connus.has(p.uid)).map(p => p.seg);
-  const ajout = [...neufs, ..._segmentsPiles()];
+  const ajout = [...neufs, ..._segmentsPiles(), ...segmentsLiens()];
   // SAN saisis ici alors que le fichier n'avait pas d'informations de scénario.
   if(_infoModifiee && !_source.some(x => x.startsWith('INFO\t'))) ajout.push('INFO\t' + _infoEtat);
   const iFin = sortie.lastIndexOf('end_save');
