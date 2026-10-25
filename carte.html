@@ -30,7 +30,7 @@ button:disabled{opacity:.4;cursor:default}
 /* ── Interface : menus, barre d'icônes, panneau à onglets (profil PC). */
 :root{--cible:28px;--marge-h:env(safe-area-inset-top,0px);--marge-b:env(safe-area-inset-bottom,0px);
   --marge-g:env(safe-area-inset-left,0px);--marge-d:env(safe-area-inset-right,0px)}
-body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
+body:is([data-terminal=mobile],[data-terminal=tablette]){--cible:44px}
 #chromeHaut,#chromeBas,#chromeGauche{flex:none}
 .menus{display:flex;align-items:center;height:calc(26px + var(--marge-h));padding:var(--marge-h) calc(6px + var(--marge-d)) 0 calc(6px + var(--marge-g));background:var(--barre);font-size:13px}
 .menus h1{font-size:13px;margin:0 10px 0 2px;font-weight:600;color:var(--doux);white-space:nowrap}
@@ -188,35 +188,6 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .act.rail .lb{max-width:50px;overflow:hidden;text-overflow:ellipsis}
 .act.rail.actif{background:#333;border-color:var(--accent)}
 .desBoutons.grand .act.bouton{min-height:56px;font-size:17px}
-/* Tablette : rail à gauche, tiroir à droite, journal replié. */
-body[data-terminal=tablette] #chromeGauche{display:flex;flex-direction:column;background:var(--barre);
-  border-right:1px solid var(--bord);padding:calc(var(--marge-h) + 4px) 2px 4px calc(var(--marge-g) + 2px);overflow-y:auto}
-body[data-terminal=tablette][data-orient=portrait] #chromeGauche{display:none}
-.rail{display:flex;flex-direction:column;align-items:center;gap:2px}
-body[data-orient=portrait] .rail{flex-direction:row;justify-content:center;flex-wrap:wrap;background:var(--barre);
-  border-bottom:1px solid var(--bord);padding:calc(var(--marge-h) + 2px) calc(var(--marge-d) + 8px) 2px calc(var(--marge-g) + 8px)}
-body[data-terminal=tablette] #poigneeCote{display:none}
-body[data-terminal=tablette] #cote{position:absolute;right:0;top:0;bottom:0;z-index:70;width:min(360px,85vw);
-  box-shadow:-6px 0 20px rgba(0,0,0,.5);padding-right:var(--marge-d)}
-@media (min-width:1000px) and (orientation:landscape){
-  body[data-terminal=tablette] #cote{position:static;box-shadow:none;width:var(--largeurCote,340px)} }
-body[data-terminal=tablette] #bas.replie #journal{height:24px;overflow:hidden;cursor:pointer}
-body[data-terminal=tablette] #bas.replie #chatBarre{display:none}
-body[data-terminal=tablette] #bas:not(.replie) #journal{height:40vh}
-body[data-terminal=tablette] #poigneeJournal{height:14px;background:var(--barre);position:relative;cursor:pointer}
-body[data-terminal=tablette] #poigneeJournal::after{content:"";position:absolute;left:50%;top:4px;width:44px;height:5px;
-  margin-left:-22px;border-radius:3px;background:#666}
-body[data-terminal=tablette] #bas{padding-bottom:var(--marge-b)}
-.relectureVolante{position:absolute;top:8px;z-index:60;transform:translateX(-50%);display:flex;
-  background:rgba(30,30,30,.92);border:1px solid var(--bord);border-radius:6px;padding:4px}
-.relectureVolante:has(.groupeAct[hidden]){display:none}
-.fabDes{position:absolute;z-index:65;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.fab{width:60px;height:60px;border-radius:30px;font-size:28px;background:#3a3a3a;border:2px solid var(--accent);
-  box-shadow:0 4px 14px rgba(0,0,0,.6);touch-action:none}
-.fabCats{display:grid;grid-template-columns:repeat(4,56px);gap:6px;padding:8px;background:rgba(30,30,30,.95);
-  border:1px solid var(--bord);border-radius:8px}
-.fabCats .act.bouton{min-height:44px;padding:2px}
-.fabReg{width:44px;height:44px;border-radius:22px}
 /* Téléphone : barre du haut, navigation en bas, une vue à la fois. */
 .barreHaut{display:flex;align-items:center;gap:6px;height:calc(48px + var(--marge-h));padding:var(--marge-h) 8px 0;
   background:var(--barre);border-bottom:1px solid var(--bord)}
@@ -241,6 +212,8 @@ body[data-terminal=tablette] #bas{padding-bottom:var(--marge-b)}
   scroll-snap-type:y proximity;overscroll-behavior-y:contain;gap:2px;padding:4px 2px calc(var(--marge-b) + 4px) calc(var(--marge-g) + 2px);
   scroll-padding-block:4px;border-top:none;border-right:1px solid var(--bord);-webkit-mask-image:none;mask-image:none}
 .navGauche.navBas .act.rail{flex:0 0 46px;width:46px;height:46px}
+/* Les dés : leur sigle en guise d'icône. */
+.navGauche .act.rail.de .ic{font:600 13px/1 system-ui,sans-serif;letter-spacing:-.02em}
 .navGauche.suiteBas{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent)}
 .navGauche.suiteHaut{-webkit-mask-image:linear-gradient(to top,#000 calc(100% - 28px),transparent);
@@ -248,36 +221,36 @@ body[data-terminal=tablette] #bas{padding-bottom:var(--marge-b)}
 .navGauche.suiteHaut.suiteBas{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to bottom,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
 :root{--railMobile:52px}
-body[data-terminal=mobile] #chromeGauche{display:flex;background:var(--barre)}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #chromeGauche{display:flex;background:var(--barre)}
 .navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
 .relectureBas{display:flex;justify-content:center;background:#202020}
 .relectureBas:has(.groupeAct[hidden]){display:none}
 .relectureBas .act.ico{height:34px;min-width:40px}
-body[data-terminal=mobile] #poigneeCote,body[data-terminal=mobile] #poigneeJournal,
-body[data-terminal=mobile] #coteOnglets button[data-onglet]{display:none}
-body[data-terminal=mobile] #coteOnglets{justify-content:flex-end}
-body[data-terminal=mobile] #couches{display:none}
-body[data-terminal=mobile] #cote{position:absolute;left:var(--railMobile);right:0;bottom:0;z-index:70;width:auto;border-left:none;
+body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeCote,body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeJournal,
+body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets button[data-onglet]{display:none}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets{justify-content:flex-end}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #couches{display:none}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #cote{position:absolute;left:var(--railMobile);right:0;bottom:0;z-index:70;width:auto;border-left:none;
   border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.5)}
-body[data-terminal=mobile][data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
-body[data-terminal=mobile][data-vue=pions] #cote{top:0}
-body[data-terminal=mobile] #bas:not([hidden]){position:fixed;left:var(--railMobile);right:0;z-index:80;display:flex;flex-direction:column;
+body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
+body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pions] #cote{top:0}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){position:fixed;left:var(--railMobile);right:0;z-index:80;display:flex;flex-direction:column;
   top:calc(var(--vv-haut,0px) + 48px + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
 /* Saisie au doigt : le chat touche le clavier ; la relecture, dessous de
    toute façon, s'efface ; la colonne d'icônes de gauche reste. Le chat
    et les vues du téléphone laissent cette colonne visible. */
 body:not([data-terminal=pc]).saisie .navBas:not(.navGauche),body:not([data-terminal=pc]).saisie .relectureBas{display:none}
-body[data-terminal=mobile].saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
+body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
 /* Chat compact : une feuille au-dessus du bas de l'écran, la carte visible. */
-body[data-terminal=mobile] #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
+body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
   border-radius:12px 12px 0 0;border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.55)}
-body[data-terminal=mobile].saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
-body[data-terminal=mobile] #bas[data-etat=compact] #journal{min-height:48px}
+body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact] #journal{min-height:48px}
 .poigneeChat{display:none}
 .filtresChat{display:none;gap:6px;padding:4px 10px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
   background:var(--barre);border-bottom:1px solid var(--bord)}
-body[data-terminal=mobile].chatOuvert .filtresChat,body[data-terminal=tablette] #bas:not(.replie) .filtresChat{display:flex}
+body:is([data-terminal=mobile],[data-terminal=tablette]).chatOuvert .filtresChat{display:flex}
 .filtresChat .pastilleChat{height:30px;font-size:12px;opacity:.55}
 .filtresChat .pastilleChat.actif{opacity:1;border-color:var(--accent)}
 body:not([data-terminal=pc]) #journal:not([data-filtres~=msg]) > .msg,
@@ -287,23 +260,26 @@ body:not([data-terminal=pc]) #journal:not([data-filtres~=sys]) > .sys:not(.alert
 body:not([data-terminal=pc]) .lieuChat{color:var(--accent);text-decoration:underline;cursor:pointer}
 .chatRapide{display:none;gap:6px;padding:4px 10px 2px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
   background:var(--barre)}
-body[data-terminal=mobile].chatOuvert .chatRapide,body[data-terminal=tablette] #bas:not(.replie) .chatRapide{display:flex}
+body:is([data-terminal=mobile],[data-terminal=tablette]).chatOuvert .chatRapide{display:flex}
 .pastilleChat{flex:none;height:36px;padding:0 12px;border-radius:18px;white-space:nowrap;font-size:14px}
-body[data-terminal=mobile] #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
 .poigneeChat::after{content:"";position:absolute;left:50%;top:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:#666}
-.apercuChat{display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 10px;background:#232323;
-  border-top:1px solid var(--bord);font-size:12px;color:var(--doux);cursor:pointer}
-.apercuChat .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.apercuChat{display:flex;align-items:center;gap:6px;min-height:40px;padding:2px 4px 2px 10px;background:#232323;
+  border-top:1px solid var(--bord);font-size:12px;line-height:17px;color:var(--doux);cursor:pointer}
+/* Deux lignes, chacune coupée par une ellipse ; un jet de dés en couleur. */
+.apercuChat .txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.apercuChat .txt > div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.apercuChat .txt > .jet{color:var(--accent);font-weight:600}
 .apercuChat .ecrire{flex:none;height:26px;min-width:36px;padding:0;background:none;border:none;font-size:15px}
 body.chatOuvert .apercuChat{display:none}
 .badgeAct{background:#c03a3a;color:#fff;border-radius:9px;padding:0 5px;font:600 11px/16px system-ui,sans-serif;flex:none}
 .act.rail{position:relative}
 .act.rail .badgeAct{position:absolute;top:3px;right:calc(50% - 22px)}
-body[data-terminal=mobile] #journal{flex:1;height:auto;font-size:13px}
-body[data-terminal=mobile] #chatIn{font-size:16px;padding:8px}
-body[data-terminal=mobile] #palRech{font-size:16px;padding:8px}
-body[data-terminal=mobile] .vig{width:56px;height:56px}
-body[data-terminal=mobile] .vig .mini{transform:scale(1.25)}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #journal{flex:1;height:auto;font-size:13px}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #chatIn{font-size:16px;padding:8px}
+body:is([data-terminal=mobile],[data-terminal=tablette]) #palRech{font-size:16px;padding:8px}
+body:is([data-terminal=mobile],[data-terminal=tablette]) .vig{width:56px;height:56px}
+body:is([data-terminal=mobile],[data-terminal=tablette]) .vig .mini{transform:scale(1.25)}
 #mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
   user-select:none;-webkit-user-select:none}
 /* Couche de sélection décochée : ses pièces laissent passer le clic vers
@@ -9455,7 +9431,7 @@ function _completerLigneMouvement(texte, avant){
   if(l && !l.dataset.mvt){
     l.dataset.mvt = '1';
     l.appendChild(document.createTextNode(' ' + texte));
-    if(typeof _majApercuChat === 'function' && typeof _profil !== 'undefined' && _profil === 'mobile') _majApercuChat();
+    if(typeof _majApercuChat === 'function' && typeof _profil !== 'undefined' && _telLike()) _majApercuChat();
   } else afficherChat(`* ${_nomsDeplaces(avant)} : ${texte}`);
 }
 
@@ -12432,7 +12408,7 @@ function armerPose(x){
     multiple: _lirePref('aslweb.posesMultiples') === '1',
     toucher: c => poserDepuisPalette(x, c.x, c.y)});
   // Sur téléphone, la palette se ferme pour montrer la carte.
-  if(_profil === 'mobile') vueMobile('carte');
+  if(_telLike()) vueMobile('carte');
 }
 
 // ── Verrou des pions : un glissé déplace toujours la carte, jamais une
@@ -14471,8 +14447,7 @@ function appliquerProfil(p){
   if(d.construire) d.construire();
   // Le tiroir de la tablette et les vues du téléphone partent fermés ; au
   // PC, le panneau est ouvert, sauf d'abord sur un petit écran.
-  if(p === 'tablette') basculerCote(window.innerWidth >= 1000 && window.innerWidth > window.innerHeight);
-  else if(p === 'pc') basculerCote(ancien ? true : window.innerWidth >= 700);
+  if(p === 'pc') basculerCote(ancien ? true : window.innerWidth >= 700);
   rafraichirActions();
   for(const f of _apresProfil) f(p, ancien);
   _surRedimension();
@@ -14517,7 +14492,7 @@ function construireOnglets(liste){
 function montrerOnglet(n, sansOuvrir){
   // Pas d'onglet Dés sur tablette ni sur téléphone : SAN et dés ont leur feuille.
   if(n === 'des' && _profil !== 'pc' && !sansOuvrir){ ouvrirFeuilleDes(); return; }
-  if(_profil === 'mobile' && !sansOuvrir){ vueMobile(n === 'palette' ? 'pions' : 'pile'); return; }
+  if(_telLike() && !sansOuvrir){ vueMobile(n === 'palette' ? 'pions' : 'pile'); return; }
   _ongletCote = n;
   try { localStorage.setItem('aslweb.onglet', n); } catch(e){}
   for(const [k, id] of Object.entries(ONGLETS)) document.getElementById(id).classList.toggle('actif', k === n);
@@ -14549,7 +14524,7 @@ const coteRecouvre = () => {
   return !c.classList.contains('ferme') && getComputedStyle(c).position === 'absolute';
 };
 function fermerCote(){
-  if(_profil === 'mobile') vueMobile('carte'); else basculerCote(false);
+  if(_telLike()) vueMobile('carte'); else basculerCote(false);
 }
 
 function basculerJournal(montrer){
@@ -14675,22 +14650,6 @@ function ouvrirFeuilleDes(){
   return f;
 }
 
-DISPOSITIONS.tablette = {
-  rail: ['ouvrir', 'undo', 'los', 'unmoved', 'all', 'masquer', 'reseau', 'tiroir', 'plus'],
-  panneau: ['pile', 'palette'],
-  construire(){
-    const r = document.createElement('div');
-    r.id = 'rail'; r.className = 'rail';
-    r.setAttribute('role', 'toolbar');
-    for(const id of this.rail) r.appendChild(rendreAction(id, 'rail'));
-    document.getElementById('chromeGauche').appendChild(r);
-    placerRail();
-    _relectureVolante();
-    _fabDes();
-    document.getElementById('bas').classList.add('replie');
-  }
-};
-
 DISPOSITIONS.mobile = {
   panneau: ['pile', 'palette'],
   construire(){
@@ -14713,7 +14672,8 @@ DISPOSITIONS.mobile = {
     // la carte avec ou sans pions ; palette ; Remove all ; journal ; puis
     // toutes les actions de la feuille « Plus », chacune par son icône.
     // Plus haute que l'écran, la colonne défile au doigt, de haut en bas.
-    const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal'];
+    // Les dés suivent les vues : DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS.
+    const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', ...DES.map(d => d.id)];
     for(const id of [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus'])
       nav.appendChild(rendreAction(id, 'rail'));
     const bords = () => {
@@ -14729,29 +14689,16 @@ DISPOSITIONS.mobile = {
   }
 };
 
-// Rail de la tablette, selon l'écran : en paysage, une colonne à gauche ;
-// en portrait, une ligne en haut, qui laisse toute la largeur à la carte.
-// Les boutons se serrent et prennent la taille que la place permet, de 40
-// (cible tactile) à 48 px en colonne, à 56 px en ligne.
-function placerRail(){
-  const r = document.getElementById('rail');
-  if(!r || _profil !== 'tablette') return;
-  const portrait = window.innerHeight > window.innerWidth;
-  document.body.dataset.orient = portrait ? 'portrait' : 'paysage';
-  const dest = document.getElementById(portrait ? 'chromeHaut' : 'chromeGauche');
-  if(r.parentElement !== dest) dest.appendChild(r);
-  r.setAttribute('aria-orientation', portrait ? 'horizontal' : 'vertical');
-  const n = r.children.length || 1;
-  const place = portrait ? window.innerWidth - 16 : document.getElementById('corps').clientHeight - 8;
-  const t = Math.max(40, Math.min(portrait ? 56 : 48, Math.floor(place / n) - 2));
-  document.documentElement.style.setProperty('--tailleRail', t + 'px');
-  document.documentElement.style.setProperty('--echPionRail', String(t * .6 / 48));
-}
-_apresRedimension.push(placerRail);
+// La tablette a la même disposition et le même fonctionnement que le
+// téléphone : barre du haut, colonne d'icônes à gauche, une vue à la fois.
+DISPOSITIONS.tablette = DISPOSITIONS.mobile;
+// Téléphone ou tablette : l'interface tactile commune.
+function _telLike(){ return _profil === 'mobile' || _profil === 'tablette'; }
+
 
 // Vue du téléphone : la carte seule, ou une vue par-dessus elle.
 function vueMobile(v){
-  if(_profil !== 'mobile') return;
+  if(!_telLike()) return;
   document.body.dataset.vue = v;
   const cote = document.getElementById('cote');
   cote.classList.toggle('ferme', v !== 'pile' && v !== 'pions');
@@ -14771,62 +14718,6 @@ function vueMobile(v){
   }
   rafraichirActions(['vueCarte', 'vuePile', 'vuePions', 'vueJournal']);
   _surRedimension();
-}
-
-// Relecture en barre flottante, en haut de la carte (tablette).
-function _relectureVolante(){
-  const d = document.createElement('div');
-  d.className = 'relectureVolante chromeVolant';
-  d.appendChild(rendreAction('relecture', 'icone'));
-  document.getElementById('corps').appendChild(d);
-}
-
-// Bouton flottant des dés (tablette) : un appui lance un DR « Other » ;
-// un appui long ou un glissé vers le haut déplie les catégories ; ⚙ ouvre
-// SAN et pièges.
-function _fabDes(){
-  const box = document.createElement('div');
-  box.className = 'fabDes chromeVolant';
-  const cats = document.createElement('div');
-  cats.className = 'fabCats';
-  cats.hidden = true;
-  for(const d of DES){
-    const b = rendreAction(d.id, 'bouton');
-    b.addEventListener('click', () => { cats.hidden = true; });
-    cats.appendChild(b);
-  }
-  const reg = document.createElement('button');
-  reg.type = 'button'; reg.className = 'act bouton fabReg';
-  reg.textContent = '⚙'; reg.title = 'SAN et pièges'; reg.setAttribute('aria-label', 'SAN et pièges');
-  reg.addEventListener('click', () => { cats.hidden = true; ouvrirFeuilleSan(); });
-  const fab = document.createElement('button');
-  fab.type = 'button'; fab.className = 'fab';
-  fab.textContent = '🎲';
-  fab.title = 'DR [F2] — appui long ou glissé vers le haut : toutes les catégories';
-  fab.setAttribute('aria-label', 'Lancer un DR ; appui long : catégories de dés');
-  let long = false;
-  fab.addEventListener('pointerdown', e => {
-    long = false;
-    const y0 = e.clientY, id = e.pointerId;
-    const t = setTimeout(() => { long = true; vibrer(); cats.hidden = false; }, APPUI_LONG);
-    const bouge = ev => { if(ev.pointerId === id && y0 - ev.clientY > 30){ clearTimeout(t); long = true; cats.hidden = false; } };
-    const fin = ev => {
-      if(ev.pointerId !== id) return;
-      clearTimeout(t);
-      document.removeEventListener('pointermove', bouge);
-      document.removeEventListener('pointerup', fin);
-      document.removeEventListener('pointercancel', fin);
-    };
-    document.addEventListener('pointermove', bouge);
-    document.addEventListener('pointerup', fin);
-    document.addEventListener('pointercancel', fin);
-  });
-  fab.addEventListener('click', () => { if(long){ long = false; return; } if(!cats.hidden){ cats.hidden = true; return; } lancerDR('Other'); });
-  fab.addEventListener('contextmenu', e => e.preventDefault());
-  box.addEventListener('pointerdown', e => e.stopPropagation());
-  box.append(cats, reg, fab);
-  document.getElementById('corps').appendChild(box);
-  _placerVolants();
 }
 
 // 🎲 du téléphone : appui long, la feuille des catégories.
@@ -14850,8 +14741,6 @@ function _placerVolants(){
   const droite = corps.clientWidth - (w.offsetLeft + w.clientWidth);
   const barre = document.getElementById('barrePile');
   const bas = barre ? barre.offsetHeight : 0;
-  for(const el of corps.querySelectorAll('.fabDes')){ el.style.right = (droite + 14) + 'px'; el.style.bottom = (bas + 14) + 'px'; }
-  for(const el of corps.querySelectorAll('.relectureVolante')){ el.style.left = (w.offsetLeft + w.clientWidth / 2) + 'px'; }
 }
 _apresRedimension.push(_placerVolants);
 
@@ -14863,7 +14752,6 @@ function _defaireProfil(){
   bas.hidden = false;
   document.getElementById('poigneeJournal').hidden = false;
   delete document.body.dataset.vue;
-  delete document.body.dataset.orient;
   document.body.classList.remove('saisie');
   if(_etatChat) _poserEtatChat(null);
   const champs = document.getElementById('infoScen');
@@ -14872,34 +14760,6 @@ function _defaireProfil(){
   annulerModeCarte();
 }
 
-// Tablette : un glissé depuis le bord droit de la carte ouvre le tiroir ;
-// le journal replié s'ouvre ou se replie d'un appui sur sa poignée.
-function _brancherProfilsTactiles(){
-  const w = document.getElementById('mapWrap');
-  w.addEventListener('pointerdown', e => {
-    if(_profil !== 'tablette' || e.pointerType === 'mouse') return;
-    const r = w.getBoundingClientRect();
-    if(r.right - e.clientX > 20) return;
-    const id = e.pointerId, x0 = e.clientX;
-    const bouge = ev => { if(ev.pointerId === id && x0 - ev.clientX > 40){ fin(ev); basculerCote(true); } };
-    const fin = ev => { if(ev.pointerId !== id) return; document.removeEventListener('pointermove', bouge); document.removeEventListener('pointerup', fin); document.removeEventListener('pointercancel', fin); };
-    document.addEventListener('pointermove', bouge);
-    document.addEventListener('pointerup', fin);
-    document.addEventListener('pointercancel', fin);
-  }, true);
-  const pj = document.getElementById('poigneeJournal');
-  let x0 = 0, y0 = 0;
-  pj.addEventListener('pointerdown', e => { x0 = e.clientX; y0 = e.clientY; }, true);
-  pj.addEventListener('click', e => {
-    if(_profil !== 'tablette' || Math.hypot(e.clientX - x0, e.clientY - y0) > 6) return;
-    document.getElementById('bas').classList.toggle('replie');
-    _surRedimension();
-  });
-  document.getElementById('journal').addEventListener('click', () => {
-    const b = document.getElementById('bas');
-    if(_profil === 'tablette' && b.classList.contains('replie')){ b.classList.remove('replie'); _surRedimension(); }
-  });
-}
 
 // ═══ CHAT — CLAVIER VIRTUEL ═══
 // Au doigt, tant qu'un champ texte a le focus, body.saisie : la navigation
@@ -15002,12 +14862,25 @@ function _majApercuChat(){
   const ap = document.getElementById('apercuChat');
   if(!ap) return;
   ap.hidden = !_apercuChat;
-  const l = [...document.querySelectorAll('#journal > .msg, #journal > .rap')].pop();
-  ap.querySelector('.txt').textContent = l ? l.textContent : 'Chat';
+  // Les deux dernières lignes : messages, rapports, et toujours les jets de
+  // dés, même quand le filtre Dés les cache dans le journal.
+  const l = [...document.querySelectorAll('#journal > .msg, #journal > .rap, #journal > .jet')].slice(-2);
+  const t = ap.querySelector('.txt');
+  t.replaceChildren(...(l.length ? l : [null]).map(x => {
+    const d = document.createElement('div');
+    d.className = x && x.classList.contains('jet') ? 'jet' : '';
+    d.textContent = x ? _texteLigneChat(x) : 'Chat';
+    return d;
+  }));
   const bg = ap.querySelector('.badgeAct');
   bg.textContent = _nonLus > 99 ? '99+' : String(_nonLus);
   bg.hidden = !_nonLus;
   majHautBas();
+}
+// Texte d'une ligne du journal ; un jet de dés se lit « IFT DR 3 5 = 8 Pierre ».
+function _texteLigneChat(x){
+  if(!x.classList.contains('jet')) return x.textContent;
+  return [...x.childNodes].map(n => n.nodeName === 'IMG' ? n.alt : n.textContent).filter(v => v && v.trim()).join(' ');
 }
 function basculerApercuChat(){
   _apercuChat = !_apercuChat;
@@ -15021,12 +14894,12 @@ function _majNonLus(){ _majApercuChat(); rafraichirActions(['vueJournal']); }
 // ou relu, compte parmi les non-lus tant que le chat est fermé, et un
 // message reçu du réseau fait vibrer.
 _apresLigne.push(el => {
-  if(_profil !== 'mobile') return;
+  if(!_telLike()) return;
   if(el.classList.contains('msg') && (_netReception || _relecture)){
     if(!_etatChat){ _nonLus++; _majNonLus(); }
     if(_netReception) vibrer();
   }
-  if(el.classList.contains('msg') || el.classList.contains('rap')) _majApercuChat();
+  if(el.classList.contains('msg') || el.classList.contains('rap') || el.classList.contains('jet')) _majApercuChat();
 });
 
 function _poserEtatChat(e, depuisRetour){
@@ -15050,7 +14923,7 @@ const _apresEtatChat = [];
 
 // Chat compact, depuis la carte ; saisir : le clavier s'ouvre aussitôt.
 function ouvrirChat(saisir){
-  if(_profil !== 'mobile') return;
+  if(!_telLike()) return;
   if(_vue() !== 'carte') vueMobile('carte');
   const bas = document.getElementById('bas');
   bas.hidden = false;
@@ -15416,7 +15289,6 @@ document.addEventListener('DOMContentLoaded', () => {
   _brancherMenus();
   _brancherInterface();
   _brancherPoignees();
-  _brancherProfilsTactiles();
   construireDes();
   appliquerProfil(detecterProfil());
   // Libellé des boutons d'icône pour les lecteurs d'écran : leur infobulle.
