@@ -53,6 +53,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-horscarte.js` | Board 5 : unité hors carte qui entre sur le board (coût du premier hexagone, le décompte ne plante plus) ; chef reconnu par son nom affiché |
 | `mf-relecture.js` | Board 5 : décompte des coups relus d'un .vlog (M/ d'un pion, M/ d'une pile VASSAL), au chat sans entrer dans le log ; changement de phase relu ; recul |
 | `mov-relecture.js` | Mark unmoved (MOV) après la relecture d'un D/ dont le nouvel état finit par une contre-oblique : état du pion entier, image gardée, Undo |
+| `precadrage.js` | Relecture : la vue rejoint la case d'arrivée avant que le pion bouge et que le message du coup paraisse ; ▶ pendant la pause joue le coup en attente |
 | `couches-noms.js` | Couches dont l'image est un nom nu (« mofan », « mober », « mohro » d'un module plus ancien) : Fanatic, Berserk et Heroic dessinés et cumulés |
 | `munitions.js` | Munitions épuisées d'un véhicule (Sherman III(a)) : label « $finalammo$ » calculé, s / WP barrés en rouge, Toggle On/Off |
 | `insignes.js` | Images incluses d'un pion SVG (silhouette et insigne de classe : runes SS…) toutes intégrées, aucun chemin relatif laissé |

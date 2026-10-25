@@ -8383,6 +8383,7 @@ function _avantAction(){
   // restants du fichier sont gardés et ▶ les applique ensuite sur la
   // position jouée. Reculer au-delà effacerait ce coup sans le dire :
   // le recul s'arrête ici (Undo l'annule).
+  if(!_relecture) _jouerCoupDiffere();
   if(!_relecture && _logPos < _etapes.length && _logPlancher < _logPos){
     chatLog(`⏸️ Coup joué pendant la relecture, au coup ${_logPos} : ${_etapes.length - _logPos} coup(s) restant(s) gardé(s) — ▶ pour continuer`);
     _logPlancher = _logPos;
@@ -8404,6 +8405,7 @@ let _relecture = false;    // vrai pendant qu'un coup est rejoué
 let _logPlancher = 0;      // pas de recul avant un coup joué en cours de relecture
 
 function preparerRelecture(segs){
+  clearTimeout(_coupDiffere); _coupDiffere = null;
   _etapes = []; _logPos = 0; _instantanes = []; _logPlancher = 0;
   for(const tok of _decoupeSeq(segs.join('\x1b'), '\x1b')){
     // Les entrées vides (« LOG\t » seul) ne sont pas des coups.
@@ -8463,7 +8465,92 @@ function _restaurer(snap){
   if(_fil && _fil.distant) _effacerFil();
 }
 
+// Le coup est lu en entier avant d'être joué : la vue rejoint d'abord la
+// zone où des pions vont bouger, être posés ou retirés, et le coup (ses
+// messages au chat compris) ne se joue qu'après une courte pause, pour
+// que l'on voie partir les pions et non seulement leur arrivée.
+const PAUSE_COUP = 500;
+let _coupDiffere = null;
 function avancerLog(muet){
+  _jouerCoupDiffere();
+  if(_logPos >= _etapes.length) return false;
+  if(!muet && !_rendreDiffere){
+    const pts = _ciblesEtape(_etapes[_logPos]);
+    const wrap = document.getElementById('mapWrap');
+    const avant = [zoom, wrap.scrollLeft, wrap.scrollTop].join();
+    if(pts.length) cadrerSur(pts);
+    // Vue inchangée : rien à attendre.
+    if(pts.length && [zoom, wrap.scrollLeft, wrap.scrollTop].join() !== avant){
+      _coupDiffere = setTimeout(() => { _coupDiffere = null; _avancerLog(false, true); }, PAUSE_COUP);
+      return true;
+    }
+    return _avancerLog(false, pts.length > 0);
+  }
+  return _avancerLog(muet);
+}
+// Un coup en attente est joué tout de suite : coup suivant demandé pendant
+// la pause, recul, saut, coup joué ici.
+function _jouerCoupDiffere(){
+  if(!_coupDiffere) return;
+  clearTimeout(_coupDiffere); _coupDiffere = null;
+  _avancerLog(false, true);
+}
+
+// Points (pixels natifs) que le coup va toucher, lus avant de le jouer,
+// dans l'ordre de signalerCoup : arrivées, sinon retraits, sinon simples
+// changements d'état. Les pions HIP invisibles d'ici n'y sont pas.
+function _ciblesEtape(segs){
+  const arrives = [], retires = [], modifies = [];
+  const piles = new Map(_pilesVassal);
+  const nes = new Map();   // pièces posées par le coup : uid → visible
+  const invisible = d => d.hip && !(_admin || d.hipProprio === idJoueur());
+  const surCarte = uid => { const p = parUid(uid); return p && !p.cache ? p : null; };
+  const ici = (l, p) => { if(p) l.push({x: p.x, y: p.y}); };
+  for(let s of segs){
+    if(s.startsWith('LOG\t')) s = s.substring(4);
+    s = s.replace(/\\+$/, '');
+    try {
+      if(s.startsWith('+/')){
+        if(/^\+\/[^/]+\/stack\//.test(s)){
+          piles.set(s.split('/')[1], _idsPile(s.substring(s.indexOf('/stack/') + 7)));
+          continue;
+        }
+        const d = lirePiece(s);
+        if(parUid(d.uid)) continue;
+        nes.set(d.uid, !invisible(d));
+        if(d.carte === _carteJeu && !invisible(d)) arrives.push({x: d.x, y: d.y});
+      } else if(s.startsWith('-/')){
+        const id = s.substring(2);
+        for(const u of piles.get(id) || [id]) ici(retires, surCarte(u));
+      } else if(s.startsWith('D/')){
+        const t = _champsD(s.substring(2));
+        if(piles.has(t[0])){ if(t[1]) piles.set(t[0], _idsPile(t[1])); continue; }
+        const p = surCarte(_nul(t[0]));
+        const te = p && t[1] && _typeEtEtat(p.seg);
+        if(!te) continue;
+        const d = lirePiece('+/' + p.uid + '/' + te.type + '/' + t[1]);
+        if(d.carte === _carteJeu && (d.x !== p.x || d.y !== p.y)) arrives.push({x: d.x, y: d.y});
+        else ici(modifies, p);
+      } else if(s.startsWith('M/')){
+        const t = _decoupeCmd(s.substring(2));
+        if(t.length < 5) continue;
+        const id = _nul(t[0]);
+        const x = parseInt(t[2], 10) || 0, y = parseInt(t[3], 10) || 0;
+        for(const u of piles.get(id) || [id]){
+          const p = parUid(u);
+          const vu = p ? !p.cache : nes.get(u);
+          if(!vu) continue;
+          if(t[1] === _carteJeu) arrives.push({x, y});
+          else ici(retires, p);
+        }
+      }
+    } catch(e){ /* segment illisible : le coup le dira en se jouant */ }
+  }
+  return arrives.length ? arrives : retires.length ? retires : modifies;
+}
+
+// precadre : la vue a déjà rejoint le coup, elle n'y revient pas.
+function _avancerLog(muet, precadre){
   if(_logPos >= _etapes.length) return false;
   const etape = _etapes[_logPos];
   _instantanes[_logPos] = _instantane();
@@ -8489,7 +8576,7 @@ function avancerLog(muet){
   _logPos++;
   if(!_rendreDiffere){ rendreToutes(); if(_pileSel) afficherPile(); }
   // Les pions touchés par le coup sont signalés, et la vue les rejoint.
-  if(!muet) signalerCoup(photo);
+  if(!muet) signalerCoup(photo, precadre);
   majBarreLog();
   if(_logPos === _etapes.length){
     chatLog('🏁 Fin du log');
@@ -8500,6 +8587,7 @@ function avancerLog(muet){
 }
 
 function reculerLog(muet){
+  _jouerCoupDiffere();
   if(_logPos <= _logPlancher) return false;
   _logPos--;
   const photo = _photo();
@@ -8546,7 +8634,7 @@ function _photo(){
 // Rayon, en hexagones, de la zone montrée autour d'une action.
 const RAYON_COUP = 6;
 
-function signalerCoup(photo){
+function signalerCoup(photo, sansCadrer){
   document.querySelectorAll('.pion.coup').forEach(e => e.classList.remove('coup'));
   const ici = vivants().filter(p => !p.cache);
   // Arrivées : pions déplacés ou posés. Retraits : pions disparus, montrés
@@ -8569,7 +8657,7 @@ function signalerCoup(photo){
   // La vue se centre sur l'action : là où les pions arrivent, sinon là où
   // ils ont été retirés ou modifiés.
   const cibles = arrives.length ? arrives : retires.length ? retires : modifies;
-  if(cibles.length) cadrerSur(cibles.map(p => ({x: p.x, y: p.y})));
+  if(cibles.length && !sansCadrer) cadrerSur(cibles.map(p => ({x: p.x, y: p.y})));
 }
 
 // Centre la vue sur des points (pixels natifs) avec un zoom qui montre
