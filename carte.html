@@ -209,7 +209,7 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .navBas.suiteGauche{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent)}
 .navGauche.navBas{flex-direction:column;width:var(--railMobile);overflow-x:hidden;overflow-y:auto;touch-action:pan-y;
-  scroll-snap-type:y proximity;overscroll-behavior-y:contain;gap:2px;padding:4px 2px calc(var(--marge-b) + 4px) calc(var(--marge-g) + 2px);
+  scroll-snap-type:none;overscroll-behavior-y:contain;gap:2px;padding:calc(var(--marge-h) + 4px) 2px calc(var(--marge-b) + 4px) calc(var(--marge-g) + 2px);
   scroll-padding-block:4px;border-top:none;border-right:1px solid var(--bord);-webkit-mask-image:none;mask-image:none}
 .navGauche.navBas .act.rail{flex:0 0 46px;width:46px;height:46px}
 /* Les dés : leur sigle en guise d'icône. */
@@ -236,7 +236,7 @@ body:is([data-terminal=mobile],[data-terminal=tablette]) #cote{position:absolute
 body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
 body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pions] #cote{top:0}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){position:fixed;left:var(--railMobile);right:0;z-index:80;display:flex;flex-direction:column;
-  top:calc(var(--vv-haut,0px) + 48px + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
+  top:calc(var(--vv-haut,0px) + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
 /* Saisie au doigt : le chat touche le clavier ; la relecture, dessous de
    toute façon, s'efface ; la colonne d'icônes de gauche reste. Le chat
    et les vues du téléphone laissent cette colonne visible. */
@@ -14653,13 +14653,8 @@ function ouvrirFeuilleDes(){
 DISPOSITIONS.mobile = {
   panneau: ['pile', 'palette'],
   construire(){
-    const h = document.getElementById('chromeHaut'), b = document.getElementById('chromeBas');
-    const barre = document.createElement('div');
-    barre.className = 'barreHaut';
-    barre.setAttribute('role', 'toolbar');
-    for(const id of ['plus', 'titre', 'undo', 'desMenu']) barre.appendChild(rendreAction(id, 'icone'));
-    _desAppuiLong(barre.querySelector('[data-action="desMenu"]'));
-    h.appendChild(barre);
+    // Pas de barre en haut : tout passe par la colonne d'icônes de gauche.
+    const b = document.getElementById('chromeBas');
     const rl = document.createElement('div');
     rl.className = 'relectureBas';
     rl.appendChild(rendreAction('relecture', 'icone'));
@@ -14669,20 +14664,30 @@ DISPOSITIONS.mobile = {
     nav.setAttribute('aria-label', 'Vues');
     nav.setAttribute('aria-orientation', 'vertical');
     // Une colonne d'icônes sur la gauche de l'écran : carte ; affichage de
-    // la carte avec ou sans pions ; palette ; Remove all ; journal ; puis
-    // toutes les actions de la feuille « Plus », chacune par son icône.
-    // Plus haute que l'écran, la colonne défile au doigt, de haut en bas.
-    // Les dés suivent les vues : DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS.
-    const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', ...DES.map(d => d.id)];
-    for(const id of [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus'])
-      nav.appendChild(rendreAction(id, 'rail'));
-    const bords = () => {
-      nav.classList.toggle('suiteHaut', nav.scrollTop > 2);
-      nav.classList.toggle('suiteBas', nav.scrollTop + nav.clientHeight < nav.scrollHeight - 2);
-    };
-    nav.addEventListener('scroll', bords, {passive: true});
-    _apresRedimension.push(bords);
-    setTimeout(bords, 0);
+    // la carte avec ou sans pions ; palette ; Remove all ; journal ; Undo ;
+    // les dés (DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS) ; puis toutes
+    // les actions de la feuille « Plus », chacune par son icône.
+    const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'undo', ...DES.map(d => d.id)];
+    const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus'];
+    // Défilement sans fin : la liste est posée trois fois ; près d'un bout,
+    // on saute d'une longueur de liste sans que rien ne bouge à l'écran.
+    // Monter au-delà de la première icône mène à la dernière, et l'inverse.
+    // Seule la copie du milieu est lue par les lecteurs d'écran.
+    const debuts = [];
+    for(let copie = 0; copie < 3; copie++) ids.forEach((id, i) => {
+      const el = rendreAction(id, 'rail');
+      if(copie !== 1){ el.setAttribute('aria-hidden', 'true'); el.tabIndex = -1; }
+      if(!i) debuts.push(el);
+      nav.appendChild(el);
+    });
+    const longueur = () => debuts[2].offsetTop - debuts[1].offsetTop;
+    nav.addEventListener('scroll', () => {
+      const L = longueur();
+      if(!L) return;
+      if(nav.scrollTop < L * 0.5) nav.scrollTop += L;
+      else if(nav.scrollTop > L * 1.5) nav.scrollTop -= L;
+    }, {passive: true});
+    setTimeout(() => { nav.scrollTop = longueur(); }, 0);
     b.append(rl);
     document.getElementById('chromeGauche').appendChild(nav);
     vueMobile('carte');
@@ -14690,7 +14695,7 @@ DISPOSITIONS.mobile = {
 };
 
 // La tablette a la même disposition et le même fonctionnement que le
-// téléphone : barre du haut, colonne d'icônes à gauche, une vue à la fois.
+// téléphone : colonne d'icônes à gauche, une vue à la fois.
 DISPOSITIONS.tablette = DISPOSITIONS.mobile;
 // Téléphone ou tablette : l'interface tactile commune.
 function _telLike(){ return _profil === 'mobile' || _profil === 'tablette'; }
@@ -14720,19 +14725,6 @@ function vueMobile(v){
   _surRedimension();
 }
 
-// 🎲 du téléphone : appui long, la feuille des catégories.
-function _desAppuiLong(b){
-  if(!b) return;
-  let long = false;
-  b.addEventListener('pointerdown', () => {
-    long = false;
-    const t = setTimeout(() => { long = true; vibrer(); ouvrirFeuilleDes(); }, APPUI_LONG);
-    const fin = () => { clearTimeout(t); b.removeEventListener('pointerup', fin); b.removeEventListener('pointercancel', fin); b.removeEventListener('pointerleave', fin); };
-    b.addEventListener('pointerup', fin); b.addEventListener('pointercancel', fin); b.addEventListener('pointerleave', fin);
-  });
-  b.addEventListener('click', e => { if(long){ e.stopImmediatePropagation(); long = false; } }, true);
-  b.addEventListener('contextmenu', e => e.preventDefault());
-}
 
 
 // Les éléments flottants suivent la carte (le tiroir peut la réduire).

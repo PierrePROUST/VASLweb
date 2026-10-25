@@ -8,9 +8,9 @@ const {ouvrir} = require('./commun.js');
     const tap = async s => { const r = await pg.evaluate(s => { const e = document.querySelector(s); e.scrollIntoView({block: 'nearest'}); const q = e.getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, s); await pg.waitForTimeout(150); await touche('touchStart', [[r[0], r[1], 1]]); await touche('touchEnd', []); await pg.waitForTimeout(200); };
     const out = {profil, w, h};
     out.disposition = await pg.evaluate(() => ({haut: !!document.querySelector('#chromeHaut .barreHaut'), colonne: !!document.querySelector('#chromeGauche nav.navGauche'),
-      des: [...document.querySelectorAll('.navGauche .act.de')].map(e => e.textContent.trim()), rail: !!document.getElementById('rail'), fab: !!document.querySelector('.fabDes')}));
+      des: [...document.querySelectorAll('.navGauche .act.de:not([aria-hidden])')].map(e => e.textContent.trim()), rail: !!document.getElementById('rail'), fab: !!document.querySelector('.fabDes')}));
     await pg.evaluate(() => { _filtresChat.delete('jet'); majFiltresChat(); afficherChat('<adv> - salut'); });
-    await tap('.navGauche [data-action="DR_IFT"]');
+    await tap('.navGauche :not([aria-hidden])[data-action="DR_IFT"]');
     out.apercu = await pg.evaluate(() => [...document.querySelectorAll('#apercuChat .txt > div')].map(d => (d.className ? '[' + d.className + '] ' : '') + d.textContent));
     out.hauteur = await pg.evaluate(() => document.getElementById('apercuChat').offsetHeight);
     out.carte = await pg.evaluate(() => Math.round(document.getElementById('mapWrap').clientHeight / innerHeight * 100) + '%');

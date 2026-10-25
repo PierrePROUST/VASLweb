@@ -37,7 +37,7 @@ const {ouvrir} = require('./commun.js');
   out.retour = await pg.evaluate(() => [_etatChat, location.href.slice(-10)]);
   const t0 = Date.now();
   await pg.evaluate(() => _netAppliquer('CHAT&lt;adv&gt; - à toi'));
-  out.recu = await pg.evaluate(() => [document.querySelector('#apercuChat .txt').textContent, document.querySelector('#apercuChat .badgeAct').textContent, document.querySelector('.navBas [data-action=vueJournal] .badgeAct').textContent]);
+  out.recu = await pg.evaluate(() => [document.querySelector('#apercuChat .txt').textContent, document.querySelector('#apercuChat .badgeAct').textContent, document.querySelector('.navBas :not([aria-hidden])[data-action=vueJournal] .badgeAct').textContent]);
   out.delai = Date.now() - t0;
   await pg.screenshot({path: 'chat2b.png'});
   console.log(JSON.stringify(out), errs);
