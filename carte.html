@@ -382,12 +382,12 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 .infoTxt .radio{border:1px solid #000;border-radius:50%;padding:0 .18em;margin:0 .05em}
 /* Exposant de TextInfo : même taille, remonté d'une demi-hauteur de capitale. */
 .infoTxt sup{font-size:1em;vertical-align:.45em;line-height:0}
-/* HidePiecesButton de VASL (Ctrl+F10) — vue 1 : carte et pièces non
-   empilées (overlays déplaçables, Fire Lane) ; vue 2 : carte et pièces
-   « overlay ». Une pièce masquée ne prend ni clic ni survol. */
-#mapInner.vue1 .pion:not(.nonEmpile),#mapInner.vue2 .pion:not(.overlayVasl),
-#mapInner.vue1 .fondPile,#mapInner.vue2 .fondPile,
-#mapInner.vue1 .pastille,#mapInner.vue2 .pastille{visibility:hidden!important}
+/* HidePiecesButton de VASL (Ctrl+F10) — vue 1 : la carte et les pièces
+   qui ne s'empilent pas (overlays déplaçables, Fire Lane). Une pièce
+   masquée ne prend ni clic ni survol. */
+#mapInner.vue1 .pion:not(.nonEmpile),
+#mapInner.vue1 .fondPile,
+#mapInner.vue1 .pastille{visibility:hidden!important}
 body.maj .pion.immob{pointer-events:auto}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
@@ -7504,7 +7504,6 @@ function creerPion(seg, ordre){
   if(d.immob && (d.immob.maj || d.immob.jamais)) el.classList.add(d.immob.jamais ? 'immob-jamais' : 'immob');
   // Vues de HidePiecesButton : ce qui reste visible quand les pions sont masqués.
   if(p.seul) el.classList.add('nonEmpile');
-  if(p.seul && d.overlay) el.classList.add('overlayVasl');
   pions.push(p);
   el.addEventListener('pointerdown', e => _pionPointerDown(e, p));
   el.addEventListener('contextmenu', e => {
@@ -14420,24 +14419,21 @@ const _texteReseau = () => {
 const _nomUtilisateur = () => _admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'Observateur');
 const _enRelecture = () => _etapes.length > 0;
 
-// ── HidePiecesButton de VASL (Ctrl+F10) : trois vues en boucle, comme
-// ASLMap.ShowMapLevel — tout ; la carte et les pièces qui ne s'empilent
-// pas (overlays déplaçables, Fire Lane) ; la carte et les pièces
-// « overlay » seulement. Rien n'est retiré : l'affichage seul change.
+// ── HidePiecesButton de VASL (Ctrl+F10), réduit à deux vues, de
+// ASLMap.ShowMapLevel : tout (ShowAll) ; la carte et les pièces qui ne
+// s'empilent pas — overlays déplaçables, Fire Lane — (ShowMapAndOverlay).
+// Les overlays restent toujours visibles : la vue « carte seule » de VASL
+// n'est pas reprise. Rien n'est retiré, l'affichage seul change.
 const VUES_CARTE = [
   {lib: 'Masquer les pions (montrer carte et overlays)', img: 'showall.png'},
-  {lib: 'Masquer aussi les overlays (montrer la carte seule)', img: 'showmapandoverlay.png'},
-  {lib: 'Montrer tous les pions', img: 'showmaponly.png'}
+  {lib: 'Montrer tous les pions', img: 'showmapandoverlay.png'}
 ];
 let _vueCarte = 0;
 function basculerVueCarte(){
-  _vueCarte = (_vueCarte + 1) % 3;
-  const mi = document.getElementById('mapInner');
-  mi.classList.toggle('vue1', _vueCarte === 1);
-  mi.classList.toggle('vue2', _vueCarte === 2);
+  _vueCarte = (_vueCarte + 1) % VUES_CARTE.length;
+  document.getElementById('mapInner').classList.toggle('vue1', _vueCarte === 1);
   if(_vueCarte) cacherSurvol();
-  chatLog(['👁 Tous les pions affichés', '🗺️ Pions masqués : carte et overlays',
-           '🗺️ Carte seule'][_vueCarte], 'sys');
+  chatLog(['👁 Tous les pions affichés', '🗺️ Pions masqués : carte et overlays'][_vueCarte], 'sys');
 }
 
 // ── ASLBrokenFinder et ASLSniperFinder de VASL : deux boutons à bascule
