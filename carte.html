@@ -18,6 +18,9 @@
 html,body{margin:0;height:100%;background:var(--fond);color:var(--texte);
   font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 body{display:flex;flex-direction:column;overflow:hidden}
+/* Hors de la carte, un double appui ne zoome pas la page (Safari iOS) ;
+   le pincement reste permis. */
+html,body{touch-action:manipulation}
 .barre{display:flex;align-items:center;gap:6px;padding:6px 10px;
   background:var(--barre);border-bottom:1px solid var(--bord);flex-wrap:wrap}
 .barre h1{font-size:15px;margin:0 10px 0 0;font-weight:600}
@@ -154,7 +157,9 @@ body:is([data-terminal=mobile],[data-terminal=tablette]){--cible:44px}
 body:not([data-terminal=pc]) .fenetre{left:0;top:0;transform:none;width:100%;height:100%;max-height:none;border-radius:0;
   padding:var(--marge-h) var(--marge-d) var(--marge-b) var(--marge-g);font-size:15px}
 body:not([data-terminal=pc]) .fenetre .fb button{min-height:44px}
-body:not([data-terminal=pc]) .fenetre input:not([type=checkbox]),body:not([data-terminal=pc]) .fenetre select{font-size:16px}
+/* Au doigt, Safari iOS zoome la page sur tout champ de moins de 16 px :
+   chat, recherches, SAN, palette de commandes compris. */
+body:not([data-terminal=pc]) :is(input:not([type=checkbox]):not([type=radio]),select,textarea){font-size:16px!important}
 /* Focus visible au clavier, partout. */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .deroulant .it:focus-visible,.corpsFeuille .act.ligne:focus-visible{outline-offset:-2px}
@@ -730,7 +735,9 @@ const EN_MOTIFS = [
   ['Choisir l\'utilisateur, puis saisir son mot de passe. Les pions dissimulés et HIP ne sont visibles que de leur joueur.',
    'Choose the user, then enter their password. Concealed and HIP counters are only visible to their player.'],
   ['Retirer {} pions de la carte ?', 'Delete {} counters from the map?'],
-  ['Le log « {} » n\'est pas écrit ({} coup(s)). L\'écrire maintenant ?', 'Logfile “{}” is not written ({} move(s)). Write it now?']
+  ['Le log « {} » n\'est pas écrit ({} coup(s)). L\'écrire maintenant ?', 'Logfile “{}” is not written ({} move(s)). Write it now?'],
+  ['Le log « {} » n\'a pas été écrit avant la fermeture de la page ({} coup(s)). L\'écrire maintenant ?',
+   'Logfile “{}” was not written before the page closed ({} move(s)). Write it now?']
 ].map(([fr, en]) => {
   const parts = fr.split('{}').map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   return {re: new RegExp('^' + parts.join('(.+?)') + '$'), en};
@@ -13952,6 +13959,7 @@ function terminerLog(){
   if(_logEnr.length) ecrireVlog();
   else chatLog('⏹️ Log terminé : aucun coup enregistré, aucun fichier écrit');
   _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = [];
+  _garderLog();
   majBoutons();
   return true;
 }
@@ -13963,9 +13971,36 @@ function fermerLog(){
   if(_logEnr.length && confirm(T(`Le log « ${_logNom} » n'est pas écrit (${_nbActions()} coup(s)). L'écrire maintenant ?`)))
     ecrireVlog();
   _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = [];
+  _garderLog();
   const f = document.getElementById('fenLog');
   if(f) f.remove();
   majBoutons();
+}
+
+// Safari iOS ignore beforeunload et ferme sans prévenir un onglet laissé
+// en arrière-plan : dès que la page se cache, le log pas encore écrit est
+// mis de côté, puis proposé au chargement suivant.
+const CLE_LOG_SECOURS = 'aslweb.logSecours';
+const _versB64 = o => { let b = ''; for(let i = 0; i < o.length; i += 0x8000) b += String.fromCharCode(...o.subarray(i, i + 0x8000)); return btoa(b); };
+const _deB64 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
+function _garderLog(){
+  try {
+    if(!_logEnr || !_logEnr.length || !_logDepart){ localStorage.removeItem(CLE_LOG_SECOURS); return; }
+    localStorage.setItem(CLE_LOG_SECOURS, JSON.stringify({nom: _logNom, depart: _logDepart, enr: _logEnr,
+      groupes: _logGroupes, annexes: [..._annexes].map(([n, d]) => [n, _versB64(d)])}));
+  } catch(e){
+    // Trop gros pour le stockage : pas de copie périmée non plus.
+    try { localStorage.removeItem(CLE_LOG_SECOURS); } catch(e2){}
+  }
+}
+function _reprendreLogGarde(){
+  let g = null;
+  try { g = JSON.parse(localStorage.getItem(CLE_LOG_SECOURS)); localStorage.removeItem(CLE_LOG_SECOURS); } catch(e){}
+  if(!g || !Array.isArray(g.enr) || !g.enr.length || !Array.isArray(g.depart)) return;
+  const n = new Set(g.groupes).size;
+  if(!confirm(T(`Le log « ${g.nom} » n'a pas été écrit avant la fermeture de la page (${n} coup(s)). L'écrire maintenant ?`))) return;
+  ecrireVlog({enr: g.enr, groupes: g.groupes || [], depart: g.depart, nom: g.nom,
+              annexes: new Map((g.annexes || []).map(([k, t]) => [k, _deB64(t)]))});
 }
 
 // queryNewLogFile : à l'ouverture d'une partie et à la fin d'une
@@ -14046,14 +14081,16 @@ function etatPartie(){
 
 // Comme VASSAL, les entrées de l'archive sont comprimées : le savedGame
 // obfusqué (hexadécimal) y perd plus de 90 % de sa taille.
-async function _telecharger(texte, nom){
+async function _telecharger(texte, nom, annexes = _annexes){
   const files = new Map([['savedGame', await _deflate(_vcskEncode(texte))]]);
-  for(const [n, d] of _annexes) files.set(n, await _deflate(d));
+  for(const [n, d] of annexes) files.set(n, await _deflate(d));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(_zipWrite(files));
   a.download = nom;
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  // Safari iOS demande d'abord s'il faut télécharger : l'URL doit vivre
+  // le temps qu'on réponde.
+  setTimeout(() => URL.revokeObjectURL(a.href), 120000);
 }
 
 function _nomExport(ext){
@@ -14070,8 +14107,8 @@ function ecrireVsav(){
 }
 
 // BasicLogger : état de départ, puis « LOG\t<commande> » par action.
-function ecrireVlog(){
-  if(!_logEnr || !_logEnr.length || !_logDepart) return false;
+function ecrireVlog(log = {enr: _logEnr, groupes: _logGroupes, depart: _logDepart, nom: _logNom, annexes: _annexes}){
+  if(!log.enr || !log.enr.length || !log.depart) return false;
   // BasicLogger.write : chaque coup devient une LogCommand, dont chaque
   // sous-commande est elle-même une LogCommand. GameModule.encode écrit
   // donc « LOG\t<c1> ESC LOG\t<c2> … », et ces ESC, imbriqués dans la
@@ -14079,13 +14116,13 @@ function ecrireVlog(){
   // « LOG\t » de chaque sous-commande, VASSAL les exécute au chargement
   // au lieu d'en faire un coup à relire.
   const entrees = [];
-  _logEnr.forEach((c, i) => {
-    if(i && _logGroupes[i] === _logGroupes[i - 1]) entrees[entrees.length - 1].push(c);
+  log.enr.forEach((c, i) => {
+    if(i && log.groupes[i] === log.groupes[i - 1]) entrees[entrees.length - 1].push(c);
     else entrees.push([c]);
   });
   const lignes = entrees.map(l => l.map(c => 'LOG\t' + c.replace(/\x1b/g, '\\\x1b')).join('\x1b').replace(/\x1b/g, '\\\x1b'));
-  _telecharger([..._logDepart, ...lignes].join('\x1b'), _logNom || _nomExport('vlog'));
-  chatLog(`📼 Log écrit : ${_logNom} — ${entrees.length} coup(s), ${_logEnr.length} commande(s)`);
+  _telecharger([...log.depart, ...lignes].join('\x1b'), log.nom || _nomExport('vlog'), log.annexes);
+  chatLog(`📼 Log écrit : ${log.nom} — ${entrees.length} coup(s), ${log.enr.length} commande(s)`);
   return true;
 }
 
@@ -15410,7 +15447,9 @@ document.addEventListener('DOMContentLoaded', () => {
   w.addEventListener('wheel', cacherSurvol);
   dessinerPalette();
   majNet();
-  window.addEventListener('pagehide', () => { if(_net) netQuitter(); });
+  window.addEventListener('pagehide', () => { _garderLog(); if(_net) netQuitter(); });
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') _garderLog(); });
+  setTimeout(_reprendreLogGarde, 0);
   // Comme VASSAL à la fermeture : des coups enregistrés et pas encore
   // écrits ne partent pas sans avertissement.
   window.addEventListener('beforeunload', e => {
