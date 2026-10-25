@@ -1,7 +1,7 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
   const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
-  const tap = async sel => { const r = await pg.evaluate(s => { const e = document.querySelector(s); if(!e) return null; const q = e.getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, sel); if(!r) return false; await touche('touchStart', [[r[0], r[1], 1]]); await touche('touchEnd', []); await pg.waitForTimeout(60); return true; };
+  const tap = async sel => { const r = await pg.evaluate(s => { const e = [...document.querySelectorAll(s)].find(x => { const q = x.getBoundingClientRect(); return q.height && q.top >= 0 && q.bottom <= innerHeight; }); if(!e) return null; const q = e.getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, sel); if(!r) return false; await touche('touchStart', [[r[0], r[1], 1]]); await touche('touchEnd', []); await pg.waitForTimeout(60); return true; };
   await pg.evaluate(() => {
     const segs = [];
     for(let i = 0; i < 50; i++){
@@ -15,9 +15,12 @@ const {ouvrir} = require('./commun.js');
   const out = {etapes: await pg.evaluate(() => _etapes.length), carte: await pg.evaluate(() => Math.round(document.getElementById('mapWrap').clientHeight / innerHeight * 100) + '%')};
   await tap('#apercuChat .txt');
   out.etat = await pg.evaluate(() => [_etatChat, _vue()]);
+  // relecture : ses boutons sont en bas de la colonne d'icônes
+  await pg.evaluate(() => { const n = document.querySelector('.navGauche'); n.scrollTop = document.querySelector('.navGauche .groupeAct:not([aria-hidden])').offsetTop - n.clientHeight / 2; });
+  await pg.waitForTimeout(200);
   let vus = 0, visibleRelecture = true, pionVisible = 0;
   for(let i = 0; i < 100; i++){
-    visibleRelecture = visibleRelecture && await tap('.relectureBas [data-action="lgAv"]');
+    visibleRelecture = visibleRelecture && await tap('.navGauche [data-action="lgAv"]');
     const r = await pg.evaluate(() => {
       const der = [...document.querySelectorAll('#journal .msg')].pop();
       const j = document.getElementById('journal').getBoundingClientRect();

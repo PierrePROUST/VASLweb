@@ -189,11 +189,6 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .act.rail.actif{background:#333;border-color:var(--accent)}
 .desBoutons.grand .act.bouton{min-height:56px;font-size:17px}
 /* Téléphone : barre du haut, navigation en bas, une vue à la fois. */
-.barreHaut{display:flex;align-items:center;gap:6px;height:calc(48px + var(--marge-h));padding:var(--marge-h) 8px 0;
-  background:var(--barre);border-bottom:1px solid var(--bord)}
-.barreHaut .titreScen{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--texte);
-  font-weight:600;text-align:center}
-.barreHaut .act.ico{min-width:44px;height:40px;font-size:18px}
 .navBas{display:flex;justify-content:space-around;background:var(--barre);border-top:1px solid var(--bord);
   padding:0 var(--marge-d) var(--marge-b) var(--marge-g)}
 .navBas{overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scroll-snap-type:x proximity;scrollbar-width:none;
@@ -214,19 +209,13 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .navGauche.navBas .act.rail{flex:0 0 46px;width:46px;height:46px}
 /* Les dés : leur sigle en guise d'icône. */
 .navGauche .act.rail.de .ic{font:600 13px/1 system-ui,sans-serif;letter-spacing:-.02em}
-.navGauche.suiteBas{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent);
-  mask-image:linear-gradient(to bottom,#000 calc(100% - 28px),transparent)}
-.navGauche.suiteHaut{-webkit-mask-image:linear-gradient(to top,#000 calc(100% - 28px),transparent);
-  mask-image:linear-gradient(to top,#000 calc(100% - 28px),transparent)}
-.navGauche.suiteHaut.suiteBas{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 28px,#000 calc(100% - 28px),transparent);
-  mask-image:linear-gradient(to bottom,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
+/* Relecture du log en bas de la colonne : boutons empilés, position en petit. */
+.navGauche .groupeAct{flex-direction:column;gap:2px}
+.navGauche .groupeAct .etiqAct{width:46px;font-size:10px;text-align:center;white-space:normal;color:var(--texte)}
 :root{--railMobile:52px}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #chromeGauche{display:flex;background:var(--barre)}
 .navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
-.relectureBas{display:flex;justify-content:center;background:#202020}
-.relectureBas:has(.groupeAct[hidden]){display:none}
-.relectureBas .act.ico{height:34px;min-width:40px}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeCote,body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeJournal,
 body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets button[data-onglet]{display:none}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets{justify-content:flex-end}
@@ -240,7 +229,7 @@ body:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){posi
 /* Saisie au doigt : le chat touche le clavier ; la relecture, dessous de
    toute façon, s'efface ; la colonne d'icônes de gauche reste. Le chat
    et les vues du téléphone laissent cette colonne visible. */
-body:not([data-terminal=pc]).saisie .navBas:not(.navGauche),body:not([data-terminal=pc]).saisie .relectureBas{display:none}
+body:not([data-terminal=pc]).saisie .navBas:not(.navGauche){display:none}
 body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
 /* Chat compact : une feuille au-dessus du bas de l'écran, la carte visible. */
 body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
@@ -14655,9 +14644,6 @@ DISPOSITIONS.mobile = {
   construire(){
     // Pas de barre en haut : tout passe par la colonne d'icônes de gauche.
     const b = document.getElementById('chromeBas');
-    const rl = document.createElement('div');
-    rl.className = 'relectureBas';
-    rl.appendChild(rendreAction('relecture', 'icone'));
     b.appendChild(_construireApercuChat());
     const nav = document.createElement('nav');
     nav.className = 'navBas navGauche';
@@ -14666,9 +14652,10 @@ DISPOSITIONS.mobile = {
     // Une colonne d'icônes sur la gauche de l'écran : carte ; affichage de
     // la carte avec ou sans pions ; palette ; Remove all ; journal ; Undo ;
     // les dés (DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS) ; puis toutes
-    // les actions de la feuille « Plus », chacune par son icône.
+    // les actions de la feuille « Plus », chacune par son icône ; tout en
+    // bas, la relecture du log, présente seulement pendant une relecture.
     const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'undo', ...DES.map(d => d.id)];
-    const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus'];
+    const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus', 'relecture'];
     // Défilement sans fin : la liste est posée trois fois ; près d'un bout,
     // on saute d'une longueur de liste sans que rien ne bouge à l'écran.
     // Monter au-delà de la première icône mène à la dernière, et l'inverse.
@@ -14676,7 +14663,10 @@ DISPOSITIONS.mobile = {
     const debuts = [];
     for(let copie = 0; copie < 3; copie++) ids.forEach((id, i) => {
       const el = rendreAction(id, 'rail');
-      if(copie !== 1){ el.setAttribute('aria-hidden', 'true'); el.tabIndex = -1; }
+      if(copie !== 1){
+        el.setAttribute('aria-hidden', 'true');
+        for(const x of [el, ...el.querySelectorAll('button')]) x.tabIndex = -1;
+      }
       if(!i) debuts.push(el);
       nav.appendChild(el);
     });
@@ -14688,7 +14678,6 @@ DISPOSITIONS.mobile = {
       else if(nav.scrollTop > L * 1.5) nav.scrollTop -= L;
     }, {passive: true});
     setTimeout(() => { nav.scrollTop = longueur(); }, 0);
-    b.append(rl);
     document.getElementById('chromeGauche').appendChild(nav);
     vueMobile('carte');
   }
