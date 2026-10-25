@@ -14424,9 +14424,12 @@ const _enRelecture = () => _etapes.length > 0;
 // s'empilent pas — overlays déplaçables, Fire Lane — (ShowMapAndOverlay).
 // Les overlays restent toujours visibles : la vue « carte seule » de VASL
 // n'est pas reprise. Rien n'est retiré, l'affichage seul change.
+// Le bouton porte le pion North de la palette VASL, allumé quand les
+// pions sont masqués.
+const ICONE_NORTH = {gpid: '291', ico: '🧭'};
 const VUES_CARTE = [
-  {lib: 'Masquer les pions (montrer carte et overlays)', img: 'showall.png'},
-  {lib: 'Montrer tous les pions', img: 'showmapandoverlay.png'}
+  {lib: 'Masquer les pions (montrer carte et overlays)'},
+  {lib: 'Montrer tous les pions'}
 ];
 let _vueCarte = 0;
 function basculerVueCarte(){
@@ -14517,11 +14520,11 @@ const ACTIONS = {
              faire: () => basculerRepere('sniper'), allume: () => _reperes.sniper},
   masquer:  {lib: () => VUES_CARTE[_vueCarte].lib, court: 'Pions', img: () => VUES_CARTE[_vueCarte].img,
              touche: 'Ctrl+F10', faire: basculerVueCarte, allume: () => _vueCarte > 0},
-  los:      {lib: 'Ligne de vue (LOS)', court: 'LOS', ico: '👁', touche: 'F10',
+  los:      {lib: 'LOS (ligne de vue)', court: 'LOS', touche: 'F10',
              faire: (ancre, e) => armerFil(e && e.ctrlKey && e.shiftKey ? 'l' : 'L'), allume: () => !!_filArme,
              // Au doigt, un appui long propose la LOS silencieuse et le mode détaillé.
              menuLong: ['los', 'losMuet', 'verbeux']},
-  losMuet:  {lib: 'Ligne de vue silencieuse', court: 'LOS muette', ico: '🙈', touche: 'Ctrl+Maj+F10',
+  losMuet:  {lib: 'LOS inv (ligne de vue silencieuse)', court: 'LOS inv', touche: 'Ctrl+Maj+F10',
              faire: () => armerFil('l'), allume: () => _filArme === 'l'},
   verbeux:  {ico: '📝', lib: 'LOS détaillée (Verbose LOS mode)', coche: () => _losVerbeux, faire: basculerVerbeux},
   zoomMoins:{lib: 'Zoom arrière', ico: '−', faire: zoomOut},
@@ -14728,7 +14731,8 @@ function _majAction(el, a, id){
   const lb = el.querySelector('.lb');
   if(lb){
     lb.textContent = forme === 'menu' || forme === 'ligne' ? lib
-                   : forme === 'bouton' || (forme === 'icone' && (a.texteBarre || (!a.ico && !a.img))) ? _v(a.court || a.lib)
+                   : forme === 'bouton' || (forme === 'icone' && a.texteBarre)
+                     || ((forme === 'icone' || forme === 'rail') && !a.ico && !a.img && !a.pion) ? _v(a.court || a.lib)
                    : '';
   }
   const rc = el.querySelector('.rc');
