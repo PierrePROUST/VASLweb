@@ -217,9 +217,6 @@ body[data-terminal=tablette] #bas{padding-bottom:var(--marge-b)}
   border:1px solid var(--bord);border-radius:8px}
 .fabCats .act.bouton{min-height:44px;padding:2px}
 .fabReg{width:44px;height:44px;border-radius:22px}
-.boutonVerrou{position:absolute;z-index:65;width:44px;height:44px;border-radius:22px;background:rgba(40,40,40,.9)}
-.boutonVerrou.actif{background:#3a2e14}
-body.avecBarrePile .boutonVerrou{display:none}
 /* Téléphone : barre du haut, navigation en bas, une vue à la fois. */
 .barreHaut{display:flex;align-items:center;gap:6px;height:calc(48px + var(--marge-h));padding:var(--marge-h) 8px 0;
   background:var(--barre);border-bottom:1px solid var(--bord)}
@@ -7949,7 +7946,8 @@ function rendreToutes(){
 const _decors = new Map();       // clé → {fond, pastille}
 // (_lireLocal n'est pas encore défini à ce point du script.)
 function _lirePref(c){ try { return localStorage.getItem(c); } catch(e){ return null; } }
-let _effectifPiles = _lirePref('aslweb.effectifPiles') === '1';
+// Plus de commande pour l'afficher (masquée partout) : on part toujours sans.
+let _effectifPiles = false;
 const _vueDeLoin = () => zoom * 48 * SC < 30;
 
 function _decorPile(k, s, rects, deplie){
@@ -12439,7 +12437,9 @@ function armerPose(x){
 
 // ── Verrou des pions : un glissé déplace toujours la carte, jamais une
 // pile ; on déplace alors par « Déplacer… ».
-let _verrouPions = _lirePref('aslweb.verrouPions') === '1';
+// Le verrou n'a plus de bouton (masqué sur tablette et téléphone) : on part
+// toujours déverrouillé, faute de quoi il resterait pris.
+let _verrouPions = false;
 function basculerVerrou(){
   _verrouPions = !_verrouPions;
   try { localStorage.setItem('aslweb.verrouPions', _verrouPions ? '1' : '0'); } catch(e){}
@@ -14411,7 +14411,9 @@ function rafraichirActions(ids){
 // Le profil se choisit d'après le pointeur et la taille de l'écran, jamais
 // d'après le navigateur annoncé ; le réglage « Affichage » peut l'imposer.
 // Geste par geste, c'est pointerType qui décide (PC portable tactile).
-let _profilChoisi = _lirePref('aslweb.profil') || 'auto';
+// Un affichage tablette ou téléphone imposé à la main ne vaut que pour la
+// séance : ces profils n'ont plus le choix de l'affichage pour en revenir.
+let _profilChoisi = _lirePref('aslweb.profil') === 'pc' ? 'pc' : 'auto';
 let _profil = null;
 function detecterProfil(){
   if(_profilChoisi !== 'auto') return _profilChoisi;
@@ -14424,7 +14426,7 @@ function detecterProfil(){
 }
 function choisirProfil(p){
   _profilChoisi = p;
-  try { localStorage.setItem('aslweb.profil', p); } catch(e){}
+  try { localStorage.setItem('aslweb.profil', p === 'pc' ? 'pc' : 'auto'); } catch(e){}
   appliquerProfil(detecterProfil());
 }
 
@@ -14433,9 +14435,11 @@ const DISPOSITIONS = {
     menus: {
       'Fichier':   ['ouvrir', 'vsav', '-', 'log'],
       'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'infoScenario'],
-      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', '-', 'couche_unite', 'couche_marqueur', 'couche_carte',
-                    'effectif', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile'],
-      'Outils':    ['los', 'losMuet', 'verbeux'],
+      // Masqués à la demande : sélection des cartes et panneaux, effectif
+      // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
+      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', '-', 'couche_unite', 'couche_marqueur',
+                    '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile'],
+      'Outils':    ['los', 'losMuet'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
       'Aide':      ['raccourcis']
@@ -14638,9 +14642,11 @@ Object.assign(ACTIONS, {
 });
 
 // Le reste des actions, dans la feuille « Plus » des profils tactiles.
+// Masqués sur tablette et téléphone, à la demande : sélection des cartes et
+// panneaux, zoom avant, arrière, ajuster, LOS détaillée, verrou des pions,
+// effectif des piles, aperçu du chat, choix de l'affichage, raccourcis.
 const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'masquer', '-', 'reseau', 'utilisateur', '-',
-  'sanPieges', 'couche_unite', 'couche_marqueur', 'couche_carte', '-', 'zoomPlus', 'zoomMoins', 'ajuster', '-',
-  'verbeux', 'verrou', 'effectif', 'apercuChat', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile', '-', 'raccourcis'];
+  'sanPieges', 'couche_unite', 'couche_marqueur'];
 function ouvrirFeuillePlus(){ return ouvrirFeuilleActions('Plus', PLUS, 'feuillePlus'); }
 
 // SAN et pièges : les champs eux-mêmes viennent dans la feuille, et
@@ -14682,7 +14688,6 @@ DISPOSITIONS.tablette = {
     _relectureVolante();
     _fabDes();
     document.getElementById('bas').classList.add('replie');
-    _boutonVerrou();
   }
 };
 
@@ -14721,7 +14726,6 @@ DISPOSITIONS.mobile = {
     b.append(rl);
     document.getElementById('chromeGauche').appendChild(nav);
     vueMobile('carte');
-    _boutonVerrou();
   }
 };
 
@@ -14839,13 +14843,6 @@ function _desAppuiLong(b){
   b.addEventListener('contextmenu', e => e.preventDefault());
 }
 
-// Verrou des pions : un bouton sur la carte, aux profils tactiles.
-function _boutonVerrou(){
-  const b = rendreAction('verrou', 'icone');
-  b.classList.add('boutonVerrou', 'chromeVolant');
-  document.getElementById('corps').appendChild(b);
-  _placerVolants();
-}
 
 // Les éléments flottants suivent la carte (le tiroir peut la réduire).
 function _placerVolants(){
@@ -14854,7 +14851,6 @@ function _placerVolants(){
   const barre = document.getElementById('barrePile');
   const bas = barre ? barre.offsetHeight : 0;
   for(const el of corps.querySelectorAll('.fabDes')){ el.style.right = (droite + 14) + 'px'; el.style.bottom = (bas + 14) + 'px'; }
-  for(const el of corps.querySelectorAll('.boutonVerrou')){ el.style.left = (w.offsetLeft + 10) + 'px'; el.style.bottom = (bas + 14) + 'px'; }
   for(const el of corps.querySelectorAll('.relectureVolante')){ el.style.left = (w.offsetLeft + w.clientWidth / 2) + 'px'; }
 }
 _apresRedimension.push(_placerVolants);
@@ -14955,7 +14951,8 @@ let _clavierFermeA = 0;
 // pastilles sont des indications d'interface : rien ne part au log.
 let _etatChat = null;            // null (aperçu), 'compact', 'plein'
 let _nonLus = 0;
-let _apercuChat = _lirePref('aslweb.apercuChat') !== '0';
+// L'option n'a plus de bouton (masquée) : l'aperçu est toujours montré.
+let _apercuChat = true;
 
 // Hauteur réelle du bas de l'écran (aperçu, relecture, navigation) : le
 // chat ouvert s'arrête au-dessus, la relecture reste accessible.
