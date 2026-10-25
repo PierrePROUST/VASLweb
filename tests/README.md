@@ -74,6 +74,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `chat2.js` | Relecture d'un log de 50 messages chat compact ouvert ; message reçu en vue Carte ; Retour |
 | `chat3.js` | Seules les 5 phrases ; une phrase envoyée d'un appui, brouillon gardé |
 | `chat4.js` | Filtres, lieu cliquable, Retour depuis le journal plein |
+| `cote.js` | Icône ⇄ : colonne d'icônes à droite ou à gauche, choix retenu ; « Affichage : PC » dans Plus seulement |
 | `pcchat.js` | Rien de nouveau visible sur PC |
 
 `commun.js` ouvre la partie de test (piles de 6 et de 2 pions) ;

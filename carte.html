@@ -215,6 +215,11 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 :root{--railMobile:52px}
 /* Tablette et téléphone : la colonne d'icônes est sur la droite de l'écran. */
 body:is([data-terminal=mobile],[data-terminal=tablette]) #chromeGauche{display:flex;background:var(--barre);order:9}
+/* … ou à gauche, au choix de l'utilisateur (icône ⇄ de la colonne). */
+body[data-colonne=gauche] #chromeGauche{order:0}
+body[data-colonne=gauche] .navGauche.navBas{padding-left:calc(var(--marge-g) + 2px);padding-right:2px;border-left:none;border-right:1px solid var(--bord)}
+body[data-colonne=gauche]:is([data-terminal=mobile],[data-terminal=tablette]) #cote,
+body[data-colonne=gauche]:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){left:var(--railMobile);right:0}
 .navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeCote,body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeJournal,
@@ -14251,6 +14256,8 @@ const ACTIONS = {
   couche_marqueur: {ico: '🏷', lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
   couche_carte:    {ico: '📋', lib: 'Sélection : cartes et panneaux', coche: () => COUCHES_SEL.carte, faire: () => basculerCouche('carte')},
   profil_auto:     {ico: '🔄', lib: 'Affichage : automatique', coche: () => _profilChoisi === 'auto', faire: () => choisirProfil('auto')},
+  coteColonne:     {ico: '⇄', court: 'Côté', lib: () => _colonne === 'droite' ? 'Placer la barre d\'icônes à gauche' : 'Placer la barre d\'icônes à droite',
+                    faire: () => placerColonne(_colonne === 'droite' ? 'gauche' : 'droite')},
   profil_pc:       {ico: '🖥', lib: 'Affichage : PC', coche: () => _profilChoisi === 'pc', faire: () => choisirProfil('pc')},
   profil_tablette: {ico: '📟', lib: 'Affichage : tablette', coche: () => _profilChoisi === 'tablette', faire: () => choisirProfil('tablette')},
   profil_mobile:   {ico: '📱', lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
@@ -14694,12 +14701,27 @@ Object.assign(ACTIONS, {
               allume: () => !document.getElementById('cote').classList.contains('ferme')}
 });
 
+// Côté de la colonne d'icônes, sur tablette et téléphone : à droite par
+// défaut ; le choix de l'utilisateur est retenu sur cet appareil.
+let _colonne = _lirePref('aslweb.colonne') === 'gauche' ? 'gauche' : 'droite';
+document.body.dataset.colonne = _colonne;
+function placerColonne(c){
+  _colonne = c;
+  document.body.dataset.colonne = c;
+  try { localStorage.setItem('aslweb.colonne', c); } catch(e){}
+  rafraichirActions(['coteColonne']);
+  for(const f of _apresRedimension) f();
+}
+
 // Le reste des actions, dans la feuille « Plus » des profils tactiles.
 // Masqués sur tablette et téléphone, à la demande : sélection des cartes et
 // panneaux, zoom avant, arrière, ajuster, LOS détaillée, verrou des pions,
-// effectif des piles, aperçu du chat, choix de l'affichage, raccourcis.
+// effectif des piles, aperçu du chat, raccourcis ; du choix de l'affichage
+// ne reste que l'affichage ordinateur, dans la feuille seulement.
 const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'masquer', '-', 'reseau', 'utilisateur', '-',
-  'sanPieges', 'couche_unite', 'couche_marqueur'];
+  'sanPieges', 'couche_unite', 'couche_marqueur', '-', 'profil_pc'];
+// Dans la feuille « Plus », mais pas dans la colonne d'icônes.
+const PLUS_SANS_ICONE = ['profil_pc'];
 function ouvrirFeuillePlus(){ return ouvrirFeuilleActions('Plus', PLUS, 'feuillePlus'); }
 
 // SAN et pièges : les champs eux-mêmes viennent dans la feuille, et
@@ -14741,10 +14763,12 @@ DISPOSITIONS.mobile = {
     // Une colonne d'icônes sur la droite de l'écran : carte ; affichage de
     // la carte avec ou sans pions ; palette ; Remove all ; journal ; Undo ;
     // les dés (DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS) ; puis toutes
-    // les actions de la feuille « Plus », chacune par son icône ; tout en
+    // les actions de la feuille « Plus », chacune par son icône ; le côté de
+    // la colonne (⇄, à droite ou à gauche de l'écran) ; Plus ; tout en
     // bas, la relecture du log, présente seulement pendant une relecture.
     const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'undo', ...DES.map(d => d.id)];
-    const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x)), 'plus', 'relecture'];
+    const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x) && !PLUS_SANS_ICONE.includes(x)),
+                 'coteColonne', 'plus', 'relecture'];
     // Défilement sans fin : la liste est posée trois fois ; près d'un bout,
     // on saute d'une longueur de liste sans que rien ne bouge à l'écran.
     // Monter au-delà de la première icône mène à la dernière, et l'inverse.
