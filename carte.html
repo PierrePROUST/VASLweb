@@ -8072,7 +8072,7 @@ function importerPions(texte, label, annexes){
   const segs = texte.split('\x1b');
   // L'état de la partie précède le premier « LOG » ; la suite, dans un
   // .vlog, ce sont les coups.
-  let iLog = segs.findIndex(s => s.startsWith('LOG\t'));
+  let iLog = segs.findIndex(_estLog);
   if(iLog < 0) iLog = segs.length;
   _source = segs.slice(0, iLog).filter(s => !s.startsWith('UNDO'));
   _annexes = annexes || new Map();
@@ -8454,11 +8454,14 @@ function preparerRelecture(segs){
     // Les entrées vides (« LOG\t » seul) ne sont pas des coups.
     const cmds = _commandesLog(tok).filter(c => c.trim());
     if(!cmds.length) continue;
-    if(tok.startsWith('LOG\t') || !_etapes.length) _etapes.push(cmds);
+    if(_estLog(tok) || !_etapes.length) _etapes.push(cmds);
     else _etapes[_etapes.length - 1].push(...cmds);
   }
   majBarreLog();
 }
+
+// Entrée LOG, même mise entre apostrophes par SequenceEncoder.
+const _estLog = t => /^'*LOG\t/.test(t);
 
 // SequenceEncoder.Decoder de VASSAL : un délimiteur précédé d'une
 // contre-oblique appartient au jeton, qui perd cette contre-oblique ; un
@@ -8481,6 +8484,7 @@ function _decoupeSeq(val, delim){
 function _commandesLog(tok){
   const parts = _decoupeSeq(tok, '\x1b');
   if(parts.length > 1) return parts.flatMap(_commandesLog);
+  if(tok.length > 1 && tok[0] === "'" && tok.endsWith("'")) tok = tok.slice(1, -1);
   if(tok.startsWith('LOG\t')) return _commandesLog(tok.substring(4));
   return tok ? [tok] : [];
 }
@@ -14138,12 +14142,20 @@ function ecrireVlog(log = {enr: _logEnr, groupes: _logGroupes, depart: _logDepar
   // sauvegarde, prennent une contre-oblique (SequenceEncoder). Sans le
   // « LOG\t » de chaque sous-commande, VASSAL les exécute au chargement
   // au lieu d'en faire un coup à relire.
+  // SequenceEncoder.append met entre apostrophes un jeton qui finit par
+  // une contre-oblique (l'état d'un pion VASL, « …;OldMap;Main Map\ ») :
+  // sans elles, elle échapperait l'ESC qui le suit, et le coup suivant se
+  // fondrait dans celui-ci à la relecture.
+  const jeton = t => {
+    const e = t.replace(/\x1b/g, '\\\x1b');
+    return t.endsWith('\\') || (t.startsWith("'") && t.endsWith("'")) ? `'${e}'` : e;
+  };
   const entrees = [];
   log.enr.forEach((c, i) => {
     if(i && log.groupes[i] === log.groupes[i - 1]) entrees[entrees.length - 1].push(c);
     else entrees.push([c]);
   });
-  const lignes = entrees.map(l => l.map(c => 'LOG\t' + c.replace(/\x1b/g, '\\\x1b')).join('\x1b').replace(/\x1b/g, '\\\x1b'));
+  const lignes = entrees.map(l => jeton(l.map(c => jeton('LOG\t' + c)).join('\x1b')));
   _telecharger([...log.depart, ...lignes].join('\x1b'), log.nom || _nomExport('vlog'), log.annexes);
   chatLog(`📼 Log écrit : ${log.nom} — ${entrees.length} coup(s), ${log.enr.length} commande(s)`);
   return true;
