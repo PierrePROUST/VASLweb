@@ -1,4 +1,4 @@
-// Tablette et téléphone : même disposition (colonne d'icônes à gauche, dés
+// Tablette et téléphone : même disposition (colonne d'icônes à droite, dés
 // compris) ; un dé lancé depuis la colonne s'affiche dans l'aperçu du chat,
 // sur deux lignes, même quand le filtre Dés le cache dans le journal.
 const {ouvrir} = require('./commun.js');

@@ -204,8 +204,8 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .navBas.suiteGauche{-webkit-mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to left,#000 calc(100% - 28px),transparent)}
 .navGauche.navBas{flex-direction:column;width:var(--railMobile);overflow-x:hidden;overflow-y:auto;touch-action:pan-y;
-  scroll-snap-type:none;overscroll-behavior-y:contain;gap:2px;padding:calc(var(--marge-h) + 4px) 2px calc(var(--marge-b) + 4px) calc(var(--marge-g) + 2px);
-  scroll-padding-block:4px;border-top:none;border-right:1px solid var(--bord);-webkit-mask-image:none;mask-image:none}
+  scroll-snap-type:none;overscroll-behavior-y:contain;gap:2px;padding:calc(var(--marge-h) + 4px) calc(var(--marge-d) + 2px) calc(var(--marge-b) + 4px) 2px;
+  scroll-padding-block:4px;border-top:none;border-left:1px solid var(--bord);-webkit-mask-image:none;mask-image:none}
 .navGauche.navBas .act.rail{flex:0 0 46px;width:46px;height:46px}
 /* Les dés : leur sigle en guise d'icône. */
 .navGauche .act.rail.de .ic{font:600 13px/1 system-ui,sans-serif;letter-spacing:-.02em}
@@ -213,21 +213,22 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .navGauche .groupeAct{flex-direction:column;gap:2px}
 .navGauche .groupeAct .etiqAct{width:46px;font-size:10px;text-align:center;white-space:normal;color:var(--texte)}
 :root{--railMobile:52px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #chromeGauche{display:flex;background:var(--barre)}
+/* Tablette et téléphone : la colonne d'icônes est sur la droite de l'écran. */
+body:is([data-terminal=mobile],[data-terminal=tablette]) #chromeGauche{display:flex;background:var(--barre);order:9}
 .navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeCote,body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeJournal,
 body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets button[data-onglet]{display:none}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets{justify-content:flex-end}
 body:is([data-terminal=mobile],[data-terminal=tablette]) #couches{display:none}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #cote{position:absolute;left:var(--railMobile);right:0;bottom:0;z-index:70;width:auto;border-left:none;
+body:is([data-terminal=mobile],[data-terminal=tablette]) #cote{position:absolute;left:0;right:var(--railMobile);bottom:0;z-index:70;width:auto;border-left:none;
   border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.5)}
 body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
 body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pions] #cote{top:0}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){position:fixed;left:var(--railMobile);right:0;z-index:80;display:flex;flex-direction:column;
+body:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){position:fixed;left:0;right:var(--railMobile);z-index:80;display:flex;flex-direction:column;
   top:calc(var(--vv-haut,0px) + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
 /* Saisie au doigt : le chat touche le clavier ; la relecture, dessous de
-   toute façon, s'efface ; la colonne d'icônes de gauche reste. Le chat
+   toute façon, s'efface ; la colonne d'icônes reste. Le chat
    et les vues du téléphone laissent cette colonne visible. */
 body:not([data-terminal=pc]).saisie .navBas:not(.navGauche){display:none}
 body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
@@ -12227,7 +12228,7 @@ function placerEventail(){
   let x = (r.left + r.right) / 2 - L / 2;
   let y = Math.min(r.top, bas.top) - H - 10;
   if(y < w.top + 4) y = Math.max(r.bottom, bas.bottom) + 10;
-  x = Math.max(8, Math.min(x, window.innerWidth - L - 8));
+  x = Math.max(w.left + 8, Math.min(x, w.right - L - 8));
   y = Math.max(w.top + 4, Math.min(y, w.bottom - H - 4));
   el.style.left = x + 'px'; el.style.top = y + 'px';
 }
@@ -14642,14 +14643,14 @@ function ouvrirFeuilleDes(){
 DISPOSITIONS.mobile = {
   panneau: ['pile', 'palette'],
   construire(){
-    // Pas de barre en haut : tout passe par la colonne d'icônes de gauche.
+    // Pas de barre en haut : tout passe par la colonne d'icônes de droite.
     const b = document.getElementById('chromeBas');
     b.appendChild(_construireApercuChat());
     const nav = document.createElement('nav');
     nav.className = 'navBas navGauche';
     nav.setAttribute('aria-label', 'Vues');
     nav.setAttribute('aria-orientation', 'vertical');
-    // Une colonne d'icônes sur la gauche de l'écran : carte ; affichage de
+    // Une colonne d'icônes sur la droite de l'écran : carte ; affichage de
     // la carte avec ou sans pions ; palette ; Remove all ; journal ; Undo ;
     // les dés (DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS) ; puis toutes
     // les actions de la feuille « Plus », chacune par son icône ; tout en
@@ -14684,7 +14685,7 @@ DISPOSITIONS.mobile = {
 };
 
 // La tablette a la même disposition et le même fonctionnement que le
-// téléphone : colonne d'icônes à gauche, une vue à la fois.
+// téléphone : colonne d'icônes à droite, une vue à la fois.
 DISPOSITIONS.tablette = DISPOSITIONS.mobile;
 // Téléphone ou tablette : l'interface tactile commune.
 function _telLike(){ return _profil === 'mobile' || _profil === 'tablette'; }

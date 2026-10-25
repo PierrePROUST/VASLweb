@@ -1,4 +1,4 @@
-// Téléphone : colonne d'icônes à gauche (Carte, carte sans pions, Pions,
+// Téléphone : colonne d'icônes à droite (Carte, carte sans pions, Pions,
 // ALL, Journal, Undo, dés, puis toutes les actions de Plus), sans barre en
 // haut ; elle défile au doigt sans fin : au-dessus de la première icône
 // vient la dernière, et sous la dernière, la première.
@@ -12,14 +12,14 @@ const {ouvrir} = require('./commun.js');
   const out = {barreHaut: await pg.evaluate(() => !!document.querySelector('.barreHaut')),
                icones: await pg.evaluate(() => [...document.querySelectorAll('.navBas .act:not([aria-hidden])')].map(e => e.dataset.action)),
                debut: (await vus()).slice(0, 3)};
-  await pg.screenshot({path: 'nav0.png', clip: {x: 0, y: 0, width: 120, height: 740}});
+  await pg.screenshot({path: 'nav0.png', clip: {x: 240, y: 0, width: 120, height: 740}});
   // vers le haut : un glissé de haut en bas fait apparaître la fin de la liste
   const [x] = await pos('.navBas');
   await touche('touchStart', [[x, 100, 1]]);
   for(let i = 1; i <= 6; i++) await touche('touchMove', [[x, 100 + 40 * i, 1]]);
   await touche('touchEnd', []); await pg.waitForTimeout(1500);
   out.audessus = (await vus()).slice(0, 4);
-  await pg.screenshot({path: 'nav1.png', clip: {x: 0, y: 0, width: 120, height: 740}});
+  await pg.screenshot({path: 'nav1.png', clip: {x: 240, y: 0, width: 120, height: 740}});
   // beaucoup de tours vers le bas : la colonne ne s'arrête jamais
   for(let t = 0; t < 4; t++){
     await touche('touchStart', [[x, 680, 1]]);
