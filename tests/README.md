@@ -36,7 +36,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `alt.js` | Alt + molette dans une pile |
 | `pile-arrivee.js` | Pion entré dans une pile occupée : la sélection reste la sienne ; glissé depuis lui ou depuis un pion déjà là, seul lui repart ; Ctrl+clic ajoute un pion au groupe ; clic simple : pile entière ; pions HIP adverses de la pile d'arrivée laissés sur place |
 | `p4.js` | Panneau Pile : rang par glisser-déposer (un seul `M/`), Undo, Maj+clic, Ctrl+clic |
-| `ui.js` | Menus (Alt, flèches), Ctrl+K, onglet Dés, changement de profil à chaud |
+| `ui.js` | Menus (Alt, flèches), Ctrl+K inactif, onglet Dés, changement de profil à chaud |
 | `desbarre.js` | Dés en boutons sous la barre d'icônes (PC) |
 | `alerte.js` | SAN, Booby Trap et Sniper sur la ligne du jet (ASLChatter) : annonces soulignées, SAN ou piège en tête ; pas de SAN sur TK, CC, Rally ni de piège hors TC ; dr SA 1 et 2 (A14.3) |
 | `log500.js` | « ⏭ Fin du log » sur 500 coups : un seul rendu |

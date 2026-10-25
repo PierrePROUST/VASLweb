@@ -86,14 +86,6 @@ body[data-terminal=tablette],body[data-terminal=mobile]{--cible:44px}
 .act.ligne .lb{flex:1}
 .act.ligne .rc{color:var(--menu-doux);font-size:12px}
 .act.ligne.actif{color:var(--accent)}
-.paletteCmd{top:12%;transform:translate(-50%,0);width:min(94vw,520px)}
-.paletteCmd .fc{padding:8px}
-#cmdRech{width:100%;padding:8px;font-size:15px}
-#cmdListe{max-height:55vh;overflow:auto;margin-top:6px}
-#cmdListe .it{display:flex;justify-content:space-between;gap:12px;padding:5px 8px;cursor:pointer;border-radius:3px}
-#cmdListe .it.focus,#cmdListe .it:hover{background:var(--menu-survol);color:#fff}
-#cmdListe .it.off{opacity:.45}
-#cmdListe .rc{opacity:.65;font-size:12px;white-space:nowrap}
 .fenetre th[colspan]{padding-top:8px;color:var(--accent)}
 /* ── Composants tactiles. */
 .voile{position:fixed;inset:0;z-index:9690;background:rgba(0,0,0,.45)}
@@ -648,7 +640,6 @@ const EN = {
   'Palette des pions': 'Counters palette', 'Pile sélectionnée': 'Selected stack',
   'Verrou des pions (un glissé déplace la carte)': 'Lock counters (dragging scrolls the map)', 'Verrou': 'Lock',
   'Afficher l\'effectif des piles (vue de loin)': 'Show stack size (zoomed out)',
-  'Palette de commandes…': 'Command palette…', 'Commandes': 'Commands',
   'Raccourcis clavier et gestes…': 'Keyboard shortcuts and gestures…',
   'Sélection : unités': 'Selection: units', 'Sélection : marqueurs': 'Selection: markers',
   'Sélection : cartes et panneaux': 'Selection: maps and panels',
@@ -670,11 +661,9 @@ const EN = {
   'Envoyer': 'Send', 'Envoyer au chat': 'Send to chat', 'Écrire au chat': 'Write to chat',
   'Messages': 'Messages', 'Rapports': 'Reports', 'Système': 'System',
   'Filtres du journal': 'Chat log filters', 'Saisie rapide': 'Quick chat',
-  // Palette de commandes et aide
-  'Action ou pion…': 'Action or counter…', 'Rechercher une action ou un pion': 'Search for an action or a counter',
-  'poser': 'place',
+  // Aide
   'Raccourcis clavier et gestes': 'Keyboard shortcuts and gestures',
-  'Palette de commandes': 'Command palette', 'Menus': 'Menus',
+  'Menus': 'Menus',
   'Pions et piles': 'Counters and stacks',
   'Commandes du pion (menu)': 'Counter commands (menu)', 'clic droit · appui long': 'right-click · long press',
   'Sélectionner la pile': 'Select stack', 'clic': 'click',
@@ -14203,7 +14192,6 @@ const ACTIONS = {
   verrou:   {lib: 'Verrou des pions (un glissé déplace la carte)', court: 'Verrou', ico: '🔒',
              coche: () => _verrouPions, faire: () => basculerVerrou()},
   effectif: {ico: '🔢', lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
-  commandes:{lib: 'Palette de commandes…', court: 'Commandes', ico: '⌘', touche: 'Ctrl+K', faire: () => ouvrirPaletteCommandes()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
   couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
   couche_marqueur: {ico: '🏷', lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
@@ -14447,7 +14435,7 @@ const DISPOSITIONS = {
       'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'infoScenario'],
       'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', '-', 'couche_unite', 'couche_marqueur', 'couche_carte',
                     'effectif', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile'],
-      'Outils':    ['los', 'losMuet', 'verbeux', '-', 'commandes'],
+      'Outils':    ['los', 'losMuet', 'verbeux'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
       'Aide':      ['raccourcis']
@@ -14652,7 +14640,7 @@ Object.assign(ACTIONS, {
 // Le reste des actions, dans la feuille « Plus » des profils tactiles.
 const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'masquer', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', 'couche_unite', 'couche_marqueur', 'couche_carte', '-', 'zoomPlus', 'zoomMoins', 'ajuster', '-',
-  'verbeux', 'verrou', 'effectif', 'apercuChat', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile', '-', 'commandes', 'raccourcis'];
+  'verbeux', 'verrou', 'effectif', 'apercuChat', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile', '-', 'raccourcis'];
 function ouvrirFeuillePlus(){ return ouvrirFeuilleActions('Plus', PLUS, 'feuillePlus'); }
 
 // SAN et pièges : les champs eux-mêmes viennent dans la feuille, et
@@ -15364,88 +15352,6 @@ function _brancherMenus(){
   window.addEventListener('pointerdown', () => { altSeul = false; }, true);
 }
 
-// ═══ INTERFACE — PALETTE DE COMMANDES (Ctrl+K) ═══
-// Recherche floue sur toutes les actions et sur les noms des pions de la
-// base ; un pion choisi est posé au centre de la vue.
-function _scoreFlou(texte, q){
-  texte = texte.toLowerCase();
-  const i = texte.indexOf(q);
-  if(i >= 0) return 1000 - i - texte.length / 100;
-  let k = 0, s = 0, dernier = -1;
-  for(let j = 0; j < texte.length && k < q.length; j++){
-    if(texte[j] === q[k]){ s += dernier === j - 1 ? 3 : 1; dernier = j; k++; }
-  }
-  return k === q.length ? s : -1;
-}
-function ouvrirPaletteCommandes(){
-  fermerDeroulants(); fermerMenu();
-  const ancien = document.getElementById('fenCmd');
-  if(ancien){ ancien.remove(); return; }
-  const w = document.createElement('div');
-  w.id = 'fenCmd'; w.className = 'fenetre paletteCmd';
-  w.innerHTML = '<div class="fc"><input id="cmdRech" autocomplete="off" placeholder="Action ou pion…" aria-label="Rechercher une action ou un pion"><div id="cmdListe" role="listbox"></div></div>';
-  document.body.appendChild(w);
-  const inp = w.querySelector('#cmdRech'), liste = w.querySelector('#cmdListe');
-  let res = [], i = 0;
-  const actions = Object.entries(ACTIONS).filter(([, a]) => a.faire && !a.etiquette && !a.groupe);
-  const calculer = () => {
-    const q = inp.value.trim().toLowerCase();
-    res = [];
-    for(const [id, a] of actions){
-      if(a.visible && !a.visible()) continue;
-      const lib = T(String(_v(a.lib)));
-      const s = q ? _scoreFlou(lib + ' ' + (T(_v(a.court)) || ''), q) : 1;
-      if(s >= 0) res.push({s: s + 5, lib, rc: _v(a.touche) || '', off: !!(a.actif && !a.actif()), faire: () => executerAction(id)});
-    }
-    if(q && _bdd){
-      const pions = [];
-      for(const x of _bdd.pions){
-        const s = _scoreFlou(x.n, q);
-        if(s >= 0) pions.push({s, lib: '♟ ' + x.n, rc: 'poser', faire: () => _poserAuCentre(x)});
-      }
-      pions.sort((a, b) => b.s - a.s);
-      res.push(...pions.slice(0, 40));
-    }
-    res.sort((a, b) => b.s - a.s);
-    res = res.slice(0, 60);
-    i = 0;
-    dessiner();
-  };
-  const dessiner = () => {
-    liste.replaceChildren(...res.map((r, k) => {
-      const d = document.createElement('div');
-      d.className = 'it' + (k === i ? ' focus' : '') + (r.off ? ' off' : '');
-      d.setAttribute('role', 'option');
-      d.innerHTML = `<span class="lb">${_esc(r.lib)}</span><span class="rc">${_esc(r.rc)}</span>`;
-      d.addEventListener('click', () => choisir(k));
-      return d;
-    }));
-    const f = liste.children[i];
-    if(f) f.scrollIntoView({block: 'nearest'});
-  };
-  const choisir = k => {
-    const r = res[k];
-    if(!r || r.off) return;
-    w.remove();
-    r.faire();
-  };
-  inp.addEventListener('input', calculer);
-  inp.addEventListener('keydown', e => {
-    e.stopPropagation();
-    if(e.key === 'Escape'){ w.remove(); return; }
-    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
-      e.preventDefault();
-      i = (i + (e.key === 'ArrowDown' ? 1 : -1) + res.length) % Math.max(1, res.length);
-      dessiner();
-    } else if(e.key === 'Enter'){ e.preventDefault(); choisir(i); }
-  });
-  w.addEventListener('pointerdown', e => e.stopPropagation());
-  const fermer = e => { if(!w.contains(e.target)){ w.remove(); document.removeEventListener('pointerdown', fermer, true); } };
-  document.addEventListener('pointerdown', fermer, true);
-  calculer();
-  inp.focus();
-  if(!_bdd) chargerBDD().then(() => { if(w.isConnected && inp.value) calculer(); }).catch(() => {});
-}
 // Pose au centre de la vue, même si un panneau la recouvre.
 function _poserAuCentre(x){
   const wr = document.getElementById('mapWrap').getBoundingClientRect();
@@ -15463,7 +15369,7 @@ function aideRaccourcis(){
   const w = document.createElement('div');
   w.id = 'fenUtil'; w.className = 'fenetre';
   w.innerHTML = `<div class="ft">Raccourcis clavier et gestes</div><div class="fc"><table>
-    ${lignes('Partie', [...actions, ['Palette de commandes', 'Ctrl+K'], ['Menus', 'Alt']])}
+    ${lignes('Partie', [...actions, ['Menus', 'Alt']])}
     ${lignes('Dés', DES.map(d => [d.titre, d.touche]))}
     ${lignes('Pions et piles', [
       ['Commandes du pion (menu)', 'clic droit · appui long'],
@@ -15481,16 +15387,8 @@ function aideRaccourcis(){
   w.querySelector('#utFermer').onclick = () => w.remove();
 }
 
-// Raccourcis de l'interface. Ctrl+K passe après les commandes des pions,
-// qui le prendraient si un trait le déclarait.
+// Le profil suit la fenêtre et le pointeur.
 function _brancherInterface(){
-  window.addEventListener('keydown', e => {
-    if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.target.id !== 'cmdRech') return;
-    if((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key || '').toLowerCase() === 'k'){
-      e.preventDefault();
-      ouvrirPaletteCommandes();
-    }
-  });
   window.addEventListener('resize', reevaluerProfil);
   for(const q of ['(pointer: coarse)', '(hover: hover)']){
     const mq = matchMedia(q);

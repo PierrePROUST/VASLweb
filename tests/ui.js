@@ -9,15 +9,9 @@ const {ouvrir} = require('./commun.js');
   out.menu3 = await pg.evaluate(() => _menuOuvert && [_menuOuvert.titre.textContent, _menuOuvert.items.map(i => i.textContent)]);
   await pg.screenshot({path: 'menu.png'});
   await pg.keyboard.press('Escape');
-  // Ctrl+K
-  await pg.keyboard.press('Control+k'); await pg.keyboard.type('zoom av'); await pg.waitForTimeout(50);
-  out.cmd = await pg.evaluate(() => [...document.querySelectorAll('#cmdListe .it')].slice(0, 3).map(e => e.textContent));
-  const z0 = await pg.evaluate(() => zoom);
-  await pg.keyboard.press('Enter');
-  out.zoom = [z0, await pg.evaluate(() => zoom)];
-  await pg.keyboard.press('Control+k'); await pg.keyboard.type('8-1'); await pg.waitForTimeout(50);
-  out.cmdPion = await pg.evaluate(() => [...document.querySelectorAll('#cmdListe .it')].slice(0, 3).map(e => e.textContent));
-  await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
+  // Ctrl+K n'ouvre plus rien (palette de commandes supprimée)
+  await pg.keyboard.press('Control+k'); await pg.waitForTimeout(50);
+  out.ctrlK = await pg.evaluate(() => !!document.getElementById('fenCmd'));
   out.n = await pg.evaluate(() => vivants().length);
   // onglet Dés, un jet
   await pg.click('#coteOnglets button[data-onglet="des"]');
