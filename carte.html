@@ -86,6 +86,7 @@ body:is([data-terminal=mobile],[data-terminal=tablette]){--cible:44px}
 .act.ligne{display:flex;align-items:center;gap:10px;width:100%;text-align:left;min-height:44px;padding:6px 12px;
   background:none;border:none;border-bottom:1px solid #353535;border-radius:0;font-size:15px}
 .act.ligne .ic{width:24px;text-align:center;flex:none}
+.act.ligne.sigle .ic{font:600 10px/1 system-ui,sans-serif}
 .act.ligne .lb{flex:1}
 .act.ligne .rc{color:var(--menu-doux);font-size:12px}
 .act.ligne.actif{color:var(--accent)}
@@ -212,8 +213,8 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
   scroll-snap-type:none;overscroll-behavior-y:contain;gap:2px;padding:calc(var(--marge-h) + 4px) calc(var(--marge-d) + 2px) calc(var(--marge-b) + 4px) 2px;
   scroll-padding-block:4px;border-top:none;border-left:1px solid var(--bord);-webkit-mask-image:none;mask-image:none}
 .navGauche.navBas .act.rail{flex:0 0 46px;width:46px;height:46px}
-/* Les dés : leur sigle en guise d'icône. */
-.navGauche .act.rail.de .ic{font:600 13px/1 system-ui,sans-serif;letter-spacing:-.02em}
+/* Les dés, et INFO : leur sigle en guise d'icône. */
+.navGauche .act.rail.de .ic,.navGauche .act.rail.sigle .ic{font:600 13px/1 system-ui,sans-serif;letter-spacing:-.02em}
 /* Relecture du log en bas de la colonne : boutons empilés, position en petit. */
 .navGauche .groupeAct{flex-direction:column;gap:2px}
 .navGauche .groupeAct .etiqAct{width:46px;font-size:10px;text-align:center;white-space:normal;color:var(--texte)}
@@ -8719,7 +8720,7 @@ function cadrerSur(pts){
   wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - hv / 2;
 }
 
-function majBarreLog(){ rafraichirActions(['relecture', ...ACTIONS.relecture.groupe]); majHautBas(); }
+function majBarreLog(){ rafraichirActions(['relecture', 'relectureRail', ...ACTIONS.relecture.groupe]); majHautBas(); }
 
 // Trait Immobilized sans « L » en tête des options d'empilement : la
 // pièce ne s'empile pas (Properties.NO_STACK) — clocher, tunnel, marqueur
@@ -14326,6 +14327,8 @@ const ACTIONS = {
   profil_mobile:   {ico: '📱', lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
   // Relecture d'un .vlog : visible seulement s'il reste des coups.
   relecture:{groupe: ['lgDebut', 'lgArr', 'logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
+  // Colonne d'icônes du tactile : sans ⏮ ni ◀, sous l'icône Unmoved.
+  relectureRail: {groupe: ['logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
   lgDebut:  {lib: 'Début du log', ico: '⏮', faire: () => allerLog(0), actif: () => _logPos > _logPlancher},
   lgArr:    {lib: () => _logPlancher > 0 && _logPos <= _logPlancher
                ? 'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler' : 'Coup précédent',
@@ -14759,7 +14762,7 @@ Object.assign(ACTIONS, {
   titre:     {etiquette: () => _source ? _nomFichier : 'VASL — Carte', classe: 'titreScen'},
   desMenu:   {lib: 'Dés : un appui DR, un appui long les catégories', court: 'Dés', ico: '🎲',
               faire: () => lancerDR('Other'), menuLong: null},
-  sanPieges: {lib: 'SAN et pièges…', court: 'SAN', ico: '🎯', faire: () => ouvrirFeuilleSan()},
+  sanPieges: {lib: 'SAN et pièges…', court: 'SAN', ico: 'INFO', classe: 'sigle', faire: () => ouvrirFeuilleSan()},
   tiroir:    {lib: 'Pile et palette', court: 'Pions', ico: '♟', pion: true, faire: () => basculerCote(),
               allume: () => !document.getElementById('cote').classList.contains('ferme')}
 });
@@ -14786,7 +14789,7 @@ function placerColonne(c){
 const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'masquer', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
-const PLUS_SANS_ICONE = ['profil_pc'];
+const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
 function ouvrirFeuillePlus(){ return ouvrirFeuilleActions('Plus', PLUS, 'feuillePlus'); }
 
 // SAN et pièges : les champs eux-mêmes viennent dans la feuille, et
@@ -14828,12 +14831,14 @@ DISPOSITIONS.mobile = {
     // Une colonne d'icônes sur la droite de l'écran : carte ; affichage de
     // la carte avec ou sans pions ; palette ; Remove all ; journal ; Undo ;
     // les dés (DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS) ; puis toutes
-    // les actions de la feuille « Plus », chacune par son icône ; le côté de
-    // la colonne (⇄, à droite ou à gauche de l'écran) ; Plus ; tout en
-    // bas, la relecture du log, présente seulement pendant une relecture.
+    // les actions de la feuille « Plus », chacune par son icône, la
+    // relecture du log (présente seulement pendant une relecture) juste
+    // sous Unmoved ; le côté de la colonne (⇄, à droite ou à gauche de
+    // l'écran) ; Plus.
     const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'undo', ...DES.map(d => d.id)];
-    const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x) && !PLUS_SANS_ICONE.includes(x)),
-                 'coteColonne', 'plus', 'relecture'];
+    const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x) && !PLUS_SANS_ICONE.includes(x))
+                   .flatMap(x => x === 'unmoved' ? [x, 'relectureRail'] : [x]),
+                 'coteColonne', 'plus'];
     // Défilement sans fin : la liste est posée trois fois ; près d'un bout,
     // on saute d'une longueur de liste sans que rien ne bouge à l'écran.
     // Monter au-delà de la première icône mène à la dernière, et l'inverse.
