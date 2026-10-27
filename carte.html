@@ -115,7 +115,7 @@ body:is([data-terminal=mobile],[data-terminal=tablette]){--cible:44px}
 .iftCol{flex:1;min-width:0;display:flex;flex-direction:column}
 .iftLib{text-align:center;font-weight:600;font-size:13px;color:var(--menu-doux);margin-bottom:3px}
 .iftBoite{position:relative}
-.iftBoite::before{content:"";position:absolute;left:0;right:0;top:88px;height:44px;pointer-events:none;
+.iftBoite::before{content:"";position:absolute;left:0;right:0;top:calc(50% - 22px);height:44px;pointer-events:none;
   border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);background:rgba(217,164,65,.1)}
 .iftRoue{height:220px;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;
   scrollbar-width:none;background:var(--champ);border:1px solid var(--menu-bord);border-radius:6px}
@@ -13610,29 +13610,45 @@ function boutonIFT(){
 }
 
 // Une roue à faire défiler au doigt ; un appui sur une ligne la choisit.
+// La ligne choisie est celle qui se trouve sous le bandeau, mesurée à
+// l'écran plutôt que déduite de scrollTop. immobile() dit si la roue a
+// fini de glisser : au doigt, l'élan la fait encore tourner après le
+// lâcher, et un jet validé entre-temps lisait une autre ligne.
 function _iftRoue(libelles, i0, change){
   const r = document.createElement('div');
   r.className = 'iftRoue';
   r.innerHTML = '<div class="iftPad"></div>'
     + libelles.map((l, i) => `<div class="iftItem" data-i="${i}">${l}</div>`).join('')
     + '<div class="iftPad"></div>';
-  r.index = () => Math.max(0, Math.min(libelles.length - 1, Math.round(r.scrollTop / _IFT_H)));
+  const items = [...r.querySelectorAll('.iftItem')];
+  // Écart, en px, entre le centre d'une ligne et celui du bandeau.
+  const ecart = it => {
+    const R = r.getBoundingClientRect(), q = it.getBoundingClientRect();
+    return (q.top + q.height / 2) - (R.top + r.clientTop + r.clientHeight / 2);
+  };
+  r.index = () => {
+    let k = 0, d = Infinity;
+    items.forEach((it, i) => { const e = Math.abs(ecart(it)); if(e < d){ d = e; k = i; } });
+    return k;
+  };
   const marquer = () => {
     const i = r.index();
-    r.querySelectorAll('.iftItem').forEach((it, k) => it.classList.toggle('on', k === i));
+    items.forEach((it, k) => it.classList.toggle('on', k === i));
     return i;
   };
-  let dernier = i0;
+  let dernier = i0, bouge = 0;
+  r.immobile = () => performance.now() - bouge > 150 && Math.abs(ecart(items[r.index()])) < 8;
   r.addEventListener('scroll', () => {
+    bouge = performance.now();
     const i = marquer();
     if(i !== dernier){ dernier = i; change(i); }
   }, {passive: true});
   r.addEventListener('click', e => {
     const it = e.target.closest('.iftItem');
-    if(it) r.scrollTo({top: +it.dataset.i * _IFT_H, behavior: 'smooth'});
+    if(it) r.scrollBy({top: ecart(it), behavior: 'smooth'});
   });
   // La position ne prend qu'une fois la roue affichée.
-  r.placer = () => { r.scrollTop = i0 * _IFT_H; marquer(); };
+  r.placer = () => { r.scrollTop += ecart(items[i0]); marquer(); };
   return r;
 }
 
@@ -13665,7 +13681,16 @@ function ouvrirIFT(){
     cb.addEventListener('change', () => { _ift[k] = cb.checked; pret(); });
   }
   c.querySelector('.fermer').addEventListener('click', () => h.fermer());
-  valider.addEventListener('click', () => {
+  // Le jet attend que les deux roues soient arrêtées sur une ligne : même
+  // position à deux relevés espacés de 150 ms. Un élan qui vient de partir
+  // n'a pas encore émis d'événement scroll ; seul le relevé le voit.
+  let attente = 0, avant = null;
+  const jouer = () => {
+    const pos = rFP.scrollTop + ',' + rMod.scrollTop;
+    const arret = pos === avant && rFP.immobile() && rMod.immobile();
+    avant = pos;
+    if(!arret && ++attente < 20){ setTimeout(jouer, 150); return; }
+    attente = 0; avant = null; valider.disabled = false;
     const r = lancerIFT(rFP.index(), IFT_MODS[rMod.index()], _ift.leader, _ift.green);
     res.textContent = r.ligne;
     for(const x of r.sp){
@@ -13675,7 +13700,8 @@ function ouvrirIFT(){
       res.appendChild(d);
     }
     valider.textContent = T('Relancer');
-  });
+  };
+  valider.addEventListener('click', () => { if(!valider.disabled){ valider.disabled = true; jouer(); } });
   return h;
 }
 

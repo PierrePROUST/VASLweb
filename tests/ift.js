@@ -34,8 +34,16 @@ const {ouvrir} = require('./commun.js');
   await pg.evaluate(() => { const [a, m] = document.querySelectorAll('.feuille .iftRoue'); a.scrollTop = 5 * 44; m.scrollTop = 8 * 44; });
   await pg.waitForTimeout(200);
   await tap('.feuille .valider');
+  await pg.waitForTimeout(400);
   out.feuille = await pg.evaluate(() => [document.querySelector('.feuille .iftRes').textContent, document.querySelector('.feuille .valider').textContent]);
   out.chat = await pg.evaluate(() => document.getElementById('journal').lastElementChild.textContent);
+  // Roue encore lancée (24/120 → 12/70) quand on valide : le jet attend
+  // qu'elle s'arrête et lit 12/70, la ligne sous le bandeau.
+  await pg.evaluate(() => { const a = document.querySelector('.feuille .iftRoue'); a.scrollTop = 8 * 44; });
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => { const a = document.querySelector('.feuille .iftRoue'); a.scrollTo({top: 5 * 44, behavior: 'smooth'}); document.querySelector('.feuille .valider').click(); });
+  await pg.waitForTimeout(1500);
+  out.elan = await pg.evaluate(() => [document.querySelector('.feuille .iftItem.on').textContent, document.querySelector('.feuille .iftRes').firstChild.textContent]);
   await pg.screenshot({path: 'ift_mobile.png'});
   await b.close();
   const pc = await ouvrir(process.argv[2]);
