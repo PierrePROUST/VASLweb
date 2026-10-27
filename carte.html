@@ -192,6 +192,11 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .act.rail .icPion{width:calc(var(--tailleRail,52px) * .6);height:calc(var(--tailleRail,52px) * .6)}
 .act.rail .icPion .modelePion{transform:scale(var(--echPionRail,.65))}
 .act.rail .lb{max-width:50px;overflow:hidden;text-overflow:ellipsis}
+/* Boutons LOS de VASL : l'icône thread.gif (16 px, trait noir) sur fond
+   clair, et la lettre du bouton à côté, ou dessous dans le rail. */
+.act.lettre img{background:#e4e1d6;border-radius:3px;padding:1px;image-rendering:pixelated}
+.act.rail.lettre img{height:calc(var(--tailleRail,52px) * .36)}
+.act.rail.lettre .lb{display:block;font:600 12px/1 system-ui,sans-serif}
 .act.rail.actif{background:#333;border-color:var(--accent)}
 .desBoutons.grand .act.bouton{min-height:56px;font-size:17px}
 /* Téléphone : barre du haut, navigation en bas, une vue à la fois. */
@@ -386,12 +391,12 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 .infoTxt .radio{border:1px solid #000;border-radius:50%;padding:0 .18em;margin:0 .05em}
 /* Exposant de TextInfo : même taille, remonté d'une demi-hauteur de capitale. */
 .infoTxt sup{font-size:1em;vertical-align:.45em;line-height:0}
-/* HidePiecesButton de VASL (Ctrl+F10) — vue 1 : carte et pièces non
-   empilées (overlays déplaçables, Fire Lane) ; vue 2 : carte et pièces
-   « overlay ». Une pièce masquée ne prend ni clic ni survol. */
-#mapInner.vue1 .pion:not(.nonEmpile),#mapInner.vue2 .pion:not(.overlayVasl),
-#mapInner.vue1 .fondPile,#mapInner.vue2 .fondPile,
-#mapInner.vue1 .pastille,#mapInner.vue2 .pastille{visibility:hidden!important}
+/* HidePiecesButton de VASL (Ctrl+F10) — vue 1 : la carte et les pièces
+   qui ne s'empilent pas (overlays déplaçables, Fire Lane). Une pièce
+   masquée ne prend ni clic ni survol. */
+#mapInner.vue1 .pion:not(.nonEmpile),
+#mapInner.vue1 .fondPile,
+#mapInner.vue1 .pastille{visibility:hidden!important}
 body.maj .pion.immob{pointer-events:auto}
 .pion img{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;
   -webkit-user-drag:none;user-select:none}
@@ -472,8 +477,10 @@ body.maj .pion.immob{pointer-events:auto}
    fixe à l'écran, pions transparents pendant la visée. */
 #mapWrap.visee{cursor:crosshair}
 #mapInner.losActif .pion{opacity:.33}
+#reperes{position:absolute;left:0;top:0;z-index:8400;pointer-events:none;overflow:visible}
 #filLOS{position:absolute;left:0;top:0;z-index:8500;pointer-events:none;overflow:visible}
-.etiqLOS{position:absolute;z-index:8600;pointer-events:none;transform-origin:0 0;white-space:nowrap;
+#liensPions{position:absolute;left:0;top:0;z-index:3;pointer-events:none;overflow:visible}
+.etiqLOS,.etiqLien{position:absolute;z-index:8600;pointer-events:none;transform-origin:0 0;white-space:nowrap;
   background:#000;color:#fff;font:11px/14px Dialog,Arial,sans-serif;padding:1px 1px 0}
 /* Sur petit écran, le panneau couvre la carte, et elle seule : il est
    placé dans #corps, sous les barres et au-dessus du journal. */
@@ -603,11 +610,12 @@ const EN = {
   'Annuler le dernier coup (Undo)': 'Undo last move', 'Undo': 'Undo',
   'Mark unmoved — lever le statut Moved de tous les pions': 'Mark all counters unmoved', 'Unmoved': 'Unmoved',
   'Remove all — retirer tous les pions d\'un type…': 'Remove all counters of a given type…',
+  'Entourer les unités brisées et les armes MALF': 'Highlight broken units / malfunctioned weapons',
+  'Entourer le sniper': 'Highlight sniper counters', 'Broken': 'Broken', 'Sniper': 'Sniper',
   'Masquer les pions (montrer carte et overlays)': 'Hide counters (show map and overlays)',
-  'Masquer aussi les overlays (montrer la carte seule)': 'Hide overlays too (show map only)',
   'Montrer tous les pions': 'Show all counters', 'Pions': 'Counters',
-  'Ligne de vue (LOS)': 'Line of sight (LOS)', 'LOS': 'LOS',
-  'Ligne de vue silencieuse': 'Silent LOS', 'LOS muette': 'Silent LOS',
+  'LOS (ligne de vue)': 'LOS (line of sight)', 'LOS': 'LOS',
+  'LOS inv (ligne de vue silencieuse)': 'LOS inv (silent line of sight)', 'LOS inv': 'LOS inv',
   'LOS détaillée (Verbose LOS mode)': 'Verbose LOS mode',
   'Zoom arrière': 'Zoom out', 'Zoom avant': 'Zoom in',
   'Ajuster la carte à la vue': 'Fit map to window', 'Ajuster': 'Fit',
@@ -1887,6 +1895,7 @@ function setZoom(z, fx, fy){
   wrap.scrollTop  = wy*zoom - (fy - wr.top);
   rafraichirActions(['zoomTxt']);
   if(_fil) dessinerFil();
+  if(_liens.size) dessinerLiens();
   if(_eventail) placerEventail();
   // L'effectif des piles ne se montre que de loin.
   if(_effectifPiles && loin !== _vueDeLoin()) rendreToutes();
@@ -7306,11 +7315,13 @@ async function _chargerImage(path){
     // Le module désigne bien des images sans extension (« MS/Gutted »,
     // « ML/NoMove ») et certaines n'existent qu'en SVG, d'autres qu'en GIF :
     // on essaie le chemin donné, puis les autres formats.
+    // Une URL complète (icône des ressources de VASSAL) est prise telle quelle.
+    const url = /^https?:/.test(path);
     const base = path.replace(/\.(svg|gif|png)$/i, '');
-    const essais = [...new Set([path, base + '.svg', base + '.gif', base + '.png'])];
+    const essais = url ? [path] : [...new Set([path, base + '.svg', base + '.gif', base + '.png'])];
     let r = null;
     for(const e of essais){
-      r = await fetch(VASL_IMAGES_URL + e);
+      r = await fetch(url ? e : VASL_IMAGES_URL + e);
       if(r.ok){ path = e; break; }
     }
     if(!r.ok) throw new Error('HTTP ' + r.status);
@@ -7505,7 +7516,6 @@ function creerPion(seg, ordre){
   if(d.immob && (d.immob.maj || d.immob.jamais)) el.classList.add(d.immob.jamais ? 'immob-jamais' : 'immob');
   // Vues de HidePiecesButton : ce qui reste visible quand les pions sont masqués.
   if(p.seul) el.classList.add('nonEmpile');
-  if(p.seul && d.overlay) el.classList.add('overlayVasl');
   pions.push(p);
   el.addEventListener('pointerdown', e => _pionPointerDown(e, p));
   el.addEventListener('contextmenu', e => {
@@ -7933,6 +7943,8 @@ function rendrePile(k, tous){
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
   });
   _decorPile(k, s, rects, deplie);
+  if(_reperes.brises || _reperes.sniper) dessinerReperes();
+  if(_liens.size) _planifierLiens();
   // Les pièces non empilées posées au même endroit restent au-dessus.
   if(s.length && !s[0].seul)
     for(const q of vivants()) if(q.seul && !q.cache && q.x === s[0].x && q.y === s[0].y)
@@ -8074,7 +8086,7 @@ function importerPions(texte, label, annexes){
   const segs = texte.split('\x1b');
   // L'état de la partie précède le premier « LOG » ; la suite, dans un
   // .vlog, ce sont les coups.
-  let iLog = segs.findIndex(s => s.startsWith('LOG\t'));
+  let iLog = segs.findIndex(_estLog);
   if(iLog < 0) iLog = segs.length;
   _source = segs.slice(0, iLog).filter(s => !s.startsWith('UNDO'));
   _annexes = annexes || new Map();
@@ -8103,6 +8115,7 @@ function importerPions(texte, label, annexes){
     + (outils ? ` ; ${outils} outil(s) VASL Tools masqué(s)` : ''));
 
   lireInfo(_source);
+  lireLiens(_source);
   // Un .vlog s'ouvre, comme dans VASSAL, sur l'état de départ : on le
   // parcourt ensuite coup par coup.
   preparerRelecture(segs.slice(iLog));
@@ -8162,6 +8175,8 @@ function _dessousRetire(p){
 // Commande(s) inverse(s), ou null si elle n'en a pas.
 function _inverse(c){
   if(/^\+\/[^/]+\/stack\//.test(c)) return null;
+  // LinkPiecesCommand ↔ UnlinkPiecesCommand.
+  if(_CMD_LIEN.test(c)) return [c.startsWith('UN') ? c.substring(2) : 'UN' + c];
   if(c.startsWith('+/')) return ['-/' + c.split('/')[1]];
   if(c.startsWith('-/')){
     const uid = c.substring(2);
@@ -8312,6 +8327,8 @@ function rejouerLog(segs){
       n++;
     } else if(s.startsWith('LOS\t')){
       filDistant(s);
+    } else if(_appliquerLien(s)){
+      n++;
     } else if(s.startsWith('INFO\t')){
       _infoEtat = s.substring(5); majChampsInfo();
       n++;
@@ -8419,6 +8436,135 @@ function _empiler(p, dessous){
   s.forEach((q, k) => { q.ordre = k; });
 }
 
+// ═══ LIENS ENTRE PIÈCES — PieceLinker de VASL ═══
+// Ctrl+Alt+L lie les deux pièces sélectionnées, Ctrl+Alt+U les délie.
+// Un lien va dans les deux sens : deux commandes « LINK_PIECE:a,b » et
+// « LINK_PIECE:b,a » (UNLINK_PIECE pour délier), consignées et envoyées
+// comme les autres ; la sauvegarde les reprend (getRestoreCommand). Une
+// pièce liée sélectionnée montre un trait rouge vers chacune de ses
+// pièces liées et la portée en hexagones ; une pièce HIP de l'adversaire
+// ne montre pas les siens, ni n'apparaît au bout d'un autre.
+let _liens = new Map();        // uid → [uid…], dans l'ordre des liens
+const _CMD_LIEN = /^(UN)?LINK_PIECE:([^,]*),(.*)$/;
+
+function _appliquerLien(c){
+  const m = _CMD_LIEN.exec(c);
+  if(!m) return false;
+  const [, un, de, a] = m;
+  const l = _liens.get(de) || [];
+  // addLink : ni lien d'une pièce à elle-même, ni lien en double.
+  if(!un && de !== a && !l.includes(a)) _liens.set(de, [...l, a]);
+  // removeLink : un seul lien restant, la pièce perd toute sa liste.
+  if(un && _liens.has(de)){
+    if(l.length === 1) _liens.delete(de); else _liens.set(de, l.filter(u => u !== a));
+  }
+  _planifierLiens();
+  return true;
+}
+
+// Les liens d'une sauvegarde, comme ses commandes de restauration.
+function lireLiens(segs){
+  _liens = new Map();
+  for(const s of segs) _appliquerLien(s.replace(/\\+$/, ''));
+}
+const segmentsLiens = () => [..._liens].flatMap(([de, l]) => l.map(a => `LINK_PIECE:${de},${a}`));
+
+// keyPressed : lie (ou délie) les deux pièces, dans les deux sens.
+function lierPions(a, b, delier){
+  if(!a || !b || a === b) return false;
+  const k = delier ? 'UNLINK_PIECE:' : 'LINK_PIECE:';
+  [k + a.uid + ',' + b.uid, k + b.uid + ',' + a.uid].forEach(c => { _appliquerLien(c); _logCmd(c); });
+  return true;
+}
+function lierSelection(delier){
+  const s = [..._sel].filter(p => !p.deleted && !p.cache);
+  if(s.length !== 2) return false;
+  lierPions(s[0], s[1], delier);
+  chatLog(`${delier ? '✂️' : '🔗'} ${s[0].nom} ${delier ? 'délié de' : 'lié à'} ${s[1].nom}`);
+  return true;
+}
+
+// Portée entre deux pièces sur la carte LOS (map.range), 0 hors carte.
+function _porteeLien(a, b){
+  const m = _losPrete;
+  if(!m) return null;
+  try {
+    const pa = _versLOS(a), pb = _versLOS(b);
+    if(!m.onMap(pa.x, pa.y) || !m.onMap(pb.x, pb.y)) return 0;
+    const ha = m.gridToHex(pa.x, pa.y), hb = m.gridToHex(pb.x, pb.y);
+    return ha && hb ? LosMap.range(ha, hb, m.getMapConfiguration()) : 0;
+  } catch(e){ return 0; }
+}
+
+// Un seul dessin par image, quel que soit le nombre de piles rendues.
+let _liensPlanifies = false;
+function _planifierLiens(){
+  if(_liensPlanifies) return;
+  _liensPlanifies = true;
+  requestAnimationFrame(() => { _liensPlanifies = false; dessinerLiens(); });
+}
+
+// draw : sous les pions (drawAboveCounters faux), un trait de 2 px ;
+// l'étiquette « Range: n » à 30 px à droite et en dessous de la pièce
+// sélectionnée, de taille fixe à l'écran.
+function dessinerLiens(){
+  document.querySelectorAll('.etiqLien').forEach(e => e.remove());
+  let s = document.getElementById('liensPions');
+  const vu = p => p && !p.deleted && !p.cache && pions.includes(p);
+  const paires = [];
+  for(const [de, l] of _liens){
+    const a = parUid(de);
+    if(!vu(a) || !_sel.has(a)) continue;
+    for(const u of l){ const b = parUid(u); if(vu(b)) paires.push([a, b]); }
+  }
+  if(!paires.length){ if(s) s.remove(); return; }
+  if(!s){
+    s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.id = 'liensPions';
+    document.getElementById('mapInner').appendChild(s);
+  }
+  s.setAttribute('width', _mapW); s.setAttribute('height', _mapH);
+  s.innerHTML = '';
+  // La portée attend la carte LOS : on redessine quand elle est prête.
+  if(!_losPrete && _losBoards) carteLOS().then(({map}) => { if(map && _losPrete) _planifierLiens(); });
+  for(const [a, b] of paires){
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', a.x * SC); l.setAttribute('y1', a.y * SC);
+    l.setAttribute('x2', b.x * SC); l.setAttribute('y2', b.y * SC);
+    l.setAttribute('stroke', '#ff0000'); l.setAttribute('stroke-width', 2);
+    l.setAttribute('vector-effect', 'non-scaling-stroke');
+    s.appendChild(l);
+    const r = _porteeLien(a, b);
+    if(r === null) continue;
+    const e = document.createElement('div');
+    e.className = 'etiqLien';
+    e.textContent = 'Range: ' + r;
+    e.style.left = (a.x * SC + 29 / zoom) + 'px';
+    e.style.top = (a.y * SC + (29 - LOS_POLICE + LOS_DESCENTE) / zoom) + 'px';
+    e.style.transform = `scale(${1 / zoom})`;
+    document.getElementById('mapInner').appendChild(e);
+  }
+}
+
+_apresSelection.push(() => { if(_liens.size) _planifierLiens(); });
+
+// Fire Lane (A9.22) depuis le menu d'une MG : le pion Firelane de la
+// palette (onglet Unit, panneau Basic) est posé dans l'hexagone de la MG,
+// lié à elle comme par Ctrl+Alt+L, et sélectionné pour être orienté.
+const GPID_FIRELANE = '8';
+const estMG = p => /^(?:[LMH]MG|\.50-cal)(?![A-Za-z])/.test(lirePiece(p.seg).nomBase || '');
+function poserFireLane(mg){
+  if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
+  const x = _bdd.parGpid.get(GPID_FIRELANE) || [..._bdd.parGpid.values()].find(y => y.n === 'Firelane');
+  const def = x && developperDefinition(x.cmd);
+  if(!def){ chatLog(`⚠️ ${mg.nom} : pion Firelane introuvable`); return null; }
+  const q = poserTraits(def.T, def.S, mg.x, mg.y, mg, 0);
+  lierPions(mg, q);
+  chatLog(`➕ Fire Lane posée et liée à ${mg.nom}`);
+  selectionner([q]);
+  return q;
+}
+
 // ═══ JEU : DÉPLACER, POSER, RETIRER ═══
 // Chaque action est appliquée puis consignée au log, comme VASSAL :
 // un M/ par pion déplacé, du fond vers le sommet, chacun désignant la
@@ -8456,11 +8602,14 @@ function preparerRelecture(segs){
     // Les entrées vides (« LOG\t » seul) ne sont pas des coups.
     const cmds = _commandesLog(tok).filter(c => c.trim());
     if(!cmds.length) continue;
-    if(tok.startsWith('LOG\t') || !_etapes.length) _etapes.push(cmds);
+    if(_estLog(tok) || !_etapes.length) _etapes.push(cmds);
     else _etapes[_etapes.length - 1].push(...cmds);
   }
   majBarreLog();
 }
+
+// Entrée LOG, même mise entre apostrophes par SequenceEncoder.
+const _estLog = t => /^'*LOG\t/.test(t);
 
 // SequenceEncoder.Decoder de VASSAL : un délimiteur précédé d'une
 // contre-oblique appartient au jeton, qui perd cette contre-oblique ; un
@@ -8483,12 +8632,13 @@ function _decoupeSeq(val, delim){
 function _commandesLog(tok){
   const parts = _decoupeSeq(tok, '\x1b');
   if(parts.length > 1) return parts.flatMap(_commandesLog);
+  if(tok.length > 1 && tok[0] === "'" && tok.endsWith("'")) tok = tok.slice(1, -1);
   if(tok.startsWith('LOG\t')) return _commandesLog(tok.substring(4));
   return tok ? [tok] : [];
 }
 
 function _instantane(){
-  return {info: _infoEtat, piles: new Map(_pilesVassal),
+  return {info: _infoEtat, piles: new Map(_pilesVassal), liens: new Map(_liens),
           pions: pions.map(p => ({p, seg: p.seg, x: p.x, y: p.y, ordre: p.ordre, deleted: p.deleted, ailleurs: p.ailleurs}))};
 }
 
@@ -8506,6 +8656,7 @@ function _restaurer(snap){
     if(segChange && !p.deleted) majApparence(p);
   }
   _pilesVassal = new Map(snap.piles);
+  _liens = new Map(snap.liens); _planifierLiens();
   if(_infoEtat !== snap.info){ _infoEtat = snap.info; majChampsInfo(); }
   if(_fil && _fil.distant) _effacerFil();
 }
@@ -10501,6 +10652,7 @@ function commandesDe(type){
       const chemin = f[3] || '';
       const placement = parseInt(f[11], 10) || 0;
       const apres = lireTouche(f[8]);
+      const acq = id === 'placeACQ' || /(^|[^a-z])ACQ($|[^a-z])/i.test(ch[1] || '');
       ajouter(i, ch[1], lireTouche(ch[2]), ({p, S, effets}) => {
         // PlaceDM ne pose rien sur une pièce dont le nom intérieur contient
         // « broken », lu avant que la touche n'atteigne les traits
@@ -10517,6 +10669,9 @@ function commandesDe(type){
           }
           const q = placerMarqueur(p, chemin, placement);
           if(q && apres) executerTouche(q, apres);
+          // L'ACQ d'un véhicule ou d'un canon lui est liée, comme par
+          // Ctrl+Alt+L. La plupart la posent par un PlaceMarker « + ACQ ».
+          if(q && acq) lierPions(p, q);
           if(q && id === 'replace') retirer(p, true);
         });
       });
@@ -11136,6 +11291,9 @@ function arbreCommandes(p){
   // Infanterie : Load / Unload en tête du menu (D6.4, D6.5).
   const transport = !accesRefuse(p) && typeof itemsTransport === 'function' ? itemsTransport(p) : [];
   if(transport.length) racine.items.unshift(...transport);
+  // MG : Fire Lane, posée et liée à la MG.
+  if(!accesRefuse(p) && estMG(p))
+    racine.items.push({nom: 'Fire Lane', cmd: {nom: 'Fire Lane', faire: ({effets}) => effets.push(() => poserFireLane(p))}});
   return {titre: p.el.title || p.nom, items: racine.items,
           vide: visibles.length ? null : accesRefuse(p) ? 'Aucune commande — pion masqué par un autre joueur' : 'Aucune commande'};
 }
@@ -11298,6 +11456,13 @@ function _brancherCommandes(){
     }
     if((!_pileSel && !_sel.size) || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     if(['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+    // PieceLinker : Ctrl+Alt+L lie, Ctrl+Alt+U délie.
+    if(e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && (e.code === 'KeyL' || e.code === 'KeyU')){
+      e.preventDefault(); e.stopImmediatePropagation();
+      fermerMenu();
+      lierSelection(e.code === 'KeyU');
+      return;
+    }
     const k = toucheClavier(e);
     if(ciblesTouche(k).length){
       e.preventDefault(); e.stopImmediatePropagation();
@@ -14088,6 +14253,7 @@ function etatPartie(){
       sortie.push(seg); continue;
     }
     if(seg.startsWith('INFO\t')){ sortie.push('INFO\t' + _infoEtat); continue; }
+    if(_CMD_LIEN.test(seg.replace(/\\+$/, ''))) continue;          // régénérés
     const m = seg.match(/^\+\/([^/]+)\//);
     const p = m && parUidMap.get(m[1]);
     if(!p){ sortie.push(seg); continue; }
@@ -14096,7 +14262,7 @@ function etatPartie(){
   }
   // Pions posés ou créés par le log : avant la fin de sauvegarde.
   const neufs = pions.filter(p => (!p.deleted || p.ailleurs) && !connus.has(p.uid)).map(p => p.seg);
-  const ajout = [...neufs, ..._segmentsPiles()];
+  const ajout = [...neufs, ..._segmentsPiles(), ...segmentsLiens()];
   // SAN saisis ici alors que le fichier n'avait pas d'informations de scénario.
   if(_infoModifiee && !_source.some(x => x.startsWith('INFO\t'))) ajout.push('INFO\t' + _infoEtat);
   const iFin = sortie.lastIndexOf('end_save');
@@ -14140,12 +14306,20 @@ function ecrireVlog(log = {enr: _logEnr, groupes: _logGroupes, depart: _logDepar
   // sauvegarde, prennent une contre-oblique (SequenceEncoder). Sans le
   // « LOG\t » de chaque sous-commande, VASSAL les exécute au chargement
   // au lieu d'en faire un coup à relire.
+  // SequenceEncoder.append met entre apostrophes un jeton qui finit par
+  // une contre-oblique (l'état d'un pion VASL, « …;OldMap;Main Map\ ») :
+  // sans elles, elle échapperait l'ESC qui le suit, et le coup suivant se
+  // fondrait dans celui-ci à la relecture.
+  const jeton = t => {
+    const e = t.replace(/\x1b/g, '\\\x1b');
+    return t.endsWith('\\') || (t.startsWith("'") && t.endsWith("'")) ? `'${e}'` : e;
+  };
   const entrees = [];
   log.enr.forEach((c, i) => {
     if(i && log.groupes[i] === log.groupes[i - 1]) entrees[entrees.length - 1].push(c);
     else entrees.push([c]);
   });
-  const lignes = entrees.map(l => l.map(c => 'LOG\t' + c.replace(/\x1b/g, '\\\x1b')).join('\x1b').replace(/\x1b/g, '\\\x1b'));
+  const lignes = entrees.map(l => jeton(l.map(c => jeton('LOG\t' + c)).join('\x1b')));
   _telecharger([...log.depart, ...lignes].join('\x1b'), log.nom || _nomExport('vlog'), log.annexes);
   chatLog(`📼 Log écrit : ${log.nom} — ${entrees.length} coup(s), ${log.enr.length} commande(s)`);
   return true;
@@ -14257,25 +14431,87 @@ const _texteReseau = () => {
 const _nomUtilisateur = () => _admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'Observateur');
 const _enRelecture = () => _etapes.length > 0;
 
-// ── HidePiecesButton de VASL (Ctrl+F10) : trois vues en boucle, comme
-// ASLMap.ShowMapLevel — tout ; la carte et les pièces qui ne s'empilent
-// pas (overlays déplaçables, Fire Lane) ; la carte et les pièces
-// « overlay » seulement. Rien n'est retiré : l'affichage seul change.
+// ── HidePiecesButton de VASL (Ctrl+F10), réduit à deux vues, de
+// ASLMap.ShowMapLevel : tout (ShowAll) ; la carte et les pièces qui ne
+// s'empilent pas — overlays déplaçables, Fire Lane — (ShowMapAndOverlay).
+// Les overlays restent toujours visibles : la vue « carte seule » de VASL
+// n'est pas reprise. Rien n'est retiré, l'affichage seul change.
 const VUES_CARTE = [
   {lib: 'Masquer les pions (montrer carte et overlays)', img: 'showall.png'},
-  {lib: 'Masquer aussi les overlays (montrer la carte seule)', img: 'showmapandoverlay.png'},
-  {lib: 'Montrer tous les pions', img: 'showmaponly.png'}
+  {lib: 'Montrer tous les pions', img: 'showmapandoverlay.png'}
 ];
 let _vueCarte = 0;
 function basculerVueCarte(){
-  _vueCarte = (_vueCarte + 1) % 3;
-  const mi = document.getElementById('mapInner');
-  mi.classList.toggle('vue1', _vueCarte === 1);
-  mi.classList.toggle('vue2', _vueCarte === 2);
+  _vueCarte = (_vueCarte + 1) % VUES_CARTE.length;
+  document.getElementById('mapInner').classList.toggle('vue1', _vueCarte === 1);
   if(_vueCarte) cacherSurvol();
-  chatLog(['👁 Tous les pions affichés', '🗺️ Pions masqués : carte et overlays',
-           '🗺️ Carte seule'][_vueCarte], 'sys');
+  chatLog(['👁 Tous les pions affichés', '🗺️ Pions masqués : carte et overlays'][_vueCarte], 'sys');
 }
+
+// ── ASLBrokenFinder et ASLSniperFinder de VASL : deux boutons à bascule
+// (QC) qui entourent de rouge, au-dessus des pions, les hexagones des
+// pièces brisées ou MALF — couche BRK active, ni HIP ni dissimulées —, des
+// DM et des Disrupt, et ceux des snipers (cercle de 1,5 hexagone). Les
+// boutons portent la LMG russe (gpid 482) et le sniper US (gpid 778) de la
+// palette.
+const ICONE_BRISES = {gpid: '482', ico: '⭕'};
+const ICONE_SNIPER = {gpid: '778', ico: '🎯'};
+const _reperes = {brises: false, sniper: false};
+function basculerRepere(q){
+  _reperes[q] = !_reperes[q];
+  dessinerReperes();
+  rafraichirActions([q]);
+}
+
+function _estBrise(p){
+  if(p.nom === 'DM' || p.nom === 'Disrupt') return true;
+  const d = lirePiece(p.seg);
+  if(d.hip || d.masque) return false;
+  let pr = {};
+  try { pr = _proprietes(_developperPrototypes(_splitTypeState(p.seg), 0)) || {}; } catch(e){}
+  return pr.BRK_Active === 'true';
+}
+// Le nom que voit ce joueur : un pion masqué par un autre ne se trahit pas.
+const _estSniper = p => !p.cache && !accesRefuse(p) && p.nom.includes('Sniper');
+
+let _reperesPrevus = false;
+function dessinerReperes(){
+  if(_reperesPrevus) return;
+  _reperesPrevus = true;
+  requestAnimationFrame(() => { _reperesPrevus = false; _dessinerReperes(); });
+}
+function _dessinerReperes(){
+  let s = document.getElementById('reperes');
+  if(!_reperes.brises && !_reperes.sniper){ if(s) s.remove(); return; }
+  const NS = 'http://www.w3.org/2000/svg';
+  if(!s){
+    s = document.createElementNS(NS, 'svg');
+    s.id = 'reperes';
+    document.getElementById('mapInner').appendChild(s);
+  }
+  s.setAttribute('width', _mapW); s.setAttribute('height', _mapH);
+  s.innerHTML = '';
+  const cercles = (test, diam) => {
+    const vus = new Set();
+    for(const p of vivants()){
+      const k = cle(p);
+      if(vus.has(k) || !test(p)) continue;
+      vus.add(k);
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', p.x * SC); c.setAttribute('cy', p.y * SC); c.setAttribute('r', diam * SC / 2);
+      c.setAttribute('fill', 'none'); c.setAttribute('stroke', 'red'); c.setAttribute('stroke-width', 4);
+      c.setAttribute('vector-effect', 'non-scaling-stroke');
+      s.appendChild(c);
+    }
+  };
+  // DEFAULT_HEX_HEIGHT de VASL : 64,5 px.
+  if(_reperes.brises) cercles(_estBrise, 2 * HEX_HY);
+  if(_reperes.sniper) cercles(_estSniper, 2 * HEX_HY * 1.5);
+}
+
+// Boutons LOS de VASL (VASLThread) : l'icône thread.gif de VASSAL et la
+// lettre du bouton, « L » pour la LOS, « l » pour la LOS silencieuse.
+const ICONE_LOS = 'https://raw.githubusercontent.com/vassalengine/vassal/master/vassal-app/src/main/resources/images/thread.gif';
 
 const ACTIONS = {
   ouvrir:   {lib: 'Ouvrir .vsav / .vlog', court: 'Ouvrir', ico: '📂', faire: doOpen},
@@ -14291,13 +14527,17 @@ const ACTIONS = {
              faire: leverDeplaces},
   all:      {lib: 'Remove all — retirer tous les pions d\'un type…', court: 'ALL', img: 'QC/Remove.png',
              faire: ancre => ouvrirMassRemover(ancre)},
+  brises:   {lib: 'Entourer les unités brisées et les armes MALF', court: 'Broken', ico: '⭕', pion: ICONE_BRISES,
+             faire: () => basculerRepere('brises'), allume: () => _reperes.brises},
+  sniper:   {lib: 'Entourer le sniper', court: 'Sniper', ico: '🎯', pion: ICONE_SNIPER,
+             faire: () => basculerRepere('sniper'), allume: () => _reperes.sniper},
   masquer:  {lib: () => VUES_CARTE[_vueCarte].lib, court: 'Pions', img: () => VUES_CARTE[_vueCarte].img,
              touche: 'Ctrl+F10', faire: basculerVueCarte, allume: () => _vueCarte > 0},
-  los:      {lib: 'Ligne de vue (LOS)', court: 'LOS', ico: '👁', touche: 'F10',
+  los:      {lib: 'LOS (ligne de vue)', court: 'L', img: ICONE_LOS, lettre: true, touche: 'F10',
              faire: (ancre, e) => armerFil(e && e.ctrlKey && e.shiftKey ? 'l' : 'L'), allume: () => !!_filArme,
              // Au doigt, un appui long propose la LOS silencieuse et le mode détaillé.
              menuLong: ['los', 'losMuet', 'verbeux']},
-  losMuet:  {lib: 'Ligne de vue silencieuse', court: 'LOS muette', ico: '🙈', touche: 'Ctrl+Maj+F10',
+  losMuet:  {lib: 'LOS inv (ligne de vue silencieuse)', court: 'l', img: ICONE_LOS, lettre: true, touche: 'Ctrl+Maj+F10',
              faire: () => armerFil('l'), allume: () => _filArme === 'l'},
   verbeux:  {ico: '📝', lib: 'LOS détaillée (Verbose LOS mode)', coche: () => _losVerbeux, faire: basculerVerbeux},
   zoomMoins:{lib: 'Zoom arrière', ico: '−', faire: zoomOut},
@@ -14380,9 +14620,9 @@ function rendreAction(id, forme = 'icone'){
     el.innerHTML = '<span class="ck"></span><span class="lb"></span><span class="rc"></span>';
   } else {
     el.type = 'button';
-    el.className = 'act ' + forme + (a.de ? ' de' : '');
+    el.className = 'act ' + forme + (a.de ? ' de' : '') + (a.lettre ? ' lettre' : '');
     if(a.pion && forme !== 'bouton'){
-      el.appendChild(iconePion());
+      el.appendChild(iconePion(a.pion === true ? undefined : a.pion));
     } else if(a.img){
       const im = document.createElement('img');
       im.alt = '';
@@ -14423,16 +14663,19 @@ function rendreAction(id, forme = 'icone'){
 // ── Icône des pions : le chef 10-3 de l'OB « Other UNC (Korea) » de la
 // palette VASL (gpid 3b5:8394, prototype unLDR1(KFW)), son label Name
 // réglé sur « Monclar ». Composée une fois, comme une vignette de la
-// palette, puis copiée ; en attendant la base, le signe ♟.
+// palette, puis copiée ; en attendant la base, le signe ♟. Une action
+// peut donner son propre pion (« pion: {gpid} ») : le North de la vue
+// Carte.
 const ICONE_PION = {gpid: '3b5:8394', nom: 'Monclar'};
-let _modeleIconePion = null;
-function _composerIconePion(){
-  if(!_modeleIconePion) _modeleIconePion = chargerBDD().then(async bdd => {
-    const x = bdd.parGpid.get(ICONE_PION.gpid);
+const ICONE_NORTH = {gpid: '291', ico: '🗺'};
+const _modelesIconePion = new Map();     // gpid → Promise<modèle | null>
+function _composerIconePion(spec = ICONE_PION){
+  if(!_modelesIconePion.has(spec.gpid)) _modelesIconePion.set(spec.gpid, chargerBDD().then(async bdd => {
+    const x = bdd.parGpid.get(spec.gpid);
     const def = x && developperDefinition(x.cmd);
     if(!def) return null;
     const i = def.T.findIndex(t => /^label;/.test(t) && t.split(';')[2] === 'Name');
-    if(i >= 0) def.S[i] = ICONE_PION.nom;
+    if(i >= 0 && spec.nom) def.S[i] = spec.nom;
     const d = lirePiece('+/icone/' + encoderTraits(def.T) + '/' + encoderTraits(def.S));
     const m = document.createElement('div');
     m.className = 'modelePion';
@@ -14454,15 +14697,15 @@ function _composerIconePion(){
     }
     cache.remove();
     return m;
-  }).catch(() => null);
-  return _modeleIconePion;
+  }).catch(() => null));
+  return _modelesIconePion.get(spec.gpid);
 }
-function iconePion(){
+function iconePion(spec = ICONE_PION){
   const b = document.createElement('span');
   b.className = 'ic icPion';
   b.setAttribute('aria-hidden', 'true');
-  b.textContent = '♟';
-  _composerIconePion().then(m => { if(m){ b.textContent = ''; b.appendChild(m.cloneNode(true)); } });
+  b.textContent = spec.ico || '♟';
+  _composerIconePion(spec).then(m => { if(m){ b.textContent = ''; b.appendChild(m.cloneNode(true)); } });
   return b;
 }
 
@@ -14503,7 +14746,9 @@ function _majAction(el, a, id){
   const lb = el.querySelector('.lb');
   if(lb){
     lb.textContent = forme === 'menu' || forme === 'ligne' ? lib
-                   : forme === 'bouton' || (forme === 'icone' && (a.texteBarre || (!a.ico && !a.img))) ? _v(a.court || a.lib)
+                   : forme === 'bouton' || (forme === 'icone' && a.texteBarre)
+                     || ((forme === 'icone' || forme === 'rail') && a.lettre)
+                     || ((forme === 'icone' || forme === 'rail') && !a.ico && !a.img && !a.pion) ? _v(a.court || a.lib)
                    : '';
   }
   const rc = el.querySelector('.rc');
@@ -14569,7 +14814,7 @@ const DISPOSITIONS = {
   pc: {
     menus: {
       'Fichier':   ['ouvrir', 'vsav', '-', 'log'],
-      'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'infoScenario'],
+      'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'brises', 'sniper', '-', 'infoScenario'],
       // Masqués à la demande : sélection des cartes et panneaux, effectif
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
       'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', '-', 'couche_unite', 'couche_marqueur',
@@ -14580,7 +14825,7 @@ const DISPOSITIONS = {
       'Aide':      ['raccourcis']
     },
     barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster',
-            '|', 'relecture', 'los', 'unmoved', 'all', 'masquer', '|', 'reseau', 'utilisateur'],
+            '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', '|', 'reseau', 'utilisateur'],
     // Les dés restent à portée, en boutons sous la barre d'icônes.
     barreDes: [...DES.filter(d => d.id.startsWith('DR_')).map(d => d.id), '|', ...DES.filter(d => d.id.startsWith('dr_')).map(d => d.id)],
     panneau: ['pile', 'palette', 'des']
@@ -14761,7 +15006,7 @@ const _vue = () => document.body.dataset.vue || 'carte';
 
 Object.assign(ACTIONS, {
   plus:      {lib: 'Plus…', court: 'Plus', ico: '☰', faire: () => ouvrirFeuillePlus()},
-  vueCarte:  {lib: 'Carte', court: 'Carte', ico: '🗺', faire: () => vueMobile('carte'), allume: () => _vue() === 'carte'},
+  vueCarte:  {lib: 'Carte', court: 'Carte', ico: '🗺', pion: ICONE_NORTH, faire: () => vueMobile('carte'), allume: () => _vue() === 'carte'},
   vuePile:   {lib: 'Pile sélectionnée', court: 'Pile', ico: '▤', faire: () => vueMobile('pile'), allume: () => _vue() === 'pile'},
   vuePions:  {lib: 'Palette des pions', court: 'Pions', ico: '♟', pion: true, faire: () => vueMobile('pions'), allume: () => _vue() === 'pions'},
   vueJournal:{lib: 'Journal et chat', court: 'Journal', ico: '💬', faire: () => vueMobile('journal'), allume: () => _vue() === 'journal',
@@ -14794,7 +15039,7 @@ function placerColonne(c){
 // raccourcis ; du choix de l'affichage ne reste que l'affichage ordinateur,
 // dans la feuille seulement. Les actions restent définies (menu Affichage du
 // PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
-const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'masquer', '-', 'reseau', 'utilisateur', '-',
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
