@@ -108,6 +108,32 @@ body:is([data-terminal=mobile],[data-terminal=tablette]){--cible:44px}
 .corpsFeuille .act.ligne:disabled{opacity:.4}
 .videFeuille{padding:14px;color:var(--menu-doux);font-style:italic}
 .sepFeuille{height:6px;background:#262626}
+/* ── Lancer IFT : deux roues, colonne de FP et modificateur du DR ;
+   le choix est la ligne sous le bandeau. */
+.iftCorps{padding:6px 12px 10px;display:flex;flex-direction:column;gap:8px}
+.iftRoues{display:flex;gap:10px}
+.iftCol{flex:1;min-width:0;display:flex;flex-direction:column}
+.iftLib{text-align:center;font-weight:600;font-size:13px;color:var(--menu-doux);margin-bottom:3px}
+.iftBoite{position:relative}
+.iftBoite::before{content:"";position:absolute;left:0;right:0;top:88px;height:44px;pointer-events:none;
+  border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);background:rgba(217,164,65,.1)}
+.iftRoue{height:220px;overflow-y:scroll;scroll-snap-type:y mandatory;overscroll-behavior:contain;
+  scrollbar-width:none;background:var(--champ);border:1px solid var(--menu-bord);border-radius:6px}
+.iftRoue::-webkit-scrollbar{display:none}
+.iftRoue .iftPad{height:88px}
+.iftItem{height:44px;line-height:44px;text-align:center;scroll-snap-align:center;font-size:18px;
+  color:var(--menu-doux);user-select:none;cursor:pointer;font-variant-numeric:tabular-nums}
+.iftItem small{font-size:12px}
+.iftItem.on{color:var(--menu-texte);font-weight:700;font-size:22px}
+.iftOpts{display:flex;gap:10px}
+.iftOpts label{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:var(--cible);
+  font-weight:600;font-size:15px;border:1px solid var(--menu-bord);border-radius:6px;user-select:none}
+.iftOpts input{width:22px;height:22px;margin:0;accent-color:var(--accent)}
+.iftRes{min-height:44px;padding:8px;text-align:center;font-weight:700;font-size:17px;color:var(--accent);
+  background:var(--champ);border:1px solid var(--menu-bord);border-radius:6px}
+.iftRes .iftSp{display:block;text-align:left;font-weight:400;font-size:13px;color:var(--menu-texte);margin-top:4px}
+.iftBoutons{display:flex;gap:10px}
+.iftBoutons button{flex:1;min-height:var(--cible);font-weight:600;font-size:15px}
 .act.danger{color:#ff8a8a}
 .act.prim{background:#2f5f9e;border-color:#2f5f9e;color:#fff}
 .barrePile,.bandeauMode,.panneauFil{position:absolute;z-index:60;display:flex;align-items:center;gap:6px;
@@ -718,7 +744,10 @@ const EN = {
   'La relecture commence. Commencer un nouveau fichier de log ?': 'Replay begins. Begin a new logfile?',
   'Partie ouverte. Commencer un nouveau fichier de log ?': 'Game opened. Begin a new logfile?',
   'Relecture terminée. Commencer un nouveau fichier de log ?': 'Replay finished. Begin a new logfile?',
-  'Fichier de log': 'Logfile', 'Oui': 'Yes', 'Non': 'No', 'Ne plus demander': 'Don\'t ask again'
+  'Fichier de log': 'Logfile', 'Oui': 'Yes', 'Non': 'No', 'Ne plus demander': 'Don\'t ask again',
+  // Lancer IFT (tablette, téléphone)
+  'Lancer IFT': 'IFT attack', 'Modificateur DR': 'DR modifier',
+  'Valider': 'Roll', 'Relancer': 'Roll again'
 };
 
 // Libellés à trous : « {} » prend n'importe quel texte, lui-même traduit.
@@ -13495,6 +13524,168 @@ function _annoncesDR(cat, a, b){
   return sp;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// LANCER IFT (tablette, téléphone)
+// Au doigt, le bouton IFT ouvre une feuille à deux roues : la colonne de
+// FP de l'IFT (4 par défaut) et le modificateur du DR, de -6 à +8 (0 par
+// défaut), avec deux cases, Leader et Green. À la validation, le DR est
+// lancé, modifié, puis croisé avec la colonne sur la table A7 ; le
+// résultat part au chat : « FP 4/37 : IFT 7 > PTC », NE pour un « — ».
+// Cowering (A7.9) : un DR original double décale le tir d'une colonne à
+// gauche, de deux si Green (A19.33), d'aucune si un leader le dirige ;
+// sous la colonne 1 FP, sans effet.
+// Symboles de case, d'après la légende de l'IFT : ceux qui portent sur
+// l'« Original … DR » se lisent dans la case du DR original, ceux de
+// l'attaque de mine A-T (orange) dans la case du DR final.
+// Au PC, et au raccourci Ctrl+Maj+I, IFT reste un simple jet.
+// ═══════════════════════════════════════════════════════════════
+const IFT_COLS = [
+  {fp: '1', mm: '20'}, {fp: '2', mm: '30'}, {fp: '4', mm: '37'}, {fp: '6', mm: '50'},
+  {fp: '8', mm: '60'}, {fp: '12', mm: '70'}, {fp: '16', mm: '80'}, {fp: '20', mm: '100'},
+  {fp: '24', mm: '120'}, {fp: '30', mm: '150'}, {fp: '36+', mm: '200+'}
+];
+
+// Une case : symboles éventuels, une espace, le résultat. Ligne 0 = DR ≤ 0,
+// ligne 15 = DR ≥ 15.
+const IFT_TABLE = [
+  ['1KIA','2KIA','2KIA','3KIA','3KIA','3KIA','4KIA','4KIA','5KIA','6KIA','7KIA'],
+  ['K/1','1KIA','1KIA','2KIA','2KIA','2KIA','3KIA','3KIA','4KIA','5KIA','6KIA'],
+  ['1MC','f K/1','f K/2','wFf 1KIA','wFf 1KIA','mwFf 1KIA','mRFf 2KIA','mRFf 2KIA','mRFf 3KIA','smRFf 4KIA','smRFfa 5KIA'],
+  ['1MC','1MC','2MC','f K/2','f K/2','Mf K/3','mwFf 1KIA','mwFf 1KIA','mRFf 2KIA','smRFf 3KIA','smRFfa 4KIA'],
+  ['NMC','1MC','1MC','2MC','2MC','3MC','Mf K/3','Mf K/4','mwFf 1KIA','smRFf 2KIA','smRFfa 3KIA'],
+  ['PTC','NMC','1MC','1MC','2MC','2MC','3MC','3MC','Mf K/4','smwFf 1KIA','smRFfa 2KIA'],
+  ['—','PTC','NMC','1MC','1MC','2MC','2MC','3MC','4MC','Mf K/4','smwFfa 1KIA'],
+  ['—','—','PTC','NMC','1MC','1MC','2MC','2MC','3MC','4MC','MfA K/4'],
+  ['—','—','—','PTC','NMC','1MC','1MC','2MC','2MC','3MC','A 4MC'],
+  ['—','—','—','—','PTC','NMC','1MC','1MC','2MC','2MC','A 3MC'],
+  ['—','—','—','—','—','PTC','NMC','1MC','1MC','2MC','A 2MC'],
+  ['—','—','—','—','—','—','PTC','NMC','1MC','1MC','A 2MC'],
+  ['—','—','—','—','—','—','—','PTC','NMC','1MC','A 1MC'],
+  ['—','—','—','—','—','—','—','—','PTC','NMC','A 1MC'],
+  ['—','—','—','—','—','—','—','—','—','PTC','A NMC'],
+  ['—','—','—','—','—','—','—','—','—','—','A PTC']
+];
+
+// Légende des symboles, comme les annonces d'ASLChatter. `fin` : lu sur
+// le DR final (attaque de mine A-T).
+const IFT_SYMB = {
+  f: {s: '•', c: '#e44', t: 'P. Flame if FT (B25.12)'},
+  F: {s: '‡', c: '#e44', t: 'P. Flame if HE/HEAT (B25.13)'},
+  w: {s: '•', c: '#ddd', t: 'P. wooden rubble if HE ≥ 70mm (B24.11)'},
+  R: {s: '‡', c: '#ddd', t: 'P. rubble if HE ≥ 70mm (B24.11)'},
+  m: {s: '•', c: '#6af', t: 'Conc. HE FFE/Aerial Bomb removes A-P/A-T minefield and/or Wire (B28.62, B26.52)'},
+  M: {s: '‡', c: '#5c5', t: 'Conc. HE FFE/Aerial Bomb reduces minefield strength (B28.62)'},
+  s: {s: '•', c: '#5c5', t: 'Conc. HE FFE/Aerial Bomb creates shellhole (B2.1)'},
+  a: {s: '•', c: '#f90', fin: true, t: 'A-T Mine: eliminates AFV / burns ★ vehicle (B28.52)'},
+  A: {s: '‡', c: '#f90', fin: true, t: 'A-T Mine: immobilizes AFV / eliminates ★ vehicle (B28.52)'}
+};
+
+const IFT_MODS = Array.from({length: 15}, (_, i) => i - 6);
+const _IFT_H = 44;                // hauteur d'une ligne de roue (cf. .iftItem)
+const _ift = {col: 2, mod: 6, leader: false, green: false};   // dernier réglage
+
+function _iftCase(dr, col){
+  const c = IFT_TABLE[Math.max(0, Math.min(15, dr))][col];
+  const i = c.indexOf(' ');
+  return i < 0 ? {sym: '', res: c} : {sym: c.slice(0, i), res: c.slice(i + 1)};
+}
+
+function boutonIFT(){
+  if(_profil && _profil !== 'pc') ouvrirIFT();
+  else lancerDR('IFT');
+}
+
+// Une roue à faire défiler au doigt ; un appui sur une ligne la choisit.
+function _iftRoue(libelles, i0, change){
+  const r = document.createElement('div');
+  r.className = 'iftRoue';
+  r.innerHTML = '<div class="iftPad"></div>'
+    + libelles.map((l, i) => `<div class="iftItem" data-i="${i}">${l}</div>`).join('')
+    + '<div class="iftPad"></div>';
+  r.index = () => Math.max(0, Math.min(libelles.length - 1, Math.round(r.scrollTop / _IFT_H)));
+  const marquer = () => {
+    const i = r.index();
+    r.querySelectorAll('.iftItem').forEach((it, k) => it.classList.toggle('on', k === i));
+    return i;
+  };
+  let dernier = i0;
+  r.addEventListener('scroll', () => {
+    const i = marquer();
+    if(i !== dernier){ dernier = i; change(i); }
+  }, {passive: true});
+  r.addEventListener('click', e => {
+    const it = e.target.closest('.iftItem');
+    if(it) r.scrollTo({top: +it.dataset.i * _IFT_H, behavior: 'smooth'});
+  });
+  // La position ne prend qu'une fois la roue affichée.
+  r.placer = () => { r.scrollTop = i0 * _IFT_H; marquer(); };
+  return r;
+}
+
+function ouvrirIFT(){
+  const h = ouvrirFeuille({id: 'ift', titre: 'Lancer IFT'});
+  const c = document.createElement('div');
+  c.className = 'iftCorps';
+  c.innerHTML = '<div class="iftRoues">'
+    + '<div class="iftCol"><div class="iftLib">FP</div><div class="iftBoite"></div></div>'
+    + '<div class="iftCol"><div class="iftLib">Modificateur DR</div><div class="iftBoite"></div></div></div>'
+    + '<div class="iftOpts"><label><input type="checkbox" name="leader"> Leader</label>'
+    + '<label><input type="checkbox" name="green"> Green</label></div>'
+    + '<div class="iftRes">—</div>'
+    + '<div class="iftBoutons"><button type="button" class="fermer">Fermer</button>'
+    + '<button type="button" class="valider">Valider</button></div>';
+  h.corps.appendChild(c);
+  const res = c.querySelector('.iftRes'), valider = c.querySelector('.valider');
+  // Changer un réglage après un jet prépare le jet suivant.
+  const pret = () => { valider.textContent = T('Valider'); };
+  const [bFP, bMod] = c.querySelectorAll('.iftBoite');
+  const rFP = _iftRoue(IFT_COLS.map(x => `${x.fp}<small>/${x.mm}</small>`), _ift.col,
+                       i => { _ift.col = i; pret(); });
+  const rMod = _iftRoue(IFT_MODS.map(m => m > 0 ? '+' + m : m < 0 ? '−' + (-m) : '0'), _ift.mod,
+                        i => { _ift.mod = i; pret(); });
+  bFP.appendChild(rFP); bMod.appendChild(rMod);
+  rFP.placer(); rMod.placer();
+  for(const k of ['leader', 'green']){
+    const cb = c.querySelector(`input[name=${k}]`);
+    cb.checked = _ift[k];
+    cb.addEventListener('change', () => { _ift[k] = cb.checked; pret(); });
+  }
+  c.querySelector('.fermer').addEventListener('click', () => h.fermer());
+  valider.addEventListener('click', () => {
+    const r = lancerIFT(rFP.index(), IFT_MODS[rMod.index()], _ift.leader, _ift.green);
+    res.textContent = r.ligne;
+    for(const x of r.sp){
+      const d = document.createElement('span'); d.className = 'iftSp';
+      const b = document.createElement('b'); b.style.color = x.c; b.textContent = x.s + ' ';
+      d.append(b, x.t);
+      res.appendChild(d);
+    }
+    valider.textContent = T('Relancer');
+  });
+  return h;
+}
+
+// Lance le DR, le croise avec la table et publie le résultat au chat.
+function lancerIFT(col, mod, leader, green){
+  const {c, b, total} = lancerDR('IFT');
+  const dr = total + mod;
+  const sp = [];
+  const cower = c === b && !leader ? (green ? 2 : 1) : 0;
+  const colT = col - cower;
+  if(cower) sp.push({s: '⇐', c: '#f90',
+    t: `Cowering ${cower} column${cower > 1 ? 's' : ''} (A7.9${green ? ', Green A19.33' : ''})`});
+  let ligne;
+  if(colT < 0) ligne = `FP ${IFT_COLS[col].fp}/${IFT_COLS[col].mm} : IFT ${dr} > NE`;
+  else {
+    const fin = _iftCase(dr, colT), orig = _iftCase(total, colT);
+    ligne = `FP ${IFT_COLS[colT].fp}/${IFT_COLS[colT].mm} : IFT ${dr} > ${fin.res === '—' ? 'NE' : fin.res}`;
+    for(const k of orig.sym) if(!IFT_SYMB[k].fin) sp.push(IFT_SYMB[k]);
+    for(const k of fin.sym) if(IFT_SYMB[k].fin) sp.push(IFT_SYMB[k]);
+  }
+  envoyerChat(ligne + (sp.length ? ' — ' + sp.map(x => x.s + ' ' + x.t).join(', ') : ''));
+  return {ligne, sp, dr, total};
+}
+
 // Raccourcis d'ASLChatter : F2 DR, F1 dr, Ctrl+Maj+lettre par catégorie.
 function _brancherDes(){
   for(const id of ['sanAxis', 'sanAllied', 'bbAxis', 'bbAllied'])
@@ -14411,7 +14602,7 @@ const _v = f => typeof f === 'function' ? f() : f;
 // Dés : catégories et raccourcis d'ASLDiceBot (voir _brancherDes).
 const DES = [
   {id: 'DR_Other', lib: 'DR', titre: 'DR', touche: 'F2', faire: () => lancerDR('Other')},
-  {id: 'DR_IFT', lib: 'IFT', titre: 'IFT attack DR', touche: 'Ctrl+Maj+I', faire: () => lancerDR('IFT')},
+  {id: 'DR_IFT', lib: 'IFT', titre: 'IFT attack DR', touche: 'Ctrl+Maj+I', faire: () => boutonIFT()},
   {id: 'DR_TH', lib: 'TH', titre: 'To Hit DR', touche: 'Ctrl+Maj+H', faire: () => lancerDR('TH')},
   {id: 'DR_TK', lib: 'TK', titre: 'To Kill DR', touche: 'Ctrl+Maj+K', faire: () => lancerDR('TK')},
   {id: 'DR_MC', lib: 'MC', titre: 'Morale Check DR', touche: 'Ctrl+Maj+M', faire: () => lancerDR('MC')},

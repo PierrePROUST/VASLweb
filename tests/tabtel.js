@@ -10,7 +10,7 @@ const {ouvrir} = require('./commun.js');
     out.disposition = await pg.evaluate(() => ({haut: !!document.querySelector('#chromeHaut .barreHaut'), colonne: !!document.querySelector('#chromeGauche nav.navGauche'),
       des: [...document.querySelectorAll('.navGauche .act.de:not([aria-hidden])')].map(e => e.textContent.trim()), rail: !!document.getElementById('rail'), fab: !!document.querySelector('.fabDes')}));
     await pg.evaluate(() => { _filtresChat.delete('jet'); majFiltresChat(); afficherChat('<adv> - salut'); });
-    await tap('.navGauche :not([aria-hidden])[data-action="DR_IFT"]');
+    await tap('.navGauche :not([aria-hidden])[data-action="DR_MC"]');
     out.apercu = await pg.evaluate(() => [...document.querySelectorAll('#apercuChat .txt > div')].map(d => (d.className ? '[' + d.className + '] ' : '') + d.textContent));
     out.hauteur = await pg.evaluate(() => document.getElementById('apercuChat').offsetHeight);
     out.carte = await pg.evaluate(() => Math.round(document.getElementById('mapWrap').clientHeight / innerHeight * 100) + '%');
