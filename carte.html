@@ -8720,7 +8720,7 @@ function cadrerSur(pts){
   wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - hv / 2;
 }
 
-function majBarreLog(){ rafraichirActions(['relecture', 'relectureRail', ...ACTIONS.relecture.groupe]); majHautBas(); }
+function majBarreLog(){ rafraichirActions(['relecture', 'relectureRail', 'relectureFin', ...ACTIONS.relecture.groupe]); majHautBas(); }
 
 // Trait Immobilized sans « L » en tête des options d'empilement : la
 // pièce ne s'empile pas (Properties.NO_STACK) — clocher, tunnel, marqueur
@@ -14327,8 +14327,10 @@ const ACTIONS = {
   profil_mobile:   {ico: '📱', lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
   // Relecture d'un .vlog : visible seulement s'il reste des coups.
   relecture:{groupe: ['lgDebut', 'lgArr', 'logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
-  // Colonne d'icônes du tactile : sans ⏮ ni ◀, sous l'icône Unmoved.
-  relectureRail: {groupe: ['logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
+  // Colonne d'icônes du tactile : sans ⏮ ni ◀ ; ⏭ sous l'icône Unmoved,
+  // la position et ▶ tout en bas.
+  relectureRail: {groupe: ['logPos', 'lgAv'], visible: _enRelecture},
+  relectureFin:  {groupe: ['lgFin'], visible: _enRelecture},
   lgDebut:  {lib: 'Début du log', ico: '⏮', faire: () => allerLog(0), actif: () => _logPos > _logPlancher},
   lgArr:    {lib: () => _logPlancher > 0 && _logPos <= _logPlancher
                ? 'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler' : 'Coup précédent',
@@ -14831,14 +14833,14 @@ DISPOSITIONS.mobile = {
     // Une colonne d'icônes sur la droite de l'écran : carte ; affichage de
     // la carte avec ou sans pions ; palette ; Remove all ; journal ; Undo ;
     // les dés (DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS) ; puis toutes
-    // les actions de la feuille « Plus », chacune par son icône, la
-    // relecture du log (présente seulement pendant une relecture) juste
-    // sous Unmoved ; le côté de la colonne (⇄, à droite ou à gauche de
-    // l'écran) ; Plus.
+    // les actions de la feuille « Plus », chacune par son icône, ⏭ (fin du
+    // log) juste sous Unmoved ; le côté de la colonne (⇄, à droite ou à
+    // gauche de l'écran) ; Plus ; tout en bas, la position et ▶. ⏭ et ▶
+    // ne sont présents que pendant une relecture.
     const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'undo', ...DES.map(d => d.id)];
     const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x) && !PLUS_SANS_ICONE.includes(x))
-                   .flatMap(x => x === 'unmoved' ? [x, 'relectureRail'] : [x]),
-                 'coteColonne', 'plus'];
+                   .flatMap(x => x === 'unmoved' ? [x, 'relectureFin'] : [x]),
+                 'coteColonne', 'plus', 'relectureRail'];
     // Défilement sans fin : la liste est posée trois fois ; près d'un bout,
     // on saute d'une longueur de liste sans que rien ne bouge à l'écran.
     // Monter au-delà de la première icône mène à la dernière, et l'inverse.
