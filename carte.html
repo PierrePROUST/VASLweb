@@ -461,7 +461,7 @@ body.maj .pion.immob{pointer-events:auto}
 .survol .rang{display:flex;gap:6px;align-items:flex-end}
 .survol .cel{display:flex;flex-direction:column;align-items:center;gap:2px}
 /* Terrain sous la pile (CounterDetailViewer « show terrain beneath ») */
-.survol .terrain{display:block;border:1px solid #000;border-radius:2px}
+.survol .terrain{display:block}
 .survol .lieuT{font-size:10px;line-height:1.1;opacity:.85}
 #ctx,.ssmenu{position:fixed;z-index:9600;min-width:190px;max-width:340px;max-height:80vh;overflow:auto;
   background:var(--menu-fond);color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:4px;
@@ -12106,38 +12106,52 @@ function afficherSurvol(k, cx, cy){
 }
 
 // Terrain sous la pile, comme l'option « show terrain beneath » du
-// CounterDetailViewer de VASSAL : un carré de 150 px de carte (au zoom
-// 1, en pixels VASL) centré sur l'hexagone, découpé dans les boards
-// affichés — overlays et SSR compris — et dessiné à l'échelle des pions
-// de l'aperçu. Le nom du lieu est écrit dessous.
-const SURVOL_TERRAIN = 150;
+// CounterDetailViewer de VASSAL : l'hexagone de la pile seul, découpé à
+// sa forme dans les boards affichés — overlays et SSR compris — et
+// dessiné à l'échelle des pions de l'aperçu. Les voisins n'y figurent
+// pas. Le nom du lieu est écrit dessous.
 function _terrainSous(c, lieu){
-  const k = SC * SURVOL_ECHELLE;
-  const cote = Math.round(SURVOL_TERRAIN * k);
-  // Zone voulue, en pixels de carte affichée.
-  const x0 = c.x * SC - SURVOL_TERRAIN * SC / 2, y0 = c.y * SC - SURVOL_TERRAIN * SC / 2;
-  const L = SURVOL_TERRAIN * SC;
+  // Centre de l'hexagone, même si la pile est sur un de ses côtés.
+  const centre = _hexParNom.get(String(lieu || '').split('/')[0]) || c;
+  // Hexagone à côtés plats en haut et en bas, en pixels de carte affichée.
+  const hex = _hautHexAu(centre.x, centre.y) * SC;
+  const R = hex / Math.sqrt(3), h = hex / 2;
+  const Lw = 2 * R * 1.04, Lh = hex * 1.04;
+  const x0 = centre.x * SC - Lw / 2, y0 = centre.y * SC - Lh / 2;
+  const cw = Math.round(Lw * SURVOL_ECHELLE), ch = Math.round(Lh * SURVOL_ECHELLE);
   const cv = document.createElement('canvas');
   cv.className = 'terrain';
-  cv.width = cote; cv.height = cote;
+  cv.width = cw; cv.height = ch;
   const g = cv.getContext('2d');
-  g.fillStyle = '#222'; g.fillRect(0, 0, cote, cote);
+  const contourHex = () => {
+    const kx = cw / Lw, ky = ch / Lh, mx = cw / 2, my = ch / 2;
+    g.beginPath();
+    [[R, 0], [R / 2, h], [-R / 2, h], [-R, 0], [-R / 2, -h], [R / 2, -h]]
+      .forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](mx + x * kx, my + y * ky));
+    g.closePath();
+  };
+  g.save(); contourHex(); g.clip();
+  g.fillStyle = '#222'; g.fillRect(0, 0, cw, ch);
   let vu = false;
   for(const b of document.querySelectorAll('#mapInner canvas.boardLayer')){
     const bx = parseFloat(b.style.left) || 0, by = parseFloat(b.style.top) || 0;
     const bw = parseFloat(b.style.width) || b.width, bh = parseFloat(b.style.height) || b.height;
     // Intersection de la zone et du board, en pixels de carte.
     const ix = Math.max(x0, bx), iy = Math.max(y0, by);
-    const ax = Math.min(x0 + L, bx + bw), ay = Math.min(y0 + L, by + bh);
+    const ax = Math.min(x0 + Lw, bx + bw), ay = Math.min(y0 + Lh, by + bh);
     if(ax <= ix || ay <= iy) continue;
     // Le canvas du board a sa propre résolution (plafonnée sur mobile).
     const rx = b.width / bw, ry = b.height / bh;
     try {
       g.drawImage(b, (ix - bx) * rx, (iy - by) * ry, (ax - ix) * rx, (ay - iy) * ry,
-                  (ix - x0) / L * cote, (iy - y0) / L * cote, (ax - ix) / L * cote, (ay - iy) / L * cote);
+                  (ix - x0) / Lw * cw, (iy - y0) / Lh * ch, (ax - ix) / Lw * cw, (ay - iy) / Lh * ch);
       vu = true;
     } catch(e){ /* canvas illisible : pas de terrain */ }
   }
+  g.restore();
+  // Le bord de l'hexagone.
+  g.strokeStyle = '#000'; g.lineWidth = 1.5;
+  contourHex(); g.stroke();
   if(!vu) return null;
   const cel = document.createElement('div');
   cel.className = 'cel';
