@@ -7644,7 +7644,8 @@ async function majApparence(p, d){
     // 85×76 pour un hexagone — garde ses proportions, centrée dans le
     // carré de son plus grand côté : étirée, ses bras ne tombaient plus
     // sur les côtés d'hexagone.
-    const nw = p.face.naturalWidth || 0, nh = p.face.naturalHeight || nw;
+    const {w: nw, h: nh} = await _tailleImage(url);
+    if(gen !== p.gen) return;
     if(nw) p.sz = Math.round(Math.max(nw, nh) * SC);
     p.face.style.cssText = '';
     if(nw && nw !== nh){
@@ -7666,7 +7667,7 @@ async function majApparence(p, d){
       if(gen !== p.gen) return;
       if(cote > Math.max(nw, nh)){
         p.sz = Math.round(cote * SC);
-        const w = p.face.naturalWidth * SC, h = p.face.naturalHeight * SC;
+        const w = nw * SC, h = nh * SC;
         p.face.style.cssText = `width:${w}px;height:${h}px;`
           + `left:${(p.sz - w) / 2}px;top:${(p.sz - h) / 2}px`;
       }
@@ -7818,6 +7819,23 @@ async function composerVignette(boite, d, cote){
   // La plus interne d'abord : c'est l'ordre de dessin de VASSAL.
   boite.replaceChildren(...couches.filter(o => o.dessous), face,
                         ...couches.filter(o => !o.dessous));
+}
+
+// Taille propre d'une image, lue sur une copie hors de la page : sous
+// WebKit (Safari, et Firefox sur iPhone et iPad), le naturalWidth d'un
+// SVG affiché est sa taille à l'écran. Le pion, mesuré sur sa propre
+// face, grossissait de SC à chaque rendu.
+const _taillesImages = new Map();     // URL → Promise<{w, h}>
+function _tailleImage(url){
+  if(!_taillesImages.has(url)) _taillesImages.set(url, (async () => {
+    const o = new Image();
+    o.src = url;
+    await o.decode().catch(() => {});
+    const w = o.naturalWidth || 0;
+    if(!w) _taillesImages.delete(url);     // image illisible : on réessaiera
+    return {w, h: o.naturalHeight || w};
+  })());
+  return _taillesImages.get(url);
 }
 
 // « ? » neutre, pour une pièce dissimulée dont le trait ne nomme pas
