@@ -14777,12 +14777,14 @@ function placerColonne(c){
 }
 
 // Le reste des actions, dans la feuille « Plus » des profils tactiles.
-// Masqués sur tablette et téléphone, à la demande : sélection des cartes et
-// panneaux, zoom avant, arrière, ajuster, LOS détaillée, verrou des pions,
-// effectif des piles, aperçu du chat, raccourcis ; du choix de l'affichage
-// ne reste que l'affichage ordinateur, dans la feuille seulement.
+// Masqués sur tablette et téléphone, à la demande : sélection des unités,
+// des marqueurs, des cartes et panneaux, zoom avant, arrière, ajuster, LOS
+// détaillée, verrou des pions, effectif des piles, aperçu du chat,
+// raccourcis ; du choix de l'affichage ne reste que l'affichage ordinateur,
+// dans la feuille seulement. Les actions restent définies (menu Affichage du
+// PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
 const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'masquer', '-', 'reseau', 'utilisateur', '-',
-  'sanPieges', 'couche_unite', 'couche_marqueur', '-', 'profil_pc'];
+  'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc'];
 function ouvrirFeuillePlus(){ return ouvrirFeuilleActions('Plus', PLUS, 'feuillePlus'); }
