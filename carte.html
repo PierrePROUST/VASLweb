@@ -267,7 +267,11 @@ body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact]
 .poigneeChat::after{content:"";position:absolute;left:50%;top:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:#666}
 .apercuChat{display:flex;align-items:center;gap:6px;min-height:40px;padding:2px 4px 2px 10px;background:#232323;
   border-top:1px solid var(--bord);font-size:12px;line-height:17px;color:var(--doux);cursor:pointer}
-/* Deux lignes, chacune coupée par une ellipse ; un jet de dés en couleur. */
+/* En haut de l'écran, sous l'encoche. */
+#chromeHaut > .apercuChat{border-top:none;border-bottom:1px solid var(--bord);padding-top:calc(2px + var(--marge-h))}
+/* À gauche, le bouton qui place l'aperçu en haut ou en bas de l'écran. */
+.apercuChat .placer{flex:none;align-self:stretch;min-width:32px;margin-left:-8px;padding:0;background:none;border:none;font-size:16px}
+/* Quatre lignes, chacune coupée par une ellipse ; un jet de dés en couleur. */
 .apercuChat .txt{flex:1;min-width:0;display:flex;flex-direction:column}
 .apercuChat .txt > div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .apercuChat .txt > .jet{color:var(--accent);font-weight:600}
@@ -633,6 +637,8 @@ const EN = {
   // Chat
   'Message au chat': 'Chat message', 'Message au chat (Entrée pour envoyer)': 'Chat message (Enter to send)',
   'Envoyer': 'Send', 'Envoyer au chat': 'Send to chat', 'Écrire au chat': 'Write to chat',
+  'Placer le chat en haut de l\'écran': 'Move chat to the top of the screen',
+  'Placer le chat en bas de l\'écran': 'Move chat to the bottom of the screen',
   'Messages': 'Messages', 'Rapports': 'Reports', 'Système': 'System',
   'Filtres du journal': 'Chat log filters', 'Saisie rapide': 'Quick chat',
   // Aide
@@ -14823,9 +14829,9 @@ function ouvrirFeuilleDes(){
 DISPOSITIONS.mobile = {
   panneau: ['pile', 'palette'],
   construire(){
-    // Pas de barre en haut : tout passe par la colonne d'icônes de droite.
-    const b = document.getElementById('chromeBas');
-    b.appendChild(_construireApercuChat());
+    // Pas de barre en haut : tout passe par la colonne d'icônes de droite ;
+    // l'aperçu du chat se place en haut ou en bas, au choix.
+    document.getElementById(_posApercu === 'haut' ? 'chromeHaut' : 'chromeBas').appendChild(_construireApercuChat());
     const nav = document.createElement('nav');
     nav.className = 'navBas navGauche';
     nav.setAttribute('aria-label', 'Vues');
@@ -14979,6 +14985,17 @@ let _etatChat = null;            // null (aperçu), 'compact', 'plein'
 let _nonLus = 0;
 // L'option n'a plus de bouton (masquée) : l'aperçu est toujours montré.
 let _apercuChat = true;
+// Place de l'aperçu, en haut ou en bas de l'écran, retenue sur cet appareil.
+let _posApercu = _lirePref('aslweb.apercuPos') === 'haut' ? 'haut' : 'bas';
+function placerApercuChat(pos){
+  _posApercu = pos;
+  try { localStorage.setItem('aslweb.apercuPos', pos); } catch(e){}
+  const ap = document.getElementById('apercuChat');
+  if(!ap) return;
+  document.getElementById(pos === 'haut' ? 'chromeHaut' : 'chromeBas').prepend(ap);
+  _majApercuChat();
+  _surRedimension();
+}
 
 // Hauteur réelle du bas de l'écran (aperçu, relecture, navigation) : le
 // chat ouvert s'arrête au-dessus, la relecture reste accessible.
@@ -15013,6 +15030,9 @@ function _construireApercuChat(){
   t.className = 'txt';
   const bg = document.createElement('span');
   bg.className = 'badgeAct'; bg.hidden = true;
+  const pl = document.createElement('button');
+  pl.type = 'button'; pl.className = 'act placer'; pl.tabIndex = -1;
+  pl.addEventListener('click', e => { e.stopPropagation(); placerApercuChat(_posApercu === 'haut' ? 'bas' : 'haut'); });
   const ec = document.createElement('button');
   ec.type = 'button'; ec.className = 'act ecrire'; ec.tabIndex = -1;
   ec.textContent = '✏';
@@ -15020,7 +15040,7 @@ function _construireApercuChat(){
   // iOS n'ouvre le clavier que si le focus part du geste lui-même.
   ec.addEventListener('click', e => { e.stopPropagation(); ouvrirChat(true); });
   ap.addEventListener('click', () => ouvrirChat(false));
-  ap.append(t, bg, ec);
+  ap.append(pl, t, bg, ec);
   setTimeout(_majApercuChat, 0);
   return ap;
 }
@@ -15028,9 +15048,12 @@ function _majApercuChat(){
   const ap = document.getElementById('apercuChat');
   if(!ap) return;
   ap.hidden = !_apercuChat;
-  // Les deux dernières lignes : messages, rapports, et toujours les jets de
-  // dés, même quand le filtre Dés les cache dans le journal.
-  const l = [...document.querySelectorAll('#journal > .msg, #journal > .rap, #journal > .jet')].slice(-2);
+  const pl = ap.querySelector('.placer');
+  pl.textContent = _posApercu === 'haut' ? '⬇' : '⬆';
+  pl.title = _posApercu === 'haut' ? 'Placer le chat en bas de l\'écran' : 'Placer le chat en haut de l\'écran';
+  // Les quatre dernières lignes : messages, rapports, et toujours les jets
+  // de dés, même quand le filtre Dés les cache dans le journal.
+  const l = [...document.querySelectorAll('#journal > .msg, #journal > .rap, #journal > .jet')].slice(-4);
   const t = ap.querySelector('.txt');
   t.replaceChildren(...(l.length ? l : [null]).map(x => {
     const d = document.createElement('div');
