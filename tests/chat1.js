@@ -1,7 +1,7 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const mobile = process.argv[3] === 'mobile';
-  const {b, pg, errs, touche} = await ouvrir(process.argv[2], mobile ? {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'} : {});
+  const mobile = process.argv[3] === 'tactile';
+  const {b, pg, errs, touche} = await ouvrir(process.argv[2], mobile ? {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'} : {});
   const out = {};
   if(!mobile){
     await pg.click('#chatIn'); await pg.keyboard.type('Bonjour <toi> & 33B5'); await pg.keyboard.press('Enter');

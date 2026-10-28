@@ -2,7 +2,7 @@
 // des pions), et la croix rouge le ferme.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, centre} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, centre} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const n = () => pg.evaluate(() => [document.querySelectorAll('.eventail').length, !!_eventail]);
   const [x, y] = await centre('T9');
   const essais = {};

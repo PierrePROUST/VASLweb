@@ -1,6 +1,6 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, touche, centre, ecran} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, touche, centre, ecran} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const pos = sel => pg.evaluate(s => { const q = document.querySelector(s).getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, sel);
   const out = {};
   // 1. ✏ puis un appui sur « Hello » : envoyé tel quel, champ intact

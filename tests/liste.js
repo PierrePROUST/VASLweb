@@ -2,7 +2,7 @@
 // sur écran étroit) : un appui sur la carte la ferme, la croix rouge aussi.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  for(const profil of ['mobile', 'pc']){
+  for(const profil of ['tactile', 'pc']){
     const {b, pg, errs, centre} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil});
     const vis = () => pg.evaluate(() => { const c = document.getElementById('cote'); return getComputedStyle(c).display !== 'none' && c.getBoundingClientRect().height > 0; });
     const [x, y] = await centre('T9');

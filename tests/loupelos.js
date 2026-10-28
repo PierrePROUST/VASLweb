@@ -5,7 +5,7 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
   const [w, h] = [+(process.argv[3] || 800), +(process.argv[4] || 900)];
-  const {b, pg, errs, ecran, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: w, height: h}, profil: w < 600 ? 'mobile' : 'tablette'});
+  const {b, pg, errs, ecran, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: w, height: h}, profil: 'tactile'});
   await pg.evaluate(() => armerFil('L'));
   await pg.waitForTimeout(800);
   const etat = () => pg.evaluate(() => { const l = document.getElementById('loupe'); const c = l && l.querySelector('canvas').getBoundingClientRect();

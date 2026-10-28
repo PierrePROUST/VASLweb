@@ -43,7 +43,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `log500.js` | « ⏭ Fin du log » sur 500 coups : un seul rendu |
 | `p3.js` | Téléphone 360×740 : éventail, 3ᵉ pion d'une pile de 6, commande, sommet, déplacement seul |
 | `l3.js` | Tablette : fil LOS ancré, mode pose, feuille de commandes |
-| `etat.js` | Commandes d'état en tête des barres rapides (panneau Pile au PC, barre de pile au doigt : `node etat.js carte.html mobile`) : Prep Fire, First Fire, Break, Pin, Conceal ; un seul Prep Fire pour la pile, retiré au second appui (une action) ; Pin à moitié puis sur chaque unité ; Break et Conceal basculés |
+| `etat.js` | Commandes d'état en tête des barres rapides (panneau Pile au PC, barre de pile au doigt : `node etat.js carte.html tactile`) : Prep Fire, First Fire, Break, Pin, Conceal ; un seul Prep Fire pour la pile, retiré au second appui (une action) ; Pin à moitié puis sur chaque unité ; Break et Conceal basculés |
 | `qmark.js` | Unités dissimulées sorties d'une pile : « ? » neuf si l'ancien coiffe encore d'autres unités, sinon l'ancien suit |
 | `mf.js` | Décompte des MF / MP (table des terrains de VASL Tools) : coût de l'hexagone et cumul au chat et au log — bois, mur, pile avec chef, saut, montée, Undo, T-34 sur route (1 MP boutonné, ½ CE) et en bois (Z), Mark unmoved |
 | `mf-ravin.js` | Board 5 : ravin 2 MF, ravin-bois 4 MF (B19.4), sortie de ravin à coût doublé (B10.4), pont sur le ravin par la route (B3.4) |
@@ -68,7 +68,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
 | `loupelos.js` | LOS au doigt en deux temps : source puis cible, chacune avec la loupe dès l'appui et posée au relâché ; un deuxième doigt pince la carte |
-| `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
+| `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html tactile 360 740`) |
 | `tabtel.js` | Tablette et téléphone : même disposition, dés dans la colonne d'icônes, aperçu du chat sur deux lignes avec les jets |
 | `fermer.js` | Téléphone : la pile se ferme d'un appui à côté (zoom « Ajuster » compris) ou par la croix rouge |
 | `liste.js` | Liste de la pile au téléphone (et profil PC sur écran étroit) : appui sur la carte et croix rouge la ferment |
