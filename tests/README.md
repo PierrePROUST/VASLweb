@@ -68,7 +68,6 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
 | `loupelos.js` | LOS au doigt : la loupe montre le fil et le lieu visé, et disparaît au relâché (fil ancré) |
-| `losdeuxdoigts.js` | LOS à deux doigts : le premier tient la source, le deuxième vise la cible avec la loupe et la pose en se levant ; pas de zoom |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `tabtel.js` | Tablette et téléphone : même disposition, dés dans la colonne d'icônes, aperçu du chat sur deux lignes avec les jets |
 | `fermer.js` | Téléphone : la pile se ferme d'un appui à côté (zoom « Ajuster » compris) ou par la croix rouge |

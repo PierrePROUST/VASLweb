@@ -6100,20 +6100,15 @@ const _nouveauFil = (mode, c0, c1) => ({mode, c0, c1, ctrl0: false, ctrl1: false
 // Au doigt, le relâché ne termine pas le fil : il reste ancré, avec un
 // panneau pour les niveaux, la validation et l'annulation ; un nouvel
 // appui ou glissé sur la carte déplace la cible. À la souris, rien ne change.
-// Geste à deux doigts : le premier reste sur la source, un deuxième vise
-// la cible avec la loupe, posée quand il se lève ; le premier ne la bouge
-// plus.
 function commencerFil(e){
   const c = clientVersCarte(e.clientX, e.clientY);
   if(!c) return;
   const f = _fil = _nouveauFil(_filArme, c, c);
   f.ctrl0 = e.ctrlKey || e.metaKey;
   const doigt = !!e.pointerType && e.pointerType !== 'mouse', id = e.pointerId;
-  f.doigt1 = doigt;
   const bouge = ev => {
     if(ev.pointerId !== id) return;
     ev.preventDefault();
-    if(f.deuxDoigts) return;
     f.c1 = clientVersCarte(ev.clientX, ev.clientY) || f.c1;
     f.ctrl1 = ev.ctrlKey;
     if(f.m) _poserCible(f);
@@ -6125,8 +6120,7 @@ function commencerFil(e){
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
-    f.doigt1 = false;
-    if(!f.deuxDoigts) cacherLoupe();
+    cacherLoupe();
     if(doigt && _fil === f){ f.ancre = true; panneauFil(f); return; }
     if(ev.type === 'pointerup') f.lache = true;
     if(f.m || f.pret) terminerFil(f);
@@ -6147,11 +6141,9 @@ function commencerFil(e){
   dessinerFil();
 }
 
-// Fil ancré, ou deuxième doigt pendant le tracé : la cible suit un nouvel
-// appui ou glissé sur la carte.
+// Fil ancré : la cible suit un nouvel appui ou glissé sur la carte.
 function deplacerCibleFil(e){
   const f = _fil, id = e.pointerId;
-  if(!f.ancre) f.deuxDoigts = true;
   const suivre = ev => {
     if(ev.pointerId !== id) return;
     const c = clientVersCarte(ev.clientX, ev.clientY);
@@ -6160,7 +6152,7 @@ function deplacerCibleFil(e){
     if(f.m) _poserCible(f);
     dessinerFil();
     _loupeFil(ev, !ev.pointerType || ev.pointerType === 'mouse');
-    if(f.ancre) panneauFil(f);
+    panneauFil(f);
   };
   const fin = ev => {
     if(ev.pointerId !== id) return;
@@ -6539,9 +6531,7 @@ function _brancherFil(){
   // Pris avant les pions et le panoramique.
   wrap.addEventListener('pointerdown', e => {
     if(!_filArme || e.button > 0) return;
-    // Fil ancré, ou deuxième doigt pendant que le premier tient la source.
-    const deuxieme = _fil && _fil.doigt1 && e.pointerType && e.pointerType !== 'mouse';
-    if(_fil && (_fil.ancre || deuxieme) && !_fil.distant){ e.preventDefault(); e.stopPropagation(); deplacerCibleFil(e); return; }
+    if(_fil && _fil.ancre && !_fil.distant){ e.preventDefault(); e.stopPropagation(); deplacerCibleFil(e); return; }
     if(_fil) return;
     e.preventDefault(); e.stopPropagation();
     commencerFil(e);
