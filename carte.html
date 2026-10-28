@@ -6113,12 +6113,14 @@ function commencerFil(e){
     f.ctrl1 = ev.ctrlKey;
     if(f.m) _poserCible(f);
     dessinerFil();
+    _loupeFil(ev, !doigt);
   };
   const fin = ev => {
     if(ev.pointerId !== id) return;
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
+    cacherLoupe();
     if(doigt && _fil === f){ f.ancre = true; panneauFil(f); return; }
     if(ev.type === 'pointerup') f.lache = true;
     if(f.m || f.pret) terminerFil(f);
@@ -6149,6 +6151,7 @@ function deplacerCibleFil(e){
     f.c1 = c; f.ctrl1 = false;
     if(f.m) _poserCible(f);
     dessinerFil();
+    _loupeFil(ev, !ev.pointerType || ev.pointerType === 'mouse');
     panneauFil(f);
   };
   const fin = ev => {
@@ -6156,12 +6159,33 @@ function deplacerCibleFil(e){
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
+    cacherLoupe();
   };
   const bouge = ev => { ev.preventDefault(); suivre(ev); };
   suivre(e);
   document.addEventListener('pointermove', bouge, true);
   document.addEventListener('pointerup', fin, true);
   document.addEventListener('pointercancel', fin, true);
+}
+
+// Pendant le tracé, la loupe de dépôt montre le fil et le lieu ciblé : au
+// doigt, qui cache la cible, un disque au-dessus centré sur le point visé ;
+// à la souris, l'hexagone survolé seul, à côté du curseur.
+function _loupeFil(ev, hexSeul){
+  const f = _fil;
+  const c = f && clientVersCarte(ev.clientX, ev.clientY);
+  if(!c){ cacherLoupe(); return; }
+  const texte = f.compte ? f.vers : '';
+  const a = hexSeul ? Object.assign({}, ancragePlusProche(c.x, c.y) || c, {texte}) : {x: c.x, y: c.y, label: texte};
+  dessinerLoupe(ev.clientX, ev.clientY, a, null, hexSeul, (g, k) => {
+    for(const t of document.querySelectorAll('#filLOS line')){
+      g.strokeStyle = t.getAttribute('stroke'); g.lineWidth = 3 / k;
+      g.beginPath();
+      g.moveTo(+t.getAttribute('x1'), +t.getAttribute('y1'));
+      g.lineTo(+t.getAttribute('x2'), +t.getAttribute('y2'));
+      g.stroke();
+    }
+  });
 }
 
 // Panneau du fil ancré, au-dessus de la carte. Les niveaux suivent le
@@ -11932,7 +11956,9 @@ function _hautHexAu(x, y){
 // À la souris (hexSeul), la loupe ne montre que l'hexagone survolé, à sa
 // forme, à côté du curseur.
 const LOUPE_HEX = 150;
-function dessinerLoupe(cx, cy, a, rects, hexSeul){
+// surcouche(g) : dessin en plus, en pixels de #mapInner (le fil de la LOS) ;
+// a.texte, s'il est donné, remplace a.label sous la loupe.
+function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
   let l = document.getElementById('loupe');
   if(!a){ cacherLoupe(); return; }
   // Diamètre à l'écran : 200 px au doigt (moins sur un écran étroit), 150
@@ -11981,6 +12007,7 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul){
     try { g.drawImage(p.face, L, T, W, W); } catch(e){}
   }
   if(hexSeul){
+    if(surcouche) surcouche(g, k);
     // Le bord de l'hexagone, et l'ancrage visé s'il est sur un côté.
     g.restore();
     g.strokeStyle = '#d9a441'; g.lineWidth = 3 / k;
@@ -11990,12 +12017,16 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul){
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
   } else {
+    if(surcouche) surcouche(g, k);
     g.setTransform(1, 0, 0, 1, 0, 0);
     // L'ancrage visé : un cercle de 0,7 hexagone de diamètre.
     g.strokeStyle = '#d9a441'; g.lineWidth = 4;
     g.beginPath(); g.arc(cv.width / 2, cv.height / 2, hex * k * 0.35, 0, 2 * Math.PI); g.stroke();
   }
-  l.querySelector('span').textContent = a.label || '';
+  const lib = l.querySelector('span');
+  const texte = a.texte !== undefined ? a.texte : a.label;
+  lib.textContent = texte || '';
+  lib.style.display = texte ? '' : 'none';
   if(hexSeul){
     // À droite du curseur, un peu au-dessus ; à gauche faute de place.
     let x = cx + 28, y = cy - d - 12;

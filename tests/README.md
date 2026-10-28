@@ -67,6 +67,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-escaliers.js` | Board 1 : arrivée au rez-de-chaussée sous le marqueur d'étage (B23.421) ; escalier imprimé (1U3), absent (1U2, B23.23), maison sans étage (1D4, B23.21), maison à deux niveaux 1F1-G1 (même étage : 2 MF), toit (B23.8) |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
+| `loupelos.js` | LOS au doigt : la loupe montre le fil et le lieu visé, et disparaît au relâché (fil ancré) |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `tabtel.js` | Tablette et téléphone : même disposition, dés dans la colonne d'icônes, aperçu du chat sur deux lignes avec les jets |
 | `fermer.js` | Téléphone : la pile se ferme d'un appui à côté (zoom « Ajuster » compris) ou par la croix rouge |
@@ -74,6 +75,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `orphelin.js` | Un seul éventail à la fois (double appui, verrou des pions) ; la croix le ferme |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
 | `loupepc.js` | PC : pendant un glissé à la souris, la loupe ne montre que l'hexagone survolé |
+| `loupelospc.js` | LOS à la souris : la loupe montre l'hexagone survolé avec le fil, et disparaît au relâché |
 | `nav.js` | Colonne d'icônes du téléphone (à droite) : ses icônes (toutes celles de Plus comprises, aucune vide), défilement au doigt, carte sans pions, Remove all |
 | `chat0.js` | Journal non ramené en bas, profil gelé pendant la saisie |
 | `chat2.js` | Relecture d'un log de 50 messages chat compact ouvert ; message reçu en vue Carte ; Retour |
