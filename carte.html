@@ -6790,6 +6790,7 @@ function _etiquettes(ts){
     // sa mise en forme, réduite par _htmlLabel aux balises de texte.
     const brut = _texteLabel(ts.eta[i]).replace(/\$([^$\s]+)\$/g, (m, n) => pr[n] !== undefined ? pr[n] : '');
     const html = /^\s*<html>/i.test(brut) ? brut : null;
+    if(_estPageHtml(html)) continue;
     const texte = _texteHtml(brut).trim();
     if(!texte) continue;
     const ch = ts.typ[i].split(';');
@@ -6981,7 +6982,7 @@ function lirePiece(seg){
     uid: (seg.match(/^\+\/([^\/]+)\//) || [])[1] || '',
     carte: sm ? sm[1] : null, x: sm ? +sm[2] : 0, y: sm ? +sm[3] : 0,
     img, nom: nom || img.split('/').pop(), nomBase: pm ? pm[2].replace(/\\/g,'').trim() : '', couches, faceCouche, rot, masque, hip, masqueNation,
-    vt: _pieceVaslTools(ts), rotations, immob: _immobilise(ts),
+    vt: _pieceVaslTools(ts), page: _pageHtml(ts), rotations, immob: _immobilise(ts),
     info: (() => { const t = ts && ts.typ.find(x => /^info;/.test(x));
                    return t ? t.substring(5).replace(/\\(.)/g, '$1') : null; })(),
     // Propriété « overlay » (minuscule) : seule visible en vue « carte
@@ -7133,6 +7134,21 @@ function _vtCss(k, codes){
   return css;
 }
 
+// Coin de renfort d'une case de tour : dégradé de la couleur du camp et
+// son marqueur de tour (rang 0 en haut à gauche, 1 en bas à droite, 2 en
+// haut à droite).
+function _vtCoin(code, rang, logos){
+  const coul = _vtNation(code)[1];
+  const pos = rang === 0 ? 'left:0;top:0' : rang === 2 ? 'right:0;top:0' : 'right:0;bottom:0';
+  const dir = rang === 0 ? 'to bottom right' : rang === 2 ? 'to bottom left' : 'to top left';
+  const clip = rang === 0 ? 'polygon(0 0,100% 0,0 100%)' : rang === 2 ? 'polygon(0 0,100% 0,100% 100%)' : 'polygon(100% 0,100% 100%,0 100%)';
+  const u = logos.get(_vtLogo(code));
+  const ipos = rang === 0 ? 'left:5%;top:5%' : rang === 2 ? 'right:5%;top:5%' : 'right:5%;bottom:5%';
+  return `<span class="coin" style="${pos};clip-path:${clip};`
+    + `background:linear-gradient(${dir},${coul} 0%,${coul}b3 33%,${coul}00 50%)">`
+    + (u ? `<img src="${u}" style="${ipos}">` : '') + '</span>';
+}
+
 // Corps de la carte, d'après horizontalBody, verticalBody et leurs formes
 // compactes. Le tableau à trois joueurs reprend la forme horizontale.
 function _vtCorps(s, logos){
@@ -7151,17 +7167,7 @@ function _vtCorps(s, logos){
 
   // Case d'un tour : couleur LV / nuit, coins de renfort par camp, NVR.
   const cases = [];
-  const coin = (code, rang) => {
-    const coul = _vtNation(code)[1];
-    const pos = rang === 0 ? 'left:0;top:0' : rang === 2 ? 'right:0;top:0' : 'right:0;bottom:0';
-    const dir = rang === 0 ? 'to bottom right' : rang === 2 ? 'to bottom left' : 'to top left';
-    const clip = rang === 0 ? 'polygon(0 0,100% 0,0 100%)' : rang === 2 ? 'polygon(0 0,100% 0,100% 100%)' : 'polygon(100% 0,100% 100%,0 100%)';
-    const u = logos.get(_vtLogo(code));
-    const ipos = rang === 0 ? 'left:5%;top:5%' : rang === 2 ? 'right:5%;top:5%' : 'right:5%;bottom:5%';
-    return `<span class="coin" style="${pos};clip-path:${clip};`
-      + `background:linear-gradient(${dir},${coul} 0%,${coul}b3 33%,${coul}00 50%)">`
-      + (u ? `<img src="${u}" style="${ipos}">` : '') + '</span>';
-  };
+  const coin = (code, rang) => _vtCoin(code, rang, logos);
   for(let n = 1; n <= entiers; n++){
     const estLV = lv.has(n), estNuit = nuit.has(n);
     const fond = estNuit ? 'background-color:#000;color:#fff;' : estLV ? 'background-color:#c0c0c0;' : '';
@@ -7313,6 +7319,118 @@ function _vtElementNotes(c){
   b.style.cssText = `padding:6px;font-size:${taille}px;line-height:1.2;color:#000;white-space:pre-wrap;word-wrap:break-word`;
   b.textContent = corps;
   e.append(h, b);
+  return e;
+}
+
+// ═══ PAGE HTML D'UN LABEL — VASL INFORMATION TABLES ═══
+// Le gabarit d'asl-players.net (« VASL INFORMATION TABLES ») se colle
+// dans le label d'un « HTML Placeholder » : VASSAL dessine la page par le
+// moteur HTML de Swing, centrée sur la pièce. On la rend de même, à
+// l'échelle de la carte et sous les pions posés dans ses cases.
+//
+// Texte d'un label qui est une page entière, et non un libellé enrichi
+// (« <html><font color=red>… » des munitions).
+function _estPageHtml(h){
+  return !!h && h.length > 400 && /<(table|style|body)\b/i.test(h);
+}
+// Le label garde les tabulations du gabarit, échappées à chaque niveau
+// d'imbrication : « \\\t » n'est qu'un blanc.
+const _netPageHtml = h => h.replace(/\\*\t/g, ' ');
+
+// Page portée par un label du pion, s'il y en a une.
+function _pageHtml(ts){
+  if(!ts) return null;
+  for(let i = 0; i < ts.typ.length; i++){
+    if(!/^label;/.test(ts.typ[i])) continue;
+    const t = _texteLabel(ts.eta[i]);
+    if(/^<html/i.test(t) && _estPageHtml(t)) return _netPageHtml(t);
+  }
+  return null;
+}
+
+// Balises et attributs repris de la page : la mise en forme d'un tableau,
+// rien qui s'exécute ni ne charge (pas d'image, de lien ni de script).
+const PAGE_BALISES = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'col', 'colgroup',
+  'div', 'span', 'p', 'br', 'hr', 'b', 'i', 'u', 's', 'strike', 'em', 'strong', 'font', 'center', 'small', 'big',
+  'sub', 'sup', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li']);
+const PAGE_ATTRIBUTS = new Set(['class', 'id', 'style', 'colspan', 'rowspan', 'valign', 'align', 'width', 'height',
+  'bgcolor', 'color', 'size', 'face', 'border', 'cellpadding', 'cellspacing']);
+// Swing compte 1 px CSS pour 1,3 px à l'écran (CSS.LengthUnit).
+const SWING_PX = 1.3;
+
+// Élément de la page : un hôte dont l'ombre (Shadow DOM) cloisonne la
+// feuille de style du gabarit — ses règles « td » ne débordent pas sur
+// l'interface. Les logos de nationalité, que le gabarit va chercher sur
+// asl-players.net, sont remplacés par les marqueurs de tour du dépôt
+// VASL, comme sur la carte de VASL Tools.
+async function _vtElementPage(html){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const e = document.createElement('div');
+  e.className = 'vtp';
+  const ombre = e.attachShadow({mode: 'open'});
+  const css = [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n');
+  const copier = n => {
+    if(n.nodeType === 3) return document.createTextNode(n.nodeValue);
+    if(n.nodeType !== 1) return null;
+    const tag = n.tagName.toLowerCase();
+    const c = PAGE_BALISES.has(tag) ? document.createElement(tag) : document.createDocumentFragment();
+    if(c.nodeType === 1)
+      for(const a of n.attributes) if(PAGE_ATTRIBUTS.has(a.name.toLowerCase())) c.setAttribute(a.name, a.value);
+    for(const x of n.childNodes){ const y = copier(x); if(y) c.appendChild(y); }
+    return c;
+  };
+  const corps = document.createElement('div');
+  corps.className = 'page';
+  corps.setAttribute('style', doc.body.getAttribute('style') || '');
+  for(const x of doc.body.childNodes){ const y = copier(x); if(y) corps.appendChild(y); }
+
+  // Code de nation d'une classe du gabarit (« americanslogo »).
+  const nation = c => Object.prototype.hasOwnProperty.call(VT_NATIONS, c) ? c : null;
+  const logos = new Map();
+  const logo = async code => {
+    const im = _vtLogo(code);
+    if(im && !logos.has(im)) logos.set(im, await chargerImage(im));
+    return logos.get(im) || null;
+  };
+  // Cases de logo : le marqueur de tour, à la hauteur de la case.
+  for(const td of corps.querySelectorAll('td')){
+    const code = [...td.classList].map(c => /logo$/.test(c) ? nation(c.slice(0, -4)) : null).find(Boolean);
+    if(!code) continue;
+    const u = await logo(code);
+    if(!u) continue;
+    td.style.backgroundImage = 'none';
+    td.replaceChildren(Object.assign(document.createElement('img'), {src: u, className: 'logo'}));
+  }
+  // Cases de renfort : « reinforce/americans-germans.png » nomme les deux
+  // camps ; on dessine leurs coins comme VASL Tools. Les codes peuvent
+  // contenir un tiret (« free-french ») : on essaie chaque coupure.
+  for(const td of corps.querySelectorAll('td.reinforce')){
+    const m = (td.getAttribute('style') || '').match(/reinforce\/([a-z0-9-]+)\.png/i);
+    if(!m) continue;
+    const t = m[1].toLowerCase().split('-');
+    let codes = null;
+    for(let i = 1; i < t.length && !codes; i++){
+      const a = nation(t.slice(0, i).join('-')), b = nation(t.slice(i).join('-'));
+      if(a && b) codes = [a, b];
+    }
+    if(!codes) continue;
+    for(const c of codes) await logo(c);
+    td.style.backgroundImage = 'none';
+    td.insertAdjacentHTML('afterbegin', codes.map((c, i) => _vtCoin(c, i, logos)).join(''));
+  }
+
+  const style = document.createElement('style');
+  // La feuille du gabarit d'abord ; ensuite ce que le moteur de Swing
+  // fait sans qu'on le lui dise : pas de marge, et des cases de logo qui
+  // contiennent leur image au lieu de s'étirer pour elle.
+  style.textContent = css
+    + '\n:host{display:block;color:#000;background:#fff;line-height:normal}'
+    + '.page{display:inline-block;font-family:Arial,sans-serif}'
+    + 'td{position:relative;box-sizing:content-box}'
+    + 'td img.logo{display:block;margin:auto;height:32px;width:auto;max-width:100%}'
+    + '.coin{position:absolute;width:75%;height:75%;pointer-events:none}'
+    + '.coin img{position:absolute;width:33%;height:33%}';
+  ombre.append(style, corps);
   return e;
 }
 
@@ -7579,35 +7697,43 @@ function creerPion(seg, ordre){
 }
 
 // Pièce de l'extension VASL Tools : la carte et les panneaux sont dessinés
-// en HTML à l'échelle de la carte, les outils restent invisibles.
+// en HTML à l'échelle de la carte, les outils restent invisibles. Une page
+// HTML de label (VASL Information Tables) se dessine de même.
 async function _majPieceVaslTools(p, d, gen){
+  if(!d.vt){ await _majPieceFond(p, d, gen, await _vtElementPage(d.page), SC * SWING_PX); return; }
   if(d.vt.genre === 'outil'){
     p.el.style.display = 'none';
     p.cache = p.outil = true;
     return;
   }
   const e = d.vt.genre === 'carte' ? await _vtElementCarte(d.vt.champs) : _vtElementNotes(d.vt.champs);
+  await _majPieceFond(p, d, gen, e, SC);
+}
+
+// Pose une carte, un panneau ou une page sur son pion, à l'échelle ech :
+// la pièce passe au fond, sous les pions posés dans ses cases.
+async function _majPieceFond(p, d, gen, e, ech){
   if(gen !== p.gen) return;
   p.face.removeAttribute('src');
   p.face.style.display = 'none';
   p.el.style.background = '';
   p.el.title = d.nom;
-  p.el.querySelectorAll('.couche, .vtc, .vtn').forEach(x => x.remove());
+  p.el.querySelectorAll('.couche, .vtc, .vtn, .vtp').forEach(x => x.remove());
   e.style.position = 'absolute';
   e.style.left = e.style.top = '0';
   // Sans cela, le tableau se tasserait à la largeur du pion qui le porte.
   e.style.width = 'max-content';
   e.style.transformOrigin = '0 0';
-  e.style.transform = `scale(${SC})`;
+  e.style.transform = `scale(${ech})`;
   p.el.appendChild(e);
   // Les logos fixent la largeur de leurs cases : on mesure une fois
   // qu'ils sont décodés.
-  await Promise.all([...e.querySelectorAll('img')].map(i => i.decode().catch(() => {})));
+  await Promise.all([...(e.shadowRoot || e).querySelectorAll('img')].map(i => i.decode().catch(() => {})));
   if(gen !== p.gen) return;
   p.fond = true;
-  p.larg = Math.round(e.offsetWidth * SC);
-  p.haut = Math.round(e.offsetHeight * SC);
-  if(d.vt.genre === 'carte') _vtCaler(p, e);
+  p.larg = Math.round(e.offsetWidth * ech);
+  p.haut = Math.round(e.offsetHeight * ech);
+  if(d.vt && d.vt.genre === 'carte') _vtCaler(p, e);
   _etendreCarte();
   p.sz = Math.max(p.larg, p.haut);
   rendrePile(cle(p));
@@ -7678,7 +7804,7 @@ async function majApparence(p, d){
   p.el.style.opacity = voitHip ? '.55' : '';
   p.cache = d.hip && !voitHip;
   p.couche = coucheDe(d);
-  if(d.vt){ await _majPieceVaslTools(p, d, gen); return; }
+  if(d.vt || d.page){ await _majPieceVaslTools(p, d, gen); return; }
   const imgFace = voile || d.img;
   const url = voile === '?' ? _pionInconnu() : await chargerImage(imgFace);
   if(gen !== p.gen) return;
@@ -7966,7 +8092,9 @@ function rendrePile(k, tous){
     // Une pile dépliée passe au-dessus de ses voisines. Une pièce qui ne
     // s'empile pas (Fire Lane) se dessine au-dessus de la pile de son
     // hexagone, comme la pièce posée en dernier dans VASSAL.
-    p.el.style.zIndex = p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : p.fond ? 2 : 10) + i;
+    // Une carte, un panneau ou une page reste au fond, même s'il ne
+    // s'empile pas : les pions posés dans ses cases passent par-dessus.
+    p.el.style.zIndex = p.fond ? 2 + i : p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : 10) + i;
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
@@ -7976,7 +8104,7 @@ function rendrePile(k, tous){
   if(_liens.size) _planifierLiens();
   // Les pièces non empilées posées au même endroit restent au-dessus.
   if(s.length && !s[0].seul)
-    for(const q of vivants()) if(q.seul && !q.cache && q.x === s[0].x && q.y === s[0].y)
+    for(const q of vivants()) if(q.seul && !q.fond && !q.cache && q.x === s[0].x && q.y === s[0].y)
       q.el.style.zIndex = 10 + _hauteurSous(q);
 }
 // Hauteur de la pile ordinaire sur laquelle une pièce non empilée est posée.
@@ -8046,7 +8174,7 @@ try {
 } catch(e){}
 
 function coucheDe(d){
-  if(d.vt) return 'carte';
+  if(d.vt || d.page) return 'carte';
   // Le « ? » de dissimulation voyage avec les unités qu'il couvre.
   if(d.masque || /qmark/i.test(d.img)) return 'unite';
   const dir = d.img.includes('/') ? d.img.split('/')[0] : '';
