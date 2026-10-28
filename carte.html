@@ -338,6 +338,22 @@ body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
 .tablesQRDC .qPanneau{display:flex;align-items:flex-start;gap:16px}
 .tablesQRDC .qPanneau.vert{flex-direction:column}
 .tablesQRDC img{display:block;max-width:none;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+/* Fenêtre QRDC du PC, flottante, comme la ChartWindow de VASL. */
+.fenQRDC{position:fixed;left:80px;top:90px;z-index:9000;display:flex;flex-direction:column;
+  width:min(90vw,820px);height:min(80vh,560px);min-width:220px;min-height:120px;resize:both;overflow:hidden;
+  background:var(--menu-fond);color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:6px;
+  box-shadow:0 8px 28px rgba(0,0,0,.6);font-size:13px}
+.fenQRDC .qTitre{display:flex;align-items:center;justify-content:space-between;flex:none;padding:4px 6px 4px 12px;
+  font-weight:700;background:#2f5f9e;color:#fff;cursor:move;user-select:none;touch-action:none}
+.fenQRDC .qFermer{background:none;border:none;color:#fff;font-size:15px;cursor:pointer;padding:2px 6px}
+.fenQRDC .qCorps{flex:1;overflow:auto;padding:0 8px 8px}
+.fenQRDC .qOnglets{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0}
+.fenQRDC .qOnglets button{font:inherit;padding:3px 10px;background:#262626;color:#ccc;border:1px solid var(--bord);
+  border-radius:4px;cursor:pointer}
+.fenQRDC .qOnglets button.actif{background:#3a3a3a;color:var(--accent);border-color:var(--accent)}
+.fenQRDC .qPanneau{display:flex;align-items:flex-start;gap:8px}
+.fenQRDC .qPanneau.vert{flex-direction:column}
+.fenQRDC img{display:block;max-width:none}
 #vide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   text-align:center;color:var(--doux);padding:16px;pointer-events:none}
 #bas{flex:none}
@@ -607,7 +623,8 @@ const EN = {
     'Layers a click can select; the others let the click through',
   'Sélection :': 'Selection:',
   'Unités': 'Units', 'Marqueurs': 'Markers', 'Cartes et panneaux': 'Maps and panels',
-  'Tables QRDC sous la carte': 'QRDC charts below the map',
+  'Tables QRDC sous la carte': 'QRDC charts below the map', 'Tables QRDC (fenêtre)': 'QRDC charts (window)',
+  'Tables QRDC indisponibles.': 'QRDC charts unavailable.',
   'Rechercher un pion…': 'Search counters…', 'Rechercher un pion': 'Search counters',
   'Piège Axis': 'Axis Booby Trap', 'Piège Allied': 'Allied Booby Trap',
   'Pile': 'Stack', 'Palette': 'Counters', 'Dés': 'Dice',
@@ -13297,20 +13314,21 @@ function remplirGrille(liste){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TABLES QRDC SUR LA CARTE — la fenêtre « QRDC » de VASL (ChartWindow)
-// Ses tables (IFT, CC, TH, TK, Concealment) sont posées sous la zone de
-// la carte, c'est-à-dire sous l'emprise des boards affichés, à trois
-// petits pions d'écart, avec les onglets du module. C'est une couche de
-// l'affichage seulement : rien n'en va dans le .vsav ni au log, et aucun
-// pion ne peut s'y poser. Les pièces déjà posées sous les boards (carte de
-// scénario, unités hors carte) gardent leur place : les tables passent
-// sous elles.
+// TABLES QRDC — la fenêtre « QRDC » de VASL (ChartWindow)
+// Ses tables (IFT, CC, TH, TK, Concealment), avec les onglets du module.
+// Au PC, elles s'ouvrent dans une fenêtre flottante, comme dans VASL.
+// En tactile, elles sont posées sur la carte, sous sa zone, c'est-à-dire
+// sous l'emprise des boards affichés, à trois petits pions d'écart. C'est
+// une couche de l'affichage seulement : rien n'en va dans le .vsav ni au
+// log, et aucun pion ne peut s'y poser. Les pièces déjà posées sous les
+// boards (carte de scénario, unités hors carte) gardent leur place : les
+// tables passent sous elles.
 // ═══════════════════════════════════════════════════════════════
 const ECART_TABLES = 3 * 48;          // trois petits pions, pixels natifs
 let _empriseBoards = null;            // {x, y, w, h} en pixels de #mapInner
 let _mapBase = null;                  // taille de la carte sans les tables
 let _tablesEl = null;
-let _tablesVisibles = _lirePref('aslweb.tables') !== '0';
+let _tablesVisibles = _lirePref('aslweb.tables') !== '0';   // en tactile
 const _tablesSel = (() => {
   try { return new Map(JSON.parse(localStorage.getItem('qrdcSel') || '[]')); } catch(e){ return new Map(); }
 })();
@@ -13322,10 +13340,10 @@ function _oublierTables(){
 
 async function poserTables(){
   _oublierTables();
-  if(!_empriseBoards || !_tablesVisibles) return;
+  if(!_empriseBoards || !_tablesVisibles || !_telLike()) return;
   let bdd;
   try { bdd = await chargerBDD(); } catch(e){ return; }
-  if(!bdd.qrdc || _tablesEl || !_empriseBoards || !_tablesVisibles) return;
+  if(!bdd.qrdc || _tablesEl || !_empriseBoards || !_tablesVisibles || !_telLike()) return;
   const el = document.createElement('div');
   el.id = 'tablesQRDC';
   el.className = 'tablesQRDC';
@@ -13349,21 +13367,23 @@ async function poserTables(){
   _etendreCarte();
 }
 
+// Sur la carte, à l'échelle des boards ; dans la fenêtre, à la taille de
+// VASL (un pixel de l'image pour un pixel de l'écran).
 function _dessinerTables(){
-  if(!_tablesEl || !_bdd || !_bdd.qrdc) return;
-  _tablesEl.replaceChildren();
-  rendreTable(_bdd.qrdc, _tablesEl);
+  if(!_bdd || !_bdd.qrdc) return;
+  if(_tablesEl){ _tablesEl.replaceChildren(); rendreTable(_bdd.qrdc, _tablesEl, SC); }
+  const f = document.querySelector('#fenQRDC .qCorps');
+  if(f){ f.replaceChildren(); rendreTable(_bdd.qrdc, f, 1); }
 }
 
 // Comme les widgets de la palette : seule la branche choisie est dessinée,
 // et le choix de chaque onglet est retenu d'une visite à l'autre.
-function rendreTable(n, boite){
+function rendreTable(n, boite, k){
   if(n.t === 'Chart'){
     const im = document.createElement('img');
     im.alt = im.title = n.nom;
     im.draggable = false;
-    // À l'échelle des boards : un pixel de l'image vaut un pixel de la carte.
-    im.addEventListener('load', () => { im.style.width = Math.round(im.naturalWidth * SC) + 'px'; });
+    im.addEventListener('load', () => { im.style.width = Math.round(im.naturalWidth * k) + 'px'; });
     chargerImage(n.fichier).then(u => { if(u) im.src = u; });
     boite.appendChild(im);
     return;
@@ -13391,14 +13411,14 @@ function rendreTable(n, boite){
     });
     const z = document.createElement('div');
     z.className = 'qContenu';
-    rendreTable(n.enfants[sel], z);
+    rendreTable(n.enfants[sel], z, k);
     boite.append(o, z);
     return;
   }
   // PanelWidget, ChartWindow : les enfants dans l'ordre du module.
   const z = document.createElement('div');
   z.className = 'qPanneau' + (n.vert ? ' vert' : '');
-  for(const e of n.enfants) rendreTable(e, z);
+  for(const e of n.enfants) rendreTable(e, z, k);
   boite.appendChild(z);
 }
 
@@ -13415,7 +13435,57 @@ function surTables(x, y){
   return !!r && _rectContient({x: r.x, y: r.y, width: r.w, height: r.h}, x * SC, y * SC);
 }
 
+// Fenêtre flottante du PC : on la déplace par son titre, on la
+// redimensionne par son coin ; elle ne bloque pas la carte.
+async function ouvrirFenetreTables(){
+  if(document.getElementById('fenQRDC')) return;
+  const w = document.createElement('div');
+  w.id = 'fenQRDC';
+  w.className = 'fenQRDC';
+  w.setAttribute('role', 'dialog');
+  w.setAttribute('aria-label', 'QRDC');
+  w.innerHTML = '<div class="qTitre"><span>QRDC</span><button type="button" class="qFermer" title="Fermer" aria-label="Fermer">✕</button></div>'
+    + '<div class="qCorps"><div style="padding:8px;color:var(--doux)">Chargement de la base VASL…</div></div>';
+  document.body.appendChild(w);
+  w.querySelector('.qFermer').addEventListener('click', fermerFenetreTables);
+  const titre = w.querySelector('.qTitre');
+  titre.addEventListener('pointerdown', e => {
+    if(e.button > 0 || e.target.closest('button')) return;
+    e.preventDefault();
+    const r = w.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    const bouge = ev => {
+      w.style.left = Math.max(0, Math.min(innerWidth - 60, ev.clientX - dx)) + 'px';
+      w.style.top = Math.max(0, Math.min(innerHeight - 30, ev.clientY - dy)) + 'px';
+    };
+    const fin = () => { removeEventListener('pointermove', bouge); removeEventListener('pointerup', fin); };
+    addEventListener('pointermove', bouge);
+    addEventListener('pointerup', fin);
+  });
+  rafraichirActions(['tables']);
+  try { await chargerBDD(); } catch(e){}
+  if(!_bdd || !_bdd.qrdc){
+    const c = w.querySelector('.qCorps');
+    if(c) c.innerHTML = '<div style="padding:8px">Tables QRDC indisponibles.</div>';
+    return;
+  }
+  _dessinerTables();
+}
+function fermerFenetreTables(){
+  const w = document.getElementById('fenQRDC');
+  if(w){ w.remove(); rafraichirActions(['tables']); }
+}
+
+// Changement de profil : la fenêtre au PC, la couche de la carte en tactile.
+_apresProfil.push(() => {
+  if(_telLike()){ fermerFenetreTables(); if(!_tablesEl) poserTables(); }
+  else if(_tablesEl){ _oublierTables(); _etendreCarte(true); }
+});
+
 function basculerTables(){
+  if(!_telLike()){
+    if(document.getElementById('fenQRDC')) fermerFenetreTables(); else ouvrirFenetreTables();
+    return;
+  }
   _tablesVisibles = !_tablesVisibles;
   try { localStorage.setItem('aslweb.tables', _tablesVisibles ? '1' : '0'); } catch(e){}
   if(_tablesVisibles) poserTables();
@@ -15183,7 +15253,8 @@ const ACTIONS = {
   des:      {lib: 'Dés', court: 'Dés', ico: '🎲', faire: () => montrerOnglet('des')},
   verrou:   {lib: 'Verrou des pions (un glissé déplace la carte)', court: 'Verrou', ico: '🔒',
              coche: () => _verrouPions, faire: () => basculerVerrou()},
-  tables:   {ico: '📊', lib: 'Tables QRDC sous la carte', court: 'QRDC', coche: () => _tablesVisibles, faire: basculerTables},
+  tables:   {img: 'QRDC.gif', lib: () => _telLike() ? 'Tables QRDC sous la carte' : 'Tables QRDC (fenêtre)', court: 'QRDC',
+             coche: () => _telLike() ? _tablesVisibles : !!document.getElementById('fenQRDC'), faire: basculerTables},
   effectif: {ico: '🔢', lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
   couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
@@ -15447,7 +15518,7 @@ const DISPOSITIONS = {
       'Aide':      ['raccourcis']
     },
     barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster',
-            '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', '|', 'reseau', 'utilisateur'],
+            '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', '|', 'reseau', 'utilisateur'],
     // Les dés restent à portée, en boutons sous la barre d'icônes.
     barreDes: [...DES.filter(d => d.id.startsWith('DR_')).map(d => d.id), '|', ...DES.filter(d => d.id.startsWith('dr_')).map(d => d.id)],
     panneau: ['pile', 'palette', 'des']
