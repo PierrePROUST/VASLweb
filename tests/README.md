@@ -89,3 +89,4 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 
 Ces tests ne remplacent pas un essai sur de vrais appareils (Safari iOS,
 Chrome et Firefox Android) ni la relecture des `.vlog` dans VASL 6.7.3.
+| `qrdc.js` | Tables QRDC (ChartWindow de VASL) sous la zone de la carte : trois petits pions sous les boards, onglets du module (IFT, CC, Vehicle TK > HEAT), déplacement et pose refusés sur les tables, rien dans le `.vsav`, masquage par le menu Affichage |

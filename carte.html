@@ -328,6 +328,16 @@ body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
 #mapScaler{position:relative}
 #mapInner{position:absolute;left:0;top:0;transform-origin:0 0}
 .boardLayer{position:absolute;pointer-events:none}
+/* Tables QRDC sous la zone de la carte : au-dessus des boards, sous les
+   pions. Les onglets gardent une taille lisible quand la carte s'éloigne. */
+.tablesQRDC{position:absolute;z-index:1;cursor:default}
+.tablesQRDC .qOnglets{display:flex;flex-wrap:wrap;gap:.25em;margin:.4em 0;font-size:calc(13px * max(1, var(--zinv, 1)))}
+.tablesQRDC .qOnglets button{font:inherit;padding:.25em .8em;background:#262626;color:#ccc;
+  border:1px solid var(--bord);border-radius:.3em;cursor:pointer}
+.tablesQRDC .qOnglets button.actif{background:#3a3a3a;color:var(--accent);border-color:var(--accent)}
+.tablesQRDC .qPanneau{display:flex;align-items:flex-start;gap:16px}
+.tablesQRDC .qPanneau.vert{flex-direction:column}
+.tablesQRDC img{display:block;max-width:none;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 #vide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   text-align:center;color:var(--doux);padding:16px;pointer-events:none}
 #bas{flex:none}
@@ -597,6 +607,7 @@ const EN = {
     'Layers a click can select; the others let the click through',
   'Sélection :': 'Selection:',
   'Unités': 'Units', 'Marqueurs': 'Markers', 'Cartes et panneaux': 'Maps and panels',
+  'Tables QRDC sous la carte': 'QRDC charts below the map',
   'Rechercher un pion…': 'Search counters…', 'Rechercher un pion': 'Search counters',
   'Piège Axis': 'Axis Booby Trap', 'Piège Allied': 'Allied Booby Trap',
   'Pile': 'Stack', 'Palette': 'Counters', 'Dés': 'Dice',
@@ -1033,6 +1044,7 @@ async function chargerPartie(texte, label, annexes){
     + boards.map(b => b.name + (b.reversed ? ' (retourné)' : '')).join(', '));
   await _renderBoards(boards);
   importerPions(texte, label, annexes);
+  poserTables();
   return true;
 }
 
@@ -1834,6 +1846,7 @@ async function _renderBoards(boards){
 
   const mi = document.getElementById('mapInner');
   mi.querySelectorAll('.boardLayer').forEach(e => e.remove());
+  _oublierTables();
   document.getElementById('vide').style.display = 'none';
 
   const {totalW, totalH} = _layoutBoards(boards);
@@ -1856,6 +1869,9 @@ async function _renderBoards(boards){
   _setMapSize(Math.round((totalW + BOARD_MARGIN*2) * SC), Math.round((totalH + BOARD_MARGIN*2) * SC));
   _buildHexTable(boards);
   const M = Math.round(BOARD_MARGIN * SC);
+  // Zone de la carte : l'emprise des boards affichés, sans la marge.
+  _empriseBoards = {x: M, y: M, w: Math.round(totalW * SC), h: Math.round(totalH * SC)};
+  _mapBase = {w: _mapW, h: _mapH};
   let ok = 0; const fail = [];
 
   await _runLimited(noms, n => _fetchBoardImage(n));
@@ -1938,7 +1954,10 @@ function zoomFit(){
   if(!_mapW) return;
   const wrap = document.getElementById('mapWrap');
   _zoomAuto = true;
-  try { setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/_mapH)); } finally { _zoomAuto = false; }
+  // Les tables restent sous la zone ajustée : on y descend en défilant.
+  const t = rectTables();
+  const h = t ? Math.min(_mapH, t.y) : _mapH;
+  try { setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/h)); } finally { _zoomAuto = false; }
   _zoomManuel = false;
   wrap.scrollLeft = 0; wrap.scrollTop = 0;
 }
@@ -8268,14 +8287,23 @@ function _brancherCouches(){
   });
 }
 
-function _etendreCarte(){
+// reduire : repartir de la taille des boards, pour que la carte se resserre
+// aussi (tables masquées, onglet plus petit).
+function _etendreCarte(reduire){
   let w = _mapW, h = _mapH;
+  if(reduire && _mapBase){ w = _mapBase.w; h = _mapBase.h; }
   for(const p of vivants()){
     // Une carte de scénario ou un panneau de notes déborde de son centre.
     w = Math.max(w, Math.ceil(p.x * SC + (p.larg || 0) / 2 + (p.decX || 0) * SC + 80));
     h = Math.max(h, Math.ceil(p.y * SC + (p.haut || 0) / 2 + (p.decY || 0) * SC + 80));
   }
-  if(w > _mapW || h > _mapH) _setMapSize(w, h);
+  // Les tables QRDC, et autant de marge sous elles que d'écart au-dessus.
+  const t = rectTables();
+  if(t){
+    w = Math.max(w, t.x + t.w + Math.round(ECART_TABLES * SC));
+    h = Math.max(h, t.y + t.h + Math.round(ECART_TABLES * SC));
+  }
+  if(reduire ? w !== _mapW || h !== _mapH : w > _mapW || h > _mapH) _setMapSize(w, h);
 }
 
 // ═══ IMPORT ═══
@@ -9156,6 +9184,7 @@ function deplacer(liste, x, y){
   // Un pion invisible pour moi (HIP adverse) ne part jamais avec les miens.
   liste = liste.filter(p => !p.cache);
   if(!liste.length) return;
+  if(surTables(x, y)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien déplacé'); return; }
   _avantAction();
   const pos = positionDepot(x, y);
   const kArr = pos.x + ',' + pos.y;
@@ -10522,6 +10551,7 @@ function poserDepuisPalette(x, cx, cy){
   if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le pion doit rejoindre une carte VASL.'); return; }
   const def = developperDefinition(x.cmd);
   if(!def){ chatLog(`⚠️ ${x.n} : définition VASSAL illisible`); return; }
+  if(surTables(cx, cy)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien posé'); return; }
   const pos = positionDepot(cx, cy);
   const p = poserTraits(def.T, def.S, pos.x, pos.y, null, 0);
   selectionnerPile(cle(p));
@@ -13102,7 +13132,22 @@ async function _chargerBDD(){
     bottom: lireTouche(sm.getAttribute('bottom')) || METRIQUES_DEFAUT.bottom,
     up: lireTouche(sm.getAttribute('up')) || METRIQUES_DEFAUT.up,
     down: lireTouche(sm.getAttribute('down')) || METRIQUES_DEFAUT.down} : null;
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, version: mod.getAttribute('version')};
+  // Fenêtre QRDC (ChartWindow) : les tables de référence, en onglets.
+  // Chart : une image du module ; TabWidget : des onglets ; PanelWidget :
+  // ses enfants côte à côte, ou l'un sous l'autre (vert).
+  let qid = 0;
+  const lireTables = el => {
+    const t = el.tagName.split('.').pop();
+    const n = {id: qid++, t, nom: el.getAttribute('entryName') || el.getAttribute('chartName') || '',
+               vert: el.getAttribute('vert') !== 'false', enfants: []};
+    if(t === 'Chart') n.fichier = el.getAttribute('fileName');
+    for(const c of el.children) if(/(Widget|\.Chart)$/.test(c.tagName)) n.enfants.push(lireTables(c));
+    return n;
+  };
+  const fenCharts = [...mod.children].filter(w => w.tagName.endsWith('.ChartWindow'));
+  const cw = fenCharts.find(w => w.getAttribute('name') === 'QRDC') || fenCharts[0];
+  const qrdc = cw ? lireTables(cw) : null;
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, version: mod.getAttribute('version')};
   rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
@@ -13249,6 +13294,136 @@ function remplirGrille(liste){
     }, {appuiLong: 300}));
   }
   return g;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TABLES QRDC SUR LA CARTE — la fenêtre « QRDC » de VASL (ChartWindow)
+// Ses tables (IFT, CC, TH, TK, Concealment) sont posées sous la zone de
+// la carte, c'est-à-dire sous l'emprise des boards affichés, à trois
+// petits pions d'écart, avec les onglets du module. C'est une couche de
+// l'affichage seulement : rien n'en va dans le .vsav ni au log, et aucun
+// pion ne peut s'y poser. Les pièces déjà posées sous les boards (carte de
+// scénario, unités hors carte) gardent leur place : les tables passent
+// sous elles.
+// ═══════════════════════════════════════════════════════════════
+const ECART_TABLES = 3 * 48;          // trois petits pions, pixels natifs
+let _empriseBoards = null;            // {x, y, w, h} en pixels de #mapInner
+let _mapBase = null;                  // taille de la carte sans les tables
+let _tablesEl = null;
+let _tablesVisibles = _lirePref('aslweb.tables') !== '0';
+const _tablesSel = (() => {
+  try { return new Map(JSON.parse(localStorage.getItem('qrdcSel') || '[]')); } catch(e){ return new Map(); }
+})();
+
+function _oublierTables(){
+  if(_tablesEl) _tablesEl.remove();
+  _tablesEl = null;
+}
+
+async function poserTables(){
+  _oublierTables();
+  if(!_empriseBoards || !_tablesVisibles) return;
+  let bdd;
+  try { bdd = await chargerBDD(); } catch(e){ return; }
+  if(!bdd.qrdc || _tablesEl || !_empriseBoards || !_tablesVisibles) return;
+  const el = document.createElement('div');
+  el.id = 'tablesQRDC';
+  el.className = 'tablesQRDC';
+  el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', 'Tables QRDC');
+  // Sous l'emprise des boards, et sous les pièces déjà posées plus bas.
+  let bas = _empriseBoards.y + _empriseBoards.h;
+  for(const p of vivants()){
+    if(p.cache || p.y * SC < bas) continue;
+    bas = Math.max(bas, Math.ceil(p.y * SC + (p.haut || p.sz || 48 * SC) / 2 + (p.decY || 0) * SC));
+  }
+  el.style.left = _empriseBoards.x + 'px';
+  el.style.top = Math.round(bas + ECART_TABLES * SC) + 'px';
+  _tablesEl = el;
+  _dessinerTables();
+  document.getElementById('mapInner').appendChild(el);
+  // Les images arrivent après coup : la carte s'agrandit à leur mesure.
+  if(window.ResizeObserver) new ResizeObserver(() => {
+    if(_tablesEl === el) _etendreCarte(true);
+  }).observe(el);
+  _etendreCarte();
+}
+
+function _dessinerTables(){
+  if(!_tablesEl || !_bdd || !_bdd.qrdc) return;
+  _tablesEl.replaceChildren();
+  rendreTable(_bdd.qrdc, _tablesEl);
+}
+
+// Comme les widgets de la palette : seule la branche choisie est dessinée,
+// et le choix de chaque onglet est retenu d'une visite à l'autre.
+function rendreTable(n, boite){
+  if(n.t === 'Chart'){
+    const im = document.createElement('img');
+    im.alt = im.title = n.nom;
+    im.draggable = false;
+    // À l'échelle des boards : un pixel de l'image vaut un pixel de la carte.
+    im.addEventListener('load', () => { im.style.width = Math.round(im.naturalWidth * SC) + 'px'; });
+    chargerImage(n.fichier).then(u => { if(u) im.src = u; });
+    boite.appendChild(im);
+    return;
+  }
+  if(n.t === 'TabWidget' && n.enfants.length){
+    const sel = Math.min(_tablesSel.get(n.id) || 0, n.enfants.length - 1);
+    const o = document.createElement('div');
+    o.className = 'qOnglets';
+    o.setAttribute('role', 'tablist');
+    n.enfants.forEach((w, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = i === sel ? 'actif' : '';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', i === sel);
+      b.textContent = w.nom || '—';
+      // Le bouton garde son appui : la carte ne le capture pas pour défiler.
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      b.addEventListener('click', () => {
+        _tablesSel.set(n.id, i);
+        try { localStorage.setItem('qrdcSel', JSON.stringify([..._tablesSel])); } catch(e){}
+        _dessinerTables();
+      });
+      o.appendChild(b);
+    });
+    const z = document.createElement('div');
+    z.className = 'qContenu';
+    rendreTable(n.enfants[sel], z);
+    boite.append(o, z);
+    return;
+  }
+  // PanelWidget, ChartWindow : les enfants dans l'ordre du module.
+  const z = document.createElement('div');
+  z.className = 'qPanneau' + (n.vert ? ' vert' : '');
+  for(const e of n.enfants) rendreTable(e, z);
+  boite.appendChild(z);
+}
+
+// Rectangle des tables, en pixels de #mapInner, ou null sans tables.
+function rectTables(){
+  const e = _tablesEl;
+  if(!e || !e.isConnected) return null;
+  return {x: e.offsetLeft, y: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight};
+}
+
+// Point VASL natif sur les tables : aucun pion ne s'y pose.
+function surTables(x, y){
+  const r = rectTables();
+  return !!r && _rectContient({x: r.x, y: r.y, width: r.w, height: r.h}, x * SC, y * SC);
+}
+
+function basculerTables(){
+  _tablesVisibles = !_tablesVisibles;
+  try { localStorage.setItem('aslweb.tables', _tablesVisibles ? '1' : '0'); } catch(e){}
+  if(_tablesVisibles) poserTables();
+  else {
+    _oublierTables();
+    _etendreCarte(true);
+  }
+  rafraichirActions(['tables']);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -15008,6 +15183,7 @@ const ACTIONS = {
   des:      {lib: 'Dés', court: 'Dés', ico: '🎲', faire: () => montrerOnglet('des')},
   verrou:   {lib: 'Verrou des pions (un glissé déplace la carte)', court: 'Verrou', ico: '🔒',
              coche: () => _verrouPions, faire: () => basculerVerrou()},
+  tables:   {ico: '📊', lib: 'Tables QRDC sous la carte', court: 'QRDC', coche: () => _tablesVisibles, faire: basculerTables},
   effectif: {ico: '🔢', lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
   couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
@@ -15263,7 +15439,7 @@ const DISPOSITIONS = {
       'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'brises', 'sniper', '-', 'infoScenario'],
       // Masqués à la demande : sélection des cartes et panneaux, effectif
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
-      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', '-', 'couche_unite', 'couche_marqueur',
+      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
                     '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
       'Outils':    ['los', 'losMuet'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
@@ -15482,7 +15658,7 @@ function placerColonne(c){
 // raccourcis ; du choix de l'affichage ne reste que l'affichage ordinateur,
 // dans la feuille seulement. Les actions restent définies (menu Affichage du
 // PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
-const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', '-', 'reseau', 'utilisateur', '-',
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
