@@ -9859,6 +9859,9 @@ const _nomsDeplaces = avant => avant.filter(a => !a.p.cache).map(a => nomRapport
 function _completerLigneMouvement(texte, avant){
   const j = document.getElementById('journal');
   const l = j && [...j.querySelectorAll('.rap')].reverse().find(x => / moves /.test(x.textContent));
+  // Ligne écrite ici avec son décompte (« … * 2 MF (cumul 4 MF) ») :
+  // elle le porte déjà, il n'est pas répété.
+  if(l && !l.dataset.mvt && /\(cumul [^)]*\)\s*$/.test(l.textContent)){ l.dataset.mvt = '1'; return; }
   if(l && !l.dataset.mvt){
     l.dataset.mvt = '1';
     l.appendChild(document.createTextNode(' ' + texte));
@@ -13561,9 +13564,11 @@ function lancerdr(cat){
   return {d};
 }
 
-// VASSAL encode le texte du chat en entités HTML.
+// ASLDiceBot envoie le jet tel quel, « <joueur> » compris : ASLChatter
+// y cherche le joueur entre < et >. Échappé, le jet n'est pas reconnu
+// et VASL affiche « *2~null ... » à sa place.
 function _publierJet(msg){
-  _logCmd('CHAT' + msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+  _logCmd('CHAT' + msg);
   afficherChat(msg);
 }
 
