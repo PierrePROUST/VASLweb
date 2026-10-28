@@ -58,6 +58,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `log-coups.js` | .vlog écrit puis relu : un D/ dont l'état finit par une contre-oblique, dernier de son coup, est mis entre apostrophes ; deux déplacements de suite restent deux coups |
 | `couches-noms.js` | Couches dont l'image est un nom nu (« mofan », « mober », « mohro » d'un module plus ancien) : Fanatic, Berserk et Heroic dessinés et cumulés |
 | `munitions.js` | Munitions épuisées d'un véhicule (Sherman III(a)) : label « $finalammo$ » calculé, s / WP barrés en rouge, Toggle On/Off |
+| `qrdc.js` | Tables QRDC (ChartWindow de VASL). En tactile, sous la zone de la carte : trois petits pions sous les boards, onglets du module au doigt (CC, Vehicle TK > HEAT), déplacement et pose refusés sur les tables, rien dans le `.vsav`, masquage ; au PC, rien sur la carte, fenêtre flottante à onglets, déplacée par son titre, fermée par ✕ |
 | `page-html.js` | Page HTML d'un label (« HTML Placeholder », VASL Information Tables) : dessinée à l'échelle de Swing (×1,3), au fond sous le pion posé dans une case, logos de nationalité remplacés par les marqueurs de tour VASL, coins de renfort, ni script ni `onerror`, feuille de style cloisonnée |
 | `insignes.js` | Images incluses d'un pion SVG (silhouette et insigne de classe : runes SS…) toutes intégrées, aucun chemin relatif laissé |
 | `svg-webkit.js` | Pions redessinés trois fois quand le `naturalWidth` d'une image affichée vaut sa taille à l'écran (comme sous WebKit : Safari, Firefox iOS) : leur taille ne change pas |
