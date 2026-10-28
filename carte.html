@@ -7626,17 +7626,41 @@ async function _chargerImage(path){
 // Image d'un overlay déplaçable de l'extension « VASL Overlays » : les
 // pièces y nomment l'image d'un overlay d'hexagones (« ovrst3c.gif » :
 // overlay st3, orientation c), absente des images du module. On la prend
-// dans l'archive de l'overlay (boards/bdFiles/overlays/ovrST). La variante
-// enneigée de l'extension (« ovrst3c-s.png ») n'y est pas : l'image
-// ordinaire la remplace.
+// dans l'archive de l'overlay (boards/bdFiles/overlays/ovrST), avec deux
+// différences relevées sur une partie VASL (St3, niveau c) :
+// - l'extension recadre ses images sur leurs pixels opaques, et VASSAL
+//   centre l'image sur la pièce : l'image de l'archive, avec ses marges,
+//   tombait jusqu'à un demi-hexagone à côté ;
+// - ses six orientations commencent deux crans plus loin que celles de
+//   l'archive (c de l'extension = e de l'archive), dans le même sens.
+// La variante enneigée de l'extension (« ovrst3c-s.png ») n'est pas dans
+// l'archive : l'image ordinaire la remplace.
 async function _imageArchiveOverlay(path){
-  const m = /^ovr([a-z0-9]+[a-f])(-s)?\.(gif|png)$/i.exec(path.split('/').pop());
+  const m = /^ovr([a-z0-9]+)([a-f])(-s)?\.(gif|png)$/i.exec(path.split('/').pop());
   if(!m) return null;
   try {
     const nom = m[1].toLowerCase();
-    const a = await chargerArchiveOverlay(archiveOverlay(nom.slice(0, -1)));
-    const f = _fichier(a.files, imageOverlay(nom));
-    return f ? URL.createObjectURL(new Blob([f], {type: 'image/gif'})) : null;
+    const a = await chargerArchiveOverlay(archiveOverlay(nom));
+    const LETTRES = 'abcdef';
+    const six = [...LETTRES].every(l => _fichier(a.files, imageOverlay(nom + l)));
+    const l = six ? LETTRES[(LETTRES.indexOf(m[2].toLowerCase()) + 2) % 6] : m[2].toLowerCase();
+    const f = _fichier(a.files, imageOverlay(nom + l));
+    if(!f) return null;
+    const bmp = await createImageBitmap(new Blob([f], {type: 'image/gif'}));
+    const cv = document.createElement('canvas');
+    cv.width = bmp.width; cv.height = bmp.height;
+    const g = cv.getContext('2d');
+    g.drawImage(bmp, 0, 0);
+    const px = g.getImageData(0, 0, cv.width, cv.height).data;
+    let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1;
+    for(let y = 0; y < cv.height; y++) for(let x = 0; x < cv.width; x++)
+      if(px[(y * cv.width + x) * 4 + 3]){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+    if(x1 < 0) return null;
+    const out = document.createElement('canvas');
+    out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+    out.getContext('2d').drawImage(cv, -x0, -y0);
+    const blob = await new Promise(f => out.toBlob(f, 'image/png'));
+    return blob ? URL.createObjectURL(blob) : null;
   } catch(e){
     return null;
   }

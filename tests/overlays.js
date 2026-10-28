@@ -70,8 +70,8 @@ const ST3 = "+/1790710308542/hide;79,130;Opaque;;player:;0.5;;false\timmob;c;I;R
   await pg.evaluate(() => basculerCouche('overlay'));
   // Sauvegarde et relecture : les overlays reviennent sur leur couche.
   // S'y ajoute un ruisseau St3 de l'extension VASL Overlays, tel qu'une
-  // partie VASL l'écrit : son image « ovrst3c.gif » vient de l'archive
-  // de l'overlay ovrST.
+  // partie VASL l'écrit : son image « ovrst3c.gif » est l'orientation e
+  // de l'archive ovrST, recadrée sur ses pixels opaques (422×744).
   const r2 = await pg.evaluate(async st3 => {
     const att = (n = 800) => new Promise(f => setTimeout(f, n));
     const sav = etatPartie();
