@@ -6097,9 +6097,18 @@ const _nouveauFil = (mode, c0, c1) => ({mode, c0, c1, ctrl0: false, ctrl1: false
   m: null, complet: false, src: null, tgt: null, auxS: false, auxT: false,
   sl: 0, tl: 0, res: null, texte: '', compte: 0, de: '', vers: ''});
 
-// Au doigt, le relâché ne termine pas le fil : il reste ancré, avec un
-// panneau pour les niveaux, la validation et l'annulation ; un nouvel
-// appui ou glissé sur la carte déplace la cible. À la souris, rien ne change.
+// Au doigt, la visée se fait en deux temps, chacun avec la loupe dès
+// l'appui : le premier appui (ou glissé) vise la source, posée au relâché ;
+// le fil reste alors ancré, avec un panneau pour les niveaux, la validation
+// et l'annulation, et chaque nouvel appui ou glissé sur la carte vise la
+// cible, posée au relâché. Un deuxième doigt pendant une visée l'abandonne
+// et pince la carte. À la souris, rien ne change : on glisse de la source à
+// la cible.
+let _doigtFil = null;               // {id, x, y, abandonner} : visée au doigt en cours
+function _suivreDoigtFil(e, abandonner){
+  _doigtFil = {id: e.pointerId, x: e.clientX, y: e.clientY, abandonner};
+}
+function _finDoigtFil(id){ if(_doigtFil && _doigtFil.id === id) _doigtFil = null; }
 function commencerFil(e){
   const c = clientVersCarte(e.clientX, e.clientY);
   if(!c) return;
@@ -6109,18 +6118,31 @@ function commencerFil(e){
   const bouge = ev => {
     if(ev.pointerId !== id) return;
     ev.preventDefault();
+    if(doigt){
+      // La source suit le doigt.
+      _doigtFil.x = ev.clientX; _doigtFil.y = ev.clientY;
+      f.c0 = f.c1 = clientVersCarte(ev.clientX, ev.clientY) || f.c0;
+      if(f.m) _poserSource(f);
+      dessinerFil();
+      _loupeFil(ev, false);
+      return;
+    }
     f.c1 = clientVersCarte(ev.clientX, ev.clientY) || f.c1;
     f.ctrl1 = ev.ctrlKey;
     if(f.m) _poserCible(f);
     dessinerFil();
-    _loupeFil(ev, !doigt);
+    _loupeFil(ev, true);
   };
-  const fin = ev => {
-    if(ev.pointerId !== id) return;
+  const detacher = () => {
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
+    _finDoigtFil(id);
     cacherLoupe();
+  };
+  const fin = ev => {
+    if(ev.pointerId !== id) return;
+    detacher();
     if(doigt && _fil === f){ f.ancre = true; panneauFil(f); return; }
     if(ev.type === 'pointerup') f.lache = true;
     if(f.m || f.pret) terminerFil(f);
@@ -6128,6 +6150,10 @@ function commencerFil(e){
   document.addEventListener('pointermove', bouge, true);
   document.addEventListener('pointerup', fin, true);
   document.addEventListener('pointercancel', fin, true);
+  if(doigt){
+    _suivreDoigtFil(e, () => { detacher(); if(_fil === f) _effacerFil(); });
+    _loupeFil(e, false);
+  }
   carteLOS().then(({map, complet}) => {
     if(_fil !== f) return;
     f.m = map; f.complet = complet; f.pret = true;
@@ -6135,6 +6161,8 @@ function commencerFil(e){
     if(map) _poserSource(f);
     if(map && (f.c1.x !== f.c0.x || f.c1.y !== f.c0.y)) _poserCible(f);
     dessinerFil();
+    // Doigt encore posé : la loupe nomme la source.
+    if(doigt && _doigtFil && _doigtFil.id === id) _loupeFil({clientX: _doigtFil.x, clientY: _doigtFil.y}, false);
     if(f.ancre) panneauFil(f);
     else if(f.lache) terminerFil(f);
   });
@@ -6144,8 +6172,13 @@ function commencerFil(e){
 // Fil ancré : la cible suit un nouvel appui ou glissé sur la carte.
 function deplacerCibleFil(e){
   const f = _fil, id = e.pointerId;
+  const doigt = !!e.pointerType && e.pointerType !== 'mouse';
+  // Cible d'avant, rendue si un pincement abandonne la visée.
+  const avant = {c1: f.c1, tgt: f.tgt, tgtBrut: f.tgtBrut, auxT: f.auxT, tl: f.tl, vers: f.vers,
+                 compte: f.compte, res: f.res, surOverlay: f.surOverlay};
   const suivre = ev => {
     if(ev.pointerId !== id) return;
+    if(doigt){ _doigtFil.x = ev.clientX; _doigtFil.y = ev.clientY; }
     const c = clientVersCarte(ev.clientX, ev.clientY);
     if(!c) return;
     f.c1 = c; f.ctrl1 = false;
@@ -6154,14 +6187,23 @@ function deplacerCibleFil(e){
     _loupeFil(ev, !ev.pointerType || ev.pointerType === 'mouse');
     panneauFil(f);
   };
-  const fin = ev => {
-    if(ev.pointerId !== id) return;
+  const detacher = () => {
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
+    _finDoigtFil(id);
     cacherLoupe();
   };
+  const fin = ev => { if(ev.pointerId === id) detacher(); };
   const bouge = ev => { ev.preventDefault(); suivre(ev); };
+  if(doigt) _suivreDoigtFil(e, () => {
+    detacher();
+    if(_fil !== f) return;
+    Object.assign(f, avant);
+    dessinerFil();
+    if(f.compte) _envoyerFil(f, false, true);
+    panneauFil(f);
+  });
   suivre(e);
   document.addEventListener('pointermove', bouge, true);
   document.addEventListener('pointerup', fin, true);
@@ -6175,7 +6217,8 @@ function _loupeFil(ev, hexSeul){
   const f = _fil;
   const c = f && clientVersCarte(ev.clientX, ev.clientY);
   if(!c){ cacherLoupe(); return; }
-  const texte = f.compte ? f.vers : '';
+  // Le lieu visé : la cible, ou la source tant qu'il n'y a pas de cible.
+  const texte = f.src ? f.vers : '';
   const a = hexSeul ? Object.assign({}, ancragePlusProche(c.x, c.y) || c, {texte}) : {x: c.x, y: c.y, label: texte};
   dessinerLoupe(ev.clientX, ev.clientY, a, null, hexSeul, (g, k) => {
     for(const t of document.querySelectorAll('#filLOS line')){
@@ -6531,6 +6574,14 @@ function _brancherFil(){
   // Pris avant les pions et le panoramique.
   wrap.addEventListener('pointerdown', e => {
     if(!_filArme || e.button > 0) return;
+    // Deuxième doigt pendant une visée : elle est abandonnée, et les deux
+    // doigts pincent la carte (le premier est rendu au panoramique).
+    if(_doigtFil && e.pointerId !== _doigtFil.id && e.pointerType && e.pointerType !== 'mouse'){
+      const d = _doigtFil;
+      d.abandonner();
+      _pointeursCarte.set(d.id, {x: d.x, y: d.y, pion: false, surPion: false, x0: d.x, y0: d.y, t0: Date.now(), btn: 0});
+      return;
+    }
     if(_fil && _fil.ancre && !_fil.distant){ e.preventDefault(); e.stopPropagation(); deplacerCibleFil(e); return; }
     if(_fil) return;
     e.preventDefault(); e.stopPropagation();
