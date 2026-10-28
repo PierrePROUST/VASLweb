@@ -13544,7 +13544,7 @@ function _annoncesDR(cat, a, b){
 // FP de l'IFT (4 par défaut) et le modificateur du DR, de -6 à +8 (0 par
 // défaut), avec deux cases, Leader et Green. À la validation, le DR est
 // lancé, modifié, puis croisé avec la colonne sur la table A7 ; le
-// résultat part au chat : « FP 4/37 : IFT 7 > PTC », NE pour un « — ».
+// résultat part au chat : « FP 4/37 : (5) + 2 = 7 > PTC », NE pour un « — ».
 // Cowering (A7.9) : un DR original double décale le tir d'une colonne à
 // gauche, de deux si Green (A19.33), d'aucune si un leader le dirige ;
 // sous la colonne 1 FP, sans effet.
@@ -13709,16 +13709,18 @@ function ouvrirIFT(){
 function lancerIFT(col, mod, leader, green){
   const {c, b, total} = lancerDR('IFT');
   const dr = total + mod;
+  // Détail du calcul : « (DR original) ± modificateur = DR final ».
+  const calcul = `(${total}) ${mod < 0 ? '-' : '+'} ${Math.abs(mod)} = ${dr}`;
   const sp = [];
   const cower = c === b && !leader ? (green ? 2 : 1) : 0;
   const colT = col - cower;
   if(cower) sp.push({s: '⇐', c: '#f90',
     t: `Cowering ${cower} column${cower > 1 ? 's' : ''} (A7.9${green ? ', Green A19.33' : ''})`});
   let ligne;
-  if(colT < 0) ligne = `FP ${IFT_COLS[col].fp}/${IFT_COLS[col].mm} : IFT ${dr} > NE`;
+  if(colT < 0) ligne = `FP ${IFT_COLS[col].fp}/${IFT_COLS[col].mm} : ${calcul} > NE`;
   else {
     const fin = _iftCase(dr, colT), orig = _iftCase(total, colT);
-    ligne = `FP ${IFT_COLS[colT].fp}/${IFT_COLS[colT].mm} : IFT ${dr} > ${fin.res === '—' ? 'NE' : fin.res}`;
+    ligne = `FP ${IFT_COLS[colT].fp}/${IFT_COLS[colT].mm} : ${calcul} > ${fin.res === '—' ? 'NE' : fin.res}`;
     for(const k of orig.sym) if(!IFT_SYMB[k].fin) sp.push(IFT_SYMB[k]);
     for(const k of fin.sym) if(IFT_SYMB[k].fin) sp.push(IFT_SYMB[k]);
   }
