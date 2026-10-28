@@ -560,6 +560,7 @@ body.maj .pion.immob{pointer-events:auto}
         <label><input type="checkbox" data-couche="unite"> Unités</label>
         <label><input type="checkbox" data-couche="marqueur"> Marqueurs</label>
         <label><input type="checkbox" data-couche="carte"> Cartes et panneaux</label>
+        <label><input type="checkbox" data-couche="overlay"> Overlays</label>
       </span>
     </div>
     <div id="ongPalette" class="ongCorps" role="tabpanel">
@@ -683,6 +684,7 @@ const EN = {
   'Raccourcis clavier et gestes…': 'Keyboard shortcuts and gestures…',
   'Sélection : unités': 'Selection: units', 'Sélection : marqueurs': 'Selection: markers',
   'Sélection : cartes et panneaux': 'Selection: maps and panels',
+  'Sélection : overlays': 'Selection: overlays',
   'Affichage : automatique': 'Display: automatic', 'Affichage : PC': 'Display: PC',
   'Affichage : tactile': 'Display: touch',
   'Début du log': 'Start of logfile', 'Fin du log': 'End of logfile',
@@ -8201,11 +8203,14 @@ function rendrePile(k, tous){
     p.el.style.left = (r.x + (p.decX || 0) * SC) + 'px';
     p.el.style.top  = (r.y + (p.decY || 0) * SC) + 'px';
     // Une pile dépliée passe au-dessus de ses voisines. Une pièce qui ne
-    // s'empile pas (Fire Lane) se dessine au-dessus de la pile de son
+    // s'empile pas (un tunnel) se dessine au-dessus de la pile de son
     // hexagone, comme la pièce posée en dernier dans VASSAL.
     // Une carte, un panneau ou une page reste au fond, même s'il ne
     // s'empile pas : les pions posés dans ses cases passent par-dessus.
-    p.el.style.zIndex = p.fond ? 2 + i : p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : 10) + i;
+    // Un overlay déplaçable se pose sur le terrain, au-dessus des cartes et
+    // sous tous les pions (Fire Lane compris) ; entre overlays, le dernier
+    // posé est dessus.
+    p.el.style.zIndex = p.fond ? 2 + i : p.couche === 'overlay' ? 6 : p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : 10) + i;
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
@@ -8215,7 +8220,7 @@ function rendrePile(k, tous){
   if(_liens.size) _planifierLiens();
   // Les pièces non empilées posées au même endroit restent au-dessus.
   if(s.length && !s[0].seul)
-    for(const q of vivants()) if(q.seul && !q.fond && !q.cache && q.x === s[0].x && q.y === s[0].y)
+    for(const q of vivants()) if(q.seul && !q.fond && !q.cache && q.couche !== 'overlay' && q.x === s[0].x && q.y === s[0].y)
       q.el.style.zIndex = 10 + _hauteurSous(q);
 }
 // Hauteur de la pile ordinaire sur laquelle une pièce non empilée est posée.
@@ -8277,8 +8282,9 @@ function _viderDecors(){
 // La carte de scénario et les panneaux de VASL Tools couvrent de grandes
 // zones du terrain : un clic destiné à la carte les prenait, ou un pion
 // voisin. Chaque famille peut donc être retirée de la sélection ; ses
-// pièces restent affichées mais ne répondent plus au clic.
-const COUCHES_SEL = {unite: true, marqueur: true, carte: false};
+// pièces restent affichées mais ne répondent plus au clic. Les overlays
+// déplaçables font partie du terrain : en jeu, le clic les traverse.
+const COUCHES_SEL = {unite: true, marqueur: true, carte: false, overlay: false};
 try {
   const m = JSON.parse(localStorage.getItem('couchesSel') || 'null');
   if(m) for(const k in COUCHES_SEL) if(typeof m[k] === 'boolean') COUCHES_SEL[k] = m[k];
@@ -8289,7 +8295,9 @@ function coucheDe(d){
   // Le « ? » de dissimulation voyage avec les unités qu'il couvre.
   if(d.masque || /qmark/i.test(d.img)) return 'unite';
   const dir = d.img.includes('/') ? d.img.split('/')[0] : '';
-  return !dir || /^(MS|ML|MC|sh|DO|tables|CIDs)$/.test(dir) ? 'marqueur' : 'unite';
+  // Images des fenêtres Draggable Overlays (DO) et Deluxe Draggable (DD).
+  if(/^(DO|DD)$/.test(dir)) return 'overlay';
+  return !dir || /^(MS|ML|MC|sh|tables|CIDs)$/.test(dir) ? 'marqueur' : 'unite';
 }
 
 function _brancherCouches(){
@@ -13050,7 +13058,9 @@ function appuiSurPile(k){
 // ═══════════════════════════════════════════════════════════════
 const VASL_BUILDFILE_URL =
   'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/buildFile';
-const FENETRES_PALETTE = ['VASL Counters', '?'];
+// Les deux fenêtres d'overlays déplaçables (routes, murs, décombres, FFE…)
+// suivent les pions, dans l'ordre du module.
+const FENETRES_PALETTE = ['VASL Counters', 'Draggable Overlays', 'Deluxe Draggable', '?'];
 let _bdd = null, _bddPromesse = null;
 
 function chargerBDD(){
@@ -15260,6 +15270,7 @@ const ACTIONS = {
   couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
   couche_marqueur: {ico: '🏷', lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
   couche_carte:    {ico: '📋', lib: 'Sélection : cartes et panneaux', coche: () => COUCHES_SEL.carte, faire: () => basculerCouche('carte')},
+  couche_overlay:  {ico: '🛣', lib: 'Sélection : overlays', coche: () => COUCHES_SEL.overlay, faire: () => basculerCouche('overlay')},
   profil_auto:     {ico: '🔄', lib: 'Affichage : automatique', coche: () => _profilChoisi === 'auto', faire: () => choisirProfil('auto')},
   coteColonne:     {ico: '⇄', court: 'Côté', lib: () => _colonne === 'droite' ? 'Placer la barre d\'icônes à gauche' : 'Placer la barre d\'icônes à droite',
                     faire: () => placerColonne(_colonne === 'droite' ? 'gauche' : 'droite')},
@@ -15511,7 +15522,7 @@ const DISPOSITIONS = {
       // Masqués à la demande : sélection des cartes et panneaux, effectif
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
       'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
-                    '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
+                    'couche_overlay', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
       'Outils':    ['los', 'losMuet'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
@@ -15729,7 +15740,9 @@ function placerColonne(c){
 // raccourcis ; du choix de l'affichage ne reste que l'affichage ordinateur,
 // dans la feuille seulement. Les actions restent définies (menu Affichage du
 // PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
-const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', '-', 'reseau', 'utilisateur', '-',
+// La sélection des overlays reste : sans elle, un overlay posé ne pourrait
+// plus être ni déplacé ni retiré au doigt.
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'couche_overlay', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
