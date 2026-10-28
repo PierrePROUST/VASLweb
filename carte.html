@@ -6113,7 +6113,7 @@ function commencerFil(e){
     f.ctrl1 = ev.ctrlKey;
     if(f.m) _poserCible(f);
     dessinerFil();
-    if(doigt) _loupeFil(ev);
+    _loupeFil(ev, !doigt);
   };
   const fin = ev => {
     if(ev.pointerId !== id) return;
@@ -6151,7 +6151,7 @@ function deplacerCibleFil(e){
     f.c1 = c; f.ctrl1 = false;
     if(f.m) _poserCible(f);
     dessinerFil();
-    if(ev.pointerType && ev.pointerType !== 'mouse') _loupeFil(ev);
+    _loupeFil(ev, !ev.pointerType || ev.pointerType === 'mouse');
     panneauFil(f);
   };
   const fin = ev => {
@@ -6168,14 +6168,16 @@ function deplacerCibleFil(e){
   document.addEventListener('pointercancel', fin, true);
 }
 
-// Au doigt, le doigt cache la cible : la loupe de dépôt montre, au-dessus,
-// le point visé, le fil et le lieu ciblé.
-function _loupeFil(ev){
+// Pendant le tracé, la loupe de dépôt montre le fil et le lieu ciblé : au
+// doigt, qui cache la cible, un disque au-dessus centré sur le point visé ;
+// à la souris, l'hexagone survolé seul, à côté du curseur.
+function _loupeFil(ev, hexSeul){
   const f = _fil;
   const c = f && clientVersCarte(ev.clientX, ev.clientY);
   if(!c){ cacherLoupe(); return; }
-  const lib = f.compte ? f.vers : '';
-  dessinerLoupe(ev.clientX, ev.clientY, {x: c.x, y: c.y, label: lib}, null, false, (g, k) => {
+  const texte = f.compte ? f.vers : '';
+  const a = hexSeul ? Object.assign({}, ancragePlusProche(c.x, c.y) || c, {texte}) : {x: c.x, y: c.y, label: texte};
+  dessinerLoupe(ev.clientX, ev.clientY, a, null, hexSeul, (g, k) => {
     for(const t of document.querySelectorAll('#filLOS line')){
       g.strokeStyle = t.getAttribute('stroke'); g.lineWidth = 3 / k;
       g.beginPath();
@@ -11954,7 +11956,8 @@ function _hautHexAu(x, y){
 // À la souris (hexSeul), la loupe ne montre que l'hexagone survolé, à sa
 // forme, à côté du curseur.
 const LOUPE_HEX = 150;
-// surcouche(g) : dessin en plus, en pixels de #mapInner (le fil de la LOS).
+// surcouche(g) : dessin en plus, en pixels de #mapInner (le fil de la LOS) ;
+// a.texte, s'il est donné, remplace a.label sous la loupe.
 function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
   let l = document.getElementById('loupe');
   if(!a){ cacherLoupe(); return; }
@@ -12004,6 +12007,7 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
     try { g.drawImage(p.face, L, T, W, W); } catch(e){}
   }
   if(hexSeul){
+    if(surcouche) surcouche(g, k);
     // Le bord de l'hexagone, et l'ancrage visé s'il est sur un côté.
     g.restore();
     g.strokeStyle = '#d9a441'; g.lineWidth = 3 / k;
@@ -12020,8 +12024,9 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
     g.beginPath(); g.arc(cv.width / 2, cv.height / 2, hex * k * 0.35, 0, 2 * Math.PI); g.stroke();
   }
   const lib = l.querySelector('span');
-  lib.textContent = a.label || '';
-  lib.style.display = a.label ? '' : 'none';
+  const texte = a.texte !== undefined ? a.texte : a.label;
+  lib.textContent = texte || '';
+  lib.style.display = texte ? '' : 'none';
   if(hexSeul){
     // À droite du curseur, un peu au-dessus ; à gauche faute de place.
     let x = cx + 28, y = cy - d - 12;

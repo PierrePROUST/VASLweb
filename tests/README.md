@@ -75,6 +75,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `orphelin.js` | Un seul éventail à la fois (double appui, verrou des pions) ; la croix le ferme |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
 | `loupepc.js` | PC : pendant un glissé à la souris, la loupe ne montre que l'hexagone survolé |
+| `loupelospc.js` | LOS à la souris : la loupe montre l'hexagone survolé avec le fil, et disparaît au relâché |
 | `nav.js` | Colonne d'icônes du téléphone (à droite) : ses icônes (toutes celles de Plus comprises, aucune vide), défilement au doigt, carte sans pions, Remove all |
 | `chat0.js` | Journal non ramené en bas, profil gelé pendant la saisie |
 | `chat2.js` | Relecture d'un log de 50 messages chat compact ouvert ; message reçu en vue Carte ; Retour |
