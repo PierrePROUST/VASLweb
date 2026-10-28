@@ -67,7 +67,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-escaliers.js` | Board 1 : arrivée au rez-de-chaussée sous le marqueur d'étage (B23.421) ; escalier imprimé (1U3), absent (1U2, B23.23), maison sans étage (1D4, B23.21), maison à deux niveaux 1F1-G1 (même étage : 2 MF), toit (B23.8) |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
-| `loupelos.js` | LOS au doigt : la loupe montre le fil et le lieu visé, et disparaît au relâché (fil ancré) |
+| `loupelos.js` | LOS au doigt en deux temps : source puis cible, chacune avec la loupe dès l'appui et posée au relâché ; un deuxième doigt pince la carte |
 | `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
 | `tabtel.js` | Tablette et téléphone : même disposition, dés dans la colonne d'icônes, aperçu du chat sur deux lignes avec les jets |
 | `fermer.js` | Téléphone : la pile se ferme d'un appui à côté (zoom « Ajuster » compris) ou par la croix rouge |
