@@ -33,7 +33,7 @@ button:disabled{opacity:.4;cursor:default}
 /* ── Interface : menus, barre d'icônes, panneau à onglets (profil PC). */
 :root{--cible:28px;--marge-h:env(safe-area-inset-top,0px);--marge-b:env(safe-area-inset-bottom,0px);
   --marge-g:env(safe-area-inset-left,0px);--marge-d:env(safe-area-inset-right,0px)}
-body:is([data-terminal=mobile],[data-terminal=tablette]){--cible:44px}
+body[data-terminal=tactile]{--cible:44px}
 #chromeHaut,#chromeBas,#chromeGauche{flex:none}
 .menus{display:flex;align-items:center;height:calc(26px + var(--marge-h));padding:var(--marge-h) calc(6px + var(--marge-d)) 0 calc(6px + var(--marge-g));background:var(--barre);font-size:13px}
 .menus h1{font-size:13px;margin:0 10px 0 2px;font-weight:600;color:var(--doux);white-space:nowrap}
@@ -250,39 +250,39 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .navGauche .groupeAct{flex-direction:column;gap:2px}
 .navGauche .groupeAct .etiqAct{width:46px;font-size:10px;text-align:center;white-space:normal;color:var(--texte)}
 :root{--railMobile:52px}
-/* Tablette et téléphone : la colonne d'icônes est sur la droite de l'écran. */
-body:is([data-terminal=mobile],[data-terminal=tablette]) #chromeGauche{display:flex;background:var(--barre);order:9}
+/* Affichage tactile : la colonne d'icônes est sur la droite de l'écran. */
+body[data-terminal=tactile] #chromeGauche{display:flex;background:var(--barre);order:9}
 /* … ou à gauche, au choix de l'utilisateur (icône ⇄ de la colonne). */
 body[data-colonne=gauche] #chromeGauche{order:0}
 body[data-colonne=gauche] .navGauche.navBas{padding-left:calc(var(--marge-g) + 2px);padding-right:2px;border-left:none;border-right:1px solid var(--bord)}
-body[data-colonne=gauche]:is([data-terminal=mobile],[data-terminal=tablette]) #cote,
-body[data-colonne=gauche]:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){left:var(--railMobile);right:0}
+body[data-colonne=gauche][data-terminal=tactile] #cote,
+body[data-colonne=gauche][data-terminal=tactile] #bas:not([hidden]){left:var(--railMobile);right:0}
 .navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeCote,body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeJournal,
-body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets button[data-onglet]{display:none}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets{justify-content:flex-end}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #couches{display:none}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #cote{position:absolute;left:0;right:var(--railMobile);bottom:0;z-index:70;width:auto;border-left:none;
+body[data-terminal=tactile] #poigneeCote,body[data-terminal=tactile] #poigneeJournal,
+body[data-terminal=tactile] #coteOnglets button[data-onglet]{display:none}
+body[data-terminal=tactile] #coteOnglets{justify-content:flex-end}
+body[data-terminal=tactile] #couches{display:none}
+body[data-terminal=tactile] #cote{position:absolute;left:0;right:var(--railMobile);bottom:0;z-index:70;width:auto;border-left:none;
   border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.5)}
-body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
-body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pions] #cote{top:0}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){position:fixed;left:0;right:var(--railMobile);z-index:80;display:flex;flex-direction:column;
+body[data-terminal=tactile][data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
+body[data-terminal=tactile][data-vue=pions] #cote{top:0}
+body[data-terminal=tactile] #bas:not([hidden]){position:fixed;left:0;right:var(--railMobile);z-index:80;display:flex;flex-direction:column;
   top:calc(var(--vv-haut,0px) + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
 /* Saisie au doigt : le chat touche le clavier ; la relecture, dessous de
    toute façon, s'efface ; la colonne d'icônes reste. Le chat
-   et les vues du téléphone laissent cette colonne visible. */
+   et les vues de l'affichage tactile laissent cette colonne visible. */
 body:not([data-terminal=pc]).saisie .navBas:not(.navGauche){display:none}
-body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
+body[data-terminal=tactile].saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
 /* Chat compact : une feuille au-dessus du bas de l'écran, la carte visible. */
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
+body[data-terminal=tactile] #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
   border-radius:12px 12px 0 0;border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.55)}
-body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact] #journal{min-height:48px}
+body[data-terminal=tactile].saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
+body[data-terminal=tactile] #bas[data-etat=compact] #journal{min-height:48px}
 .poigneeChat{display:none}
 .filtresChat{display:none;gap:6px;padding:4px 10px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
   background:var(--barre);border-bottom:1px solid var(--bord)}
-body:is([data-terminal=mobile],[data-terminal=tablette]).chatOuvert .filtresChat{display:flex}
+body[data-terminal=tactile].chatOuvert .filtresChat{display:flex}
 .filtresChat .pastilleChat{height:30px;font-size:12px;opacity:.55}
 .filtresChat .pastilleChat.actif{opacity:1;border-color:var(--accent)}
 body:not([data-terminal=pc]) #journal:not([data-filtres~=msg]) > .msg,
@@ -292,9 +292,9 @@ body:not([data-terminal=pc]) #journal:not([data-filtres~=sys]) > .sys:not(.alert
 body:not([data-terminal=pc]) .lieuChat{color:var(--accent);text-decoration:underline;cursor:pointer}
 .chatRapide{display:none;gap:6px;padding:4px 10px 2px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
   background:var(--barre)}
-body:is([data-terminal=mobile],[data-terminal=tablette]).chatOuvert .chatRapide{display:flex}
+body[data-terminal=tactile].chatOuvert .chatRapide{display:flex}
 .pastilleChat{flex:none;height:36px;padding:0 12px;border-radius:18px;white-space:nowrap;font-size:14px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
+body[data-terminal=tactile] #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
 .poigneeChat::after{content:"";position:absolute;left:50%;top:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:#666}
 .apercuChat{display:flex;align-items:center;gap:6px;min-height:40px;padding:2px 4px 2px 10px;background:#232323;
   border-top:1px solid var(--bord);font-size:12px;line-height:17px;color:var(--doux);cursor:pointer}
@@ -311,11 +311,11 @@ body.chatOuvert .apercuChat{display:none}
 .badgeAct{background:#c03a3a;color:#fff;border-radius:9px;padding:0 5px;font:600 11px/16px system-ui,sans-serif;flex:none}
 .act.rail{position:relative}
 .act.rail .badgeAct{position:absolute;top:3px;right:calc(50% - 22px)}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #journal{flex:1;height:auto;font-size:13px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #chatIn{font-size:16px;padding:8px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #palRech{font-size:16px;padding:8px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) .vig{width:56px;height:56px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) .vig .mini{transform:scale(1.25)}
+body[data-terminal=tactile] #journal{flex:1;height:auto;font-size:13px}
+body[data-terminal=tactile] #chatIn{font-size:16px;padding:8px}
+body[data-terminal=tactile] #palRech{font-size:16px;padding:8px}
+body[data-terminal=tactile] .vig{width:56px;height:56px}
+body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
 #mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
   user-select:none;-webkit-user-select:none}
 /* Couche de sélection décochée : ses pièces laissent passer le clic vers
@@ -656,7 +656,7 @@ const EN = {
   'Sélection : unités': 'Selection: units', 'Sélection : marqueurs': 'Selection: markers',
   'Sélection : cartes et panneaux': 'Selection: maps and panels',
   'Affichage : automatique': 'Display: automatic', 'Affichage : PC': 'Display: PC',
-  'Affichage : tablette': 'Display: tablet', 'Affichage : téléphone': 'Display: phone',
+  'Affichage : tactile': 'Display: touch',
   'Début du log': 'Start of logfile', 'Fin du log': 'End of logfile',
   'Coup précédent': 'Step back', 'Coup suivant': 'Step forward',
   'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler':
@@ -745,7 +745,7 @@ const EN = {
   'Partie ouverte. Commencer un nouveau fichier de log ?': 'Game opened. Begin a new logfile?',
   'Relecture terminée. Commencer un nouveau fichier de log ?': 'Replay finished. Begin a new logfile?',
   'Fichier de log': 'Logfile', 'Oui': 'Yes', 'Non': 'No', 'Ne plus demander': 'Don\'t ask again',
-  // Lancer IFT (tablette, téléphone)
+  // Lancer IFT (affichage tactile)
   'Lancer IFT': 'IFT attack', 'Modificateur DR': 'DR modifier',
   'Valider': 'Roll', 'Relancer': 'Roll again'
 };
@@ -12951,13 +12951,13 @@ function armerPose(x){
   armerModeCarte({texte: `♟ ${x.n} — touchez la carte pour poser`, optionMultiple: true,
     multiple: _lirePref('aslweb.posesMultiples') === '1',
     toucher: c => poserDepuisPalette(x, c.x, c.y)});
-  // Sur téléphone, la palette se ferme pour montrer la carte.
+  // En affichage tactile, la palette se ferme pour montrer la carte.
   if(_telLike()) vueMobile('carte');
 }
 
 // ── Verrou des pions : un glissé déplace toujours la carte, jamais une
 // pile ; on déplace alors par « Déplacer… ».
-// Le verrou n'a plus de bouton (masqué sur tablette et téléphone) : on part
+// Le verrou n'a plus de bouton (masqué en affichage tactile) : on part
 // toujours déverrouillé, faute de quoi il resterait pris.
 let _verrouPions = false;
 function basculerVerrou(){
@@ -13754,7 +13754,7 @@ function _annoncesDR(cat, a, b){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// LANCER IFT (tablette, téléphone)
+// LANCER IFT (affichage tactile)
 // Au doigt, le bouton IFT ouvre une feuille à deux roues : la colonne de
 // FP de l'IFT (4 par défaut) et le modificateur du DR, de -6 à +8 (0 par
 // défaut), avec deux cases, Leader et Green. À la validation, le DR est
@@ -14848,7 +14848,7 @@ function _zipWrite(files){
 // ═══════════════════════════════════════════════════════════════
 // INTERFACE — PROFILS DE TERMINAL ET REGISTRE D'ACTIONS
 // Toute action de l'interface est déclarée une seule fois (ACTIONS) ;
-// chaque profil (PC, tablette, téléphone) dit où l'afficher
+// chaque profil (PC, tactile) dit où l'afficher
 // (DISPOSITIONS). rafraichirActions() met à jour tout élément qui porte
 // data-action : libellé, raccourci, état actif, allumé, coché, visible.
 // Les raccourcis clavier ne passent pas par ce registre : leurs écouteurs
@@ -15017,8 +15017,7 @@ const ACTIONS = {
   coteColonne:     {ico: '⇄', court: 'Côté', lib: () => _colonne === 'droite' ? 'Placer la barre d\'icônes à gauche' : 'Placer la barre d\'icônes à droite',
                     faire: () => placerColonne(_colonne === 'droite' ? 'gauche' : 'droite')},
   profil_pc:       {ico: '🖥', lib: 'Affichage : PC', coche: () => _profilChoisi === 'pc', faire: () => choisirProfil('pc')},
-  profil_tablette: {ico: '📟', lib: 'Affichage : tablette', coche: () => _profilChoisi === 'tablette', faire: () => choisirProfil('tablette')},
-  profil_mobile:   {ico: '📱', lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
+  profil_tactile:  {ico: '📱', lib: 'Affichage : tactile', coche: () => _profilChoisi === 'tactile', faire: () => choisirProfil('tactile')},
   // Relecture d'un .vlog : visible seulement s'il reste des coups.
   relecture:{groupe: ['lgDebut', 'lgArr', 'logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
   // Colonne d'icônes du tactile : sans ⏮ ni ◀ ; ⏭ sous l'icône Unmoved,
@@ -15239,8 +15238,8 @@ function rafraichirActions(ids){
 // Le profil se choisit d'après le pointeur et la taille de l'écran, jamais
 // d'après le navigateur annoncé ; le réglage « Affichage » peut l'imposer.
 // Geste par geste, c'est pointerType qui décide (PC portable tactile).
-// Un affichage tablette ou téléphone imposé à la main ne vaut que pour la
-// séance : ces profils n'ont plus le choix de l'affichage pour en revenir.
+// Un affichage tactile imposé à la main ne vaut que pour la séance : ce
+// profil n'a plus le choix de l'affichage pour en revenir.
 let _profilChoisi = _lirePref('aslweb.profil') === 'pc' ? 'pc' : 'auto';
 let _profil = null;
 function detecterProfil(){
@@ -15248,9 +15247,8 @@ function detecterProfil(){
   // Pointeur principal grossier : un écran tactile, même si le navigateur
   // annonce aussi le survol (certains Android, les stylets) ; sinon le
   // téléphone prenait l'interface du PC, sans moyen de fermer ses panneaux.
-  const tactile = matchMedia('(pointer: coarse)').matches;
-  if(!tactile) return 'pc';
-  return Math.min(innerWidth, innerHeight) >= 600 ? 'tablette' : 'mobile';
+  // Tablette et téléphone partagent le même affichage tactile.
+  return matchMedia('(pointer: coarse)').matches ? 'tactile' : 'pc';
 }
 function choisirProfil(p){
   _profilChoisi = p;
@@ -15266,7 +15264,7 @@ const DISPOSITIONS = {
       // Masqués à la demande : sélection des cartes et panneaux, effectif
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
       'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', '-', 'couche_unite', 'couche_marqueur',
-                    '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile'],
+                    '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
       'Outils':    ['los', 'losMuet'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
@@ -15297,7 +15295,7 @@ function appliquerProfil(p){
   if(d.barreDes) haut.appendChild(construireBarre(d.barreDes, 'barreIcones barreDes'));
   construireOnglets(d.panneau || ['pile', 'palette', 'des']);
   if(d.construire) d.construire();
-  // Le tiroir de la tablette et les vues du téléphone partent fermés ; au
+  // Les vues de l'affichage tactile partent fermées ; au
   // PC, le panneau est ouvert, sauf d'abord sur un petit écran.
   if(p === 'pc') basculerCote(ancien ? true : window.innerWidth >= 700);
   rafraichirActions();
@@ -15332,7 +15330,7 @@ function construireOnglets(liste){
     o.appendChild(b);
   }
   // Croix rouge cerclée : partout où le panneau recouvre la carte
-  // (téléphone, tiroir de la tablette, PC sur un écran étroit).
+  // (affichage tactile, PC sur un écran étroit).
   const x = document.createElement('button');
   x.type = 'button'; x.className = 'fermeCote croixFermer';
   x.textContent = '✕'; x.title = 'Fermer le panneau'; x.setAttribute('aria-label', 'Fermer le panneau');
@@ -15342,7 +15340,7 @@ function construireOnglets(liste){
   montrerOnglet(_ongletCote, true);
 }
 function montrerOnglet(n, sansOuvrir){
-  // Pas d'onglet Dés sur tablette ni sur téléphone : SAN et dés ont leur feuille.
+  // Pas d'onglet Dés en affichage tactile : SAN et dés ont leur feuille.
   if(n === 'des' && _profil !== 'pc' && !sansOuvrir){ ouvrirFeuilleDes(); return; }
   if(_telLike() && !sansOuvrir){ vueMobile(n === 'palette' ? 'pions' : 'pile'); return; }
   _ongletCote = n;
@@ -15444,12 +15442,9 @@ function _brancherPoignees(){
     () => ({v: document.getElementById('journal').offsetHeight, sens: (dx, dy) => -dy}));
 }
 
-// ═══ INTERFACE — PROFILS TABLETTE ET TÉLÉPHONE ═══
-// Tablette : rail d'icônes à gauche, tiroir Pile | Palette à droite
-// (panneau fixe en paysage au-delà de 1000 px), bouton flottant des dés,
-// journal replié en bas, relecture flottante en haut de la carte.
-// Téléphone : barre du haut (☰, scénario, Undo, 🎲), navigation en bas
-// (Carte, Pile, Pions, Journal, Plus), une vue à la fois.
+// ═══ INTERFACE — PROFIL TACTILE (TABLETTE ET TÉLÉPHONE) ═══
+// Une seule interface pour tout écran tactile : colonne d'icônes sur le
+// côté, une vue à la fois (Carte, Pile, Pions, Journal) par-dessus la carte.
 const _vue = () => document.body.dataset.vue || 'carte';
 
 Object.assign(ACTIONS, {
@@ -15468,7 +15463,7 @@ Object.assign(ACTIONS, {
               allume: () => !document.getElementById('cote').classList.contains('ferme')}
 });
 
-// Côté de la colonne d'icônes, sur tablette et téléphone : à droite par
+// Côté de la colonne d'icônes, en affichage tactile : à droite par
 // défaut ; le choix de l'utilisateur est retenu sur cet appareil.
 let _colonne = _lirePref('aslweb.colonne') === 'gauche' ? 'gauche' : 'droite';
 document.body.dataset.colonne = _colonne;
@@ -15481,7 +15476,7 @@ function placerColonne(c){
 }
 
 // Le reste des actions, dans la feuille « Plus » des profils tactiles.
-// Masqués sur tablette et téléphone, à la demande : sélection des unités,
+// Masqués en affichage tactile, à la demande : sélection des unités,
 // des marqueurs, des cartes et panneaux, zoom avant, arrière, ajuster, LOS
 // détaillée, verrou des pions, effectif des piles, aperçu du chat,
 // raccourcis ; du choix de l'affichage ne reste que l'affichage ordinateur,
@@ -15519,7 +15514,7 @@ function ouvrirFeuilleDes(){
   return f;
 }
 
-DISPOSITIONS.mobile = {
+DISPOSITIONS.tactile = {
   panneau: ['pile', 'palette'],
   construire(){
     // Pas de barre en haut : tout passe par la colonne d'icônes de droite ;
@@ -15567,14 +15562,11 @@ DISPOSITIONS.mobile = {
   }
 };
 
-// La tablette a la même disposition et le même fonctionnement que le
-// téléphone : colonne d'icônes à droite, une vue à la fois.
-DISPOSITIONS.tablette = DISPOSITIONS.mobile;
 // Téléphone ou tablette : l'interface tactile commune.
-function _telLike(){ return _profil === 'mobile' || _profil === 'tablette'; }
+function _telLike(){ return _profil === 'tactile'; }
 
 
-// Vue du téléphone : la carte seule, ou une vue par-dessus elle.
+// Vue de l'affichage tactile : la carte seule, ou une vue par-dessus elle.
 function vueMobile(v){
   if(!_telLike()) return;
   document.body.dataset.vue = v;

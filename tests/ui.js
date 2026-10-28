@@ -19,7 +19,7 @@ const {ouvrir} = require('./commun.js');
   out.jet = await pg.evaluate(() => document.getElementById('journal').lastElementChild.textContent.slice(0, 40));
   await pg.screenshot({path: 'des.png'});
   // changement de profil à chaud
-  await pg.evaluate(() => { selectionnerPile('900,700'); choisirProfil('mobile'); choisirProfil('pc'); choisirProfil('auto'); });
+  await pg.evaluate(() => { selectionnerPile('900,700'); choisirProfil('tactile'); choisirProfil('pc'); choisirProfil('auto'); });
   out.apresProfil = await pg.evaluate(() => [_sel.size, _profil, document.body.dataset.terminal, vivants().length]);
   console.log(JSON.stringify(out, null, 1), errs);
   await b.close();

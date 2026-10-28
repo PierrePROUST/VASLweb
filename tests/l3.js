@@ -1,6 +1,6 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, ecran, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 800, height: 1000}, profil: 'tablette'});
+  const {b, pg, errs, ecran, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 800, height: 1000}, profil: 'tactile'});
   const tap = async (x, y) => { await touche('touchStart', [[x, y, 1]]); await touche('touchEnd', []); await pg.waitForTimeout(150); };
   const glisse = async (x, y, tx, ty) => { await touche('touchStart', [[x, y, 1]]); for(let i = 1; i <= 8; i++) await touche('touchMove', [[x + (tx-x)*i/8, y + (ty-y)*i/8, 1]]); await touche('touchEnd', []); await pg.waitForTimeout(300); };
   const out = {};
