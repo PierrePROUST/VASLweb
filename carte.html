@@ -430,6 +430,9 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 .mini{position:relative;width:42px;height:42px;overflow:hidden;pointer-events:none}
 .mini img{position:absolute;pointer-events:none}
 .pion{position:absolute;touch-action:none;cursor:pointer;-webkit-touch-callout:none}
+/* Vue tournée : chaque pion tourne en sens inverse autour de son centre et
+   reste droit à l'écran ; un overlay de terrain, lui, suit la carte. */
+#mapInner .pion:not(.terrain){rotate:calc(-1 * var(--rotVue, 0deg))}
 /* Trait Immobilized : Fire Lane en surimpression… Le clic simple passe
    au travers ; Maj enfoncée, la pièce redevient saisissable. */
 .pion.immob,.pion.immob-jamais{pointer-events:none}
@@ -464,7 +467,8 @@ body.maj .pion.immob{pointer-events:auto}
 .fondPile{position:absolute;z-index:4999;pointer-events:none;border:1px solid var(--accent);border-radius:4px;
   background:repeating-linear-gradient(45deg,rgba(20,20,20,.55) 0 6px,rgba(60,60,60,.55) 6px 12px)}
 .pion.deplie:hover:not(.sel){outline:1px dashed #fff;outline-offset:0}
-.pastille{position:absolute;z-index:6000;pointer-events:none;transform:translate(-50%,-50%) scale(var(--zinv,1));
+.pastille{position:absolute;z-index:6000;pointer-events:none;
+  transform:translate(-50%,-50%) rotate(calc(-1 * var(--rotVue, 0deg))) scale(var(--zinv,1));
   background:#1e1e1e;color:var(--texte);border:1px solid var(--bord);border-radius:9px;padding:0 5px;
   font:600 11px/16px system-ui,sans-serif;white-space:nowrap}
 .loupe{position:fixed;z-index:9990;pointer-events:none;text-align:center}
@@ -894,6 +898,10 @@ const BOARD_W = 1800, BOARD_H = 645;  // board géomorphique standard
 const HEX_COLS = 33, HEX_ROWS = 10;
 
 let zoom = 1, _mapW = 0, _mapH = 0;
+// Rotation de l'affichage de la carte, en degrés (0, 90, 180, 270), dans le
+// sens horaire. Elle ne touche que la vue de ce joueur : les positions
+// des pions, l'état de la partie et ce que voit l'adversaire n'en dépendent pas.
+let _rotVue = [90, 180, 270].includes(+_lirePref('aslweb.rotation')) ? +_lirePref('aslweb.rotation') : 0;
 
 // ── Journal
 // Lignes de la page elle-même : « sys », et « alerte » pour un
@@ -1937,8 +1945,81 @@ function _setMapSize(w, h){
 }
 function _majScaler(){
   const s = document.getElementById('mapScaler');
-  s.style.width  = Math.round(_mapW * zoom) + 'px';
-  s.style.height = Math.round(_mapH * zoom) + 'px';
+  const {w, h} = _tailleVue();
+  s.style.width  = Math.round(w * zoom) + 'px';
+  s.style.height = Math.round(h * zoom) + 'px';
+  // La carte tourne autour de son coin, puis revient dans la zone de
+  // défilement : la vue garde son origine en haut à gauche.
+  const W = _mapW * zoom, H = _mapH * zoom;
+  const [tx, ty] = {90: [H, 0], 180: [W, H], 270: [0, W]}[_rotVue] || [0, 0];
+  const mi = document.getElementById('mapInner');
+  mi.style.transform = (_rotVue ? `translate(${tx}px, ${ty}px) rotate(${_rotVue}deg) ` : '') + `scale(${zoom})`;
+  mi.style.setProperty('--rotVue', _rotVue + 'deg');
+}
+
+// ── Rotation de la vue. « Vue » : la carte telle qu'elle est affichée,
+// tournée, au zoom 1, origine en haut à gauche ; « carte » : pixels de
+// #mapInner. Les pions et les textes restent droits à l'écran (règle
+// .pion de la feuille de style) ; ce qui est dans un trait rotate
+// (Covered Arc, véhicule) suit la carte, pour rester face à un côté
+// d'hexagone.
+const _tailleVue = () => _rotVue % 180 ? {w: _mapH, h: _mapW} : {w: _mapW, h: _mapH};
+function _carteVersVue(x, y){
+  switch(_rotVue){
+    case 90:  return {x: _mapH - y, y: x};
+    case 180: return {x: _mapW - x, y: _mapH - y};
+    case 270: return {x: y, y: _mapW - x};
+    default:  return {x, y};
+  }
+}
+function _vueVersCarte(x, y){
+  switch(_rotVue){
+    case 90:  return {x: y, y: _mapH - x};
+    case 180: return {x: _mapW - x, y: _mapH - y};
+    case 270: return {x: _mapW - y, y: x};
+    default:  return {x, y};
+  }
+}
+// Un décalage vu à l'écran (dx vers la droite, dy vers le bas), dans le
+// repère de la carte ; et l'inverse.
+function _ecartVersCarte(dx, dy){
+  switch(_rotVue){
+    case 90:  return {x: dy, y: -dx};
+    case 180: return {x: -dx, y: -dy};
+    case 270: return {x: -dy, y: dx};
+    default:  return {x: dx, y: dy};
+  }
+}
+function _ecartVersVue(dx, dy){
+  switch(_rotVue){
+    case 90:  return {x: -dy, y: dx};
+    case 180: return {x: -dx, y: -dy};
+    case 270: return {x: dy, y: -dx};
+    default:  return {x: dx, y: dy};
+  }
+}
+
+// Tourne la vue de `pas` degrés (multiple de 90, horaire si positif), en
+// gardant au centre de l'écran le point de la carte qui y était.
+function tournerVue(pas){
+  const wrap = document.getElementById('mapWrap');
+  const centre = _mapW && wrap.clientWidth
+    ? _vueVersCarte((wrap.scrollLeft + wrap.clientWidth/2) / zoom, (wrap.scrollTop + wrap.clientHeight/2) / zoom) : null;
+  _rotVue = (((_rotVue + pas) % 360) + 360) % 360;
+  try { localStorage.setItem('aslweb.rotation', String(_rotVue)); } catch(e){}
+  _majScaler();
+  if(centre && !_zoomManuel) zoomFit();
+  else if(centre){
+    const v = _carteVersVue(centre.x, centre.y);
+    wrap.scrollLeft = v.x * zoom - wrap.clientWidth/2;
+    wrap.scrollTop  = v.y * zoom - wrap.clientHeight/2;
+  }
+  _noterCentre();
+  rendreToutes();
+  if(_fil) dessinerFil();
+  if(_liens.size) dessinerLiens();
+  if(_eventail) placerEventail();
+  rafraichirActions(['rotGauche', 'rotDroite', 'rot180', 'rot0']);
 }
 
 // ═══ ZOOM ET DÉPLACEMENT ═══
@@ -1953,7 +2034,6 @@ function setZoom(z, fx, fy){
   zoom = z;
   if(!_zoomAuto) _zoomManuel = true;
   const mi = document.getElementById('mapInner');
-  mi.style.transform = `scale(${zoom})`;
   mi.style.setProperty('--zinv', 1 / zoom);
   _majScaler();
   wrap.scrollLeft = wx*zoom - (fx - wr.left);
@@ -1975,9 +2055,11 @@ function zoomFit(){
   const wrap = document.getElementById('mapWrap');
   _zoomAuto = true;
   // Les tables restent sous la zone ajustée : on y descend en défilant.
-  const t = rectTables();
-  const h = t ? Math.min(_mapH, t.y) : _mapH;
-  try { setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/h)); } finally { _zoomAuto = false; }
+  // (Vue tournée : les tables tournent avec la carte, on ajuste le tout.)
+  const t = !_rotVue && rectTables();
+  const v = _tailleVue();
+  const h = t ? Math.min(v.h, t.y) : v.h;
+  try { setZoom(Math.min(wrap.clientWidth/v.w, wrap.clientHeight/h)); } finally { _zoomAuto = false; }
   _zoomManuel = false;
   wrap.scrollLeft = 0; wrap.scrollTop = 0;
 }
@@ -2081,9 +2163,11 @@ function _lasso(e){
     document.removeEventListener('pointercancel', fin);
     r.remove();
     if(ev.type !== 'pointerup') return;
-    const a = clientVersCarte(Math.min(x0, ev.clientX), Math.min(y0, ev.clientY), null, true);
-    const b = clientVersCarte(Math.max(x0, ev.clientX), Math.max(y0, ev.clientY), null, true);
-    if(!a || !b) return;
+    const c0 = clientVersCarte(x0, y0, null, true);
+    const c1 = clientVersCarte(ev.clientX, ev.clientY, null, true);
+    if(!c0 || !c1) return;
+    // Coins opposés, quelle que soit la rotation de la vue.
+    const a = {x: Math.min(c0.x, c1.x), y: Math.min(c0.y, c1.y)}, b = {x: Math.max(c0.x, c1.x), y: Math.max(c0.y, c1.y)};
     const dedans = (x, y) => x >= a.x && x <= b.x && y >= a.y && y <= b.y;
     const pris = [];
     for(const [k, l] of indexerPiles()){
@@ -6541,9 +6625,11 @@ function dessinerFil(){
     const e = document.createElement('div');
     e.className = 'etiqLOS';
     e.textContent = texte;
-    e.style.left = (p.x + (dx - 1) / zoom) + 'px';
-    e.style.top = (p.y + (dy - 1 - LOS_POLICE + LOS_DESCENTE) / zoom) + 'px';
-    e.style.transform = `scale(${1 / zoom})`;
+    // Décalage vu à l'écran ; le texte reste droit si la vue est tournée.
+    const c = _ecartVersCarte(dx - 1, dy - 1 - LOS_POLICE + LOS_DESCENTE);
+    e.style.left = (p.x + c.x / zoom) + 'px';
+    e.style.top = (p.y + c.y / zoom) + 'px';
+    e.style.transform = `rotate(${-_rotVue}deg) scale(${1 / zoom})`;
     document.getElementById('mapInner').appendChild(e);
   };
   if(!f.src){
@@ -6565,7 +6651,7 @@ function dessinerFil(){
   }
   if(f.src === f.tgt && !f.compte) return;
   // Décalages des étiquettes à l'écran (targetLOSLabelXoffset…).
-  const ecS = {x: pS.x * zoom, y: pS.y * zoom}, ecT = {x: pT.x * zoom, y: pT.y * zoom};
+  const ecS = _ecartVersVue(pS.x * zoom, pS.y * zoom), ecT = _ecartVersVue(pT.x * zoom, pT.y * zoom);
   const xT = ecS.x === ecT.x ? -10 : 10;
   const yT = ecS.y === ecT.y ? -40 : ecS.x === ecT.x ? (ecS.y > ecT.y ? -20 : 20)
     : ecS.y > ecT.y ? (ecS.x > ecT.x ? -30 : -10) : (ecS.x > ecT.x ? 10 : -10);
@@ -7038,13 +7124,19 @@ function _rotations(ts){
     if(n <= 1) a = -(parseFloat(e) || 0);
     else { const v = parseInt(e, 10) || 0; a = ((v % n + n) % n) * (360 / n); }
     a = ((a % 360) + 360) % 360;
-    if(a) out.push({i, angle: a});
+    // Gardé même à 0° : ce qui est à l'intérieur suit la vue tournée.
+    out.push({i, angle: a});
   }
   return out;
 }
 // Angle d'un trait de rang i : la somme des rotate qui l'englobent.
 const _angleInterieur = (rotations, i) =>
   ((rotations || []).reduce((a, r) => r.i < i ? a + r.angle : a, 0)) % 360;
+// Le trait de rang i est-il dans un trait rotate ?
+const _dansRotation = (rotations, i) => (rotations || []).some(r => r.i < i);
+// Rotation CSS de ce qui est dans un trait rotate : son angle, plus celui de
+// la vue, que le pion, droit à l'écran, annule par ailleurs.
+const _rotCSS = a => `rotate(calc(${a}deg + var(--rotVue, 0deg)))`;
 
 function lirePiece(seg){
   const ts = _developperPrototypes(_splitTypeState(seg), 0);
@@ -7963,14 +8055,13 @@ async function majApparence(p, d){
     p.el.style.background = '#b81414';
     p.el.title = `${d.nom} — image introuvable : ${imgFace || '?'}`;
   }
-  p.face.style.transform = d.rot ? `rotate(${d.rot}deg)` : '';
+  p.face.style.transform = _dansRotation(d.rotations, Infinity) ? _rotCSS(d.rot) : '';
   // Tout ce qui est intérieur à un trait rotate tourne avec la face,
   // autour du centre du pion (FreeRotator.draw).
   const orienter = (o, i, gauche, haut) => {
-    const a = _angleInterieur(d.rotations, i);
-    if(!a) return;
+    if(!_dansRotation(d.rotations, i)) return;
     o.style.transformOrigin = gauche === undefined ? '50% 50%' : `${p.sz/2 - gauche}px ${p.sz/2 - haut}px`;
-    o.style.transform = `rotate(${a}deg)`;
+    o.style.transform = _rotCSS(_angleInterieur(d.rotations, i));
   };
   // Les couches de marqueur (ML/, MS/…) se superposent au visage ; une
   // image de nationalité est une autre face du pion, pas une surimpression.
@@ -8025,7 +8116,7 @@ async function majApparence(p, d){
     e.style.color = t.couleur;
     if(t.fond) e.style.background = t.fond;
     e._label = t;
-    e._rotPion = _angleInterieur(d.rotations, t.i);
+    e._rotPion = _dansRotation(d.rotations, t.i) ? _angleInterieur(d.rotations, t.i) : null;
     couches.push(e);
   }
   if(gen !== p.gen) return;
@@ -8075,10 +8166,9 @@ async function imagesCouches(d, k, cote){
     }
     // Couche intérieure à un trait rotate : elle tourne autour du centre
     // du pion, décalage compris.
-    const a = _angleInterieur(d.rotations, c.i);
-    if(a){
+    if(_dansRotation(d.rotations, c.i)){
       o.style.transformOrigin = (w && h) ? `${w/2 - c.dx*k}px ${h/2 - c.dy*k}px` : '50% 50%';
-      o.style.transform = `rotate(${a}deg)`;
+      o.style.transform = _rotCSS(_angleInterieur(d.rotations, c.i));
     }
     o.dessous = iFace >= 0 && i > iFace;
     out.push(o);
@@ -8148,11 +8238,13 @@ function placerLabel(e, sz, k = SC){
   e.style.left = (sz/2 + x) + 'px';
   e.style.top = (sz/2 + y) + 'px';
   // Rotation propre du label, plus celle d'un trait rotate extérieur :
-  // toutes deux autour du centre du pion.
+  // toutes deux autour du centre du pion. Dans un trait rotate, le label
+  // suit aussi la vue tournée.
+  const dans = e._rotPion !== null && e._rotPion !== undefined;
   const a = (t.rotation || 0) + (e._rotPion || 0);
-  if(a){
+  if(a || dans){
     e.style.transformOrigin = `${-x}px ${-y}px`;
-    e.style.transform = `rotate(${a}deg)`;
+    e.style.transform = dans ? _rotCSS(a) : `rotate(${a}deg)`;
   }
 }
 
@@ -8170,22 +8262,28 @@ const metriques = () => (_bdd && _bdd.stackMetrics) || METRIQUES_DEFAUT;
 // pion se cale sur le bord de celui de dessous, décalé de dx vers la
 // droite et de dy vers le HAUT. Les pions de même taille sont donc
 // simplement décalés de (dx, −dy).
+// Vue tournée : la pile s'étale de même à l'écran ; les rectangles sont
+// calculés dans le repère de l'écran, autour du centre du premier pion,
+// puis ramenés dans celui de la carte.
 function rectsPile(s, deplie){
   const m = metriques();
   const dx = m.disabled ? 0 : (deplie ? m.exSepX : m.unexSepX) * SC;
   const dy = m.disabled ? 0 : (deplie ? m.exSepY : m.unexSepY) * SC;
+  const quart = _rotVue % 180 !== 0;
   const out = [];
   let prec = null;
   for(const p of s){
     const w = p.larg || p.sz, h = p.haut || p.sz;
-    let x = p.x * SC - w/2, y = p.y * SC - h/2;
+    // Taille du pion vu à l'écran : un quart de tour échange ses côtés.
+    const W = quart ? h : w, H = quart ? w : h;
+    let x = -W/2, y = -H/2;
     if(prec){
-      x = dx > 0 ? prec.x + dx : dx < 0 ? prec.x + prec.w - w + dx : prec.x + prec.w/2 - w/2;
-      y = dy > 0 ? prec.y + prec.h - h - dy : dy < 0 ? prec.y - dy : prec.y + prec.h/2 - h/2;
+      x = dx > 0 ? prec.x + dx : dx < 0 ? prec.x + prec.w - W + dx : prec.x + prec.w/2 - W/2;
+      y = dy > 0 ? prec.y + prec.h - H - dy : dy < 0 ? prec.y - dy : prec.y + prec.h/2 - H/2;
     }
-    const r = {x, y, w, h};
-    out.push(r);
-    prec = r;
+    prec = {x, y, w: W, h: H};
+    const c = _ecartVersCarte(x + W/2, y + H/2);
+    out.push({x: s[0].x * SC + c.x - w/2, y: s[0].y * SC + c.y - h/2, w, h});
   }
   return out;
 }
@@ -8215,6 +8313,7 @@ function rendrePile(k, tous){
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
+    p.el.classList.toggle('terrain', p.couche === 'overlay');
   });
   _decorPile(k, s, rects, deplie);
   if(_reperes.brises || _reperes.sniper) dessinerReperes();
@@ -8269,9 +8368,12 @@ function _decorPile(k, s, rects, deplie){
     if(!d.pastille){ d.pastille = document.createElement('div'); d.pastille.className = 'pastille'; mi.appendChild(d.pastille); }
     d.pastille.textContent = texte;
     d.pastille.classList.toggle('partielle', !!nSel);
+    // Au coin haut droit du pion du dessus, vu à l'écran.
     const haut = rects[rects.length - 1];
-    d.pastille.style.left = (haut.x + haut.w) + 'px';
-    d.pastille.style.top = haut.y + 'px';
+    const [W, H] = _rotVue % 180 ? [haut.h, haut.w] : [haut.w, haut.h];
+    const c = _ecartVersCarte(W/2, -H/2);
+    d.pastille.style.left = (haut.x + haut.w/2 + c.x) + 'px';
+    d.pastille.style.top = (haut.y + haut.h/2 + c.y) + 'px';
   } else if(d.pastille){ d.pastille.remove(); d.pastille = null; }
 }
 function _viderDecors(){
@@ -8826,9 +8928,10 @@ function dessinerLiens(){
     const e = document.createElement('div');
     e.className = 'etiqLien';
     e.textContent = 'Range: ' + r;
-    e.style.left = (a.x * SC + 29 / zoom) + 'px';
-    e.style.top = (a.y * SC + (29 - LOS_POLICE + LOS_DESCENTE) / zoom) + 'px';
-    e.style.transform = `scale(${1 / zoom})`;
+    const c = _ecartVersCarte(29, 29 - LOS_POLICE + LOS_DESCENTE);
+    e.style.left = (a.x * SC + c.x / zoom) + 'px';
+    e.style.top = (a.y * SC + c.y / zoom) + 'px';
+    e.style.transform = `rotate(${-_rotVue}deg) scale(${1 / zoom})`;
     document.getElementById('mapInner').appendChild(e);
   }
 }
@@ -9157,11 +9260,15 @@ function cadrerSur(pts){
   const hv = hauteurVisibleCarte();
   // Le zoom « Ajuster » de la partie visible : une carte plus petite que la
   // vue ne défile pas, elle doit tenir au-dessus du chat.
-  const ajuste = Math.min(wrap.clientWidth / _mapW, hv / _mapH);
-  const z = Math.max(ajuste, Math.min(wrap.clientWidth / (2 * demiL * SC), hv / (2 * demiH * SC)));
+  const tv = _tailleVue();
+  const ajuste = Math.min(wrap.clientWidth / tv.w, hv / tv.h);
+  // Vue tournée d'un quart de tour : la largeur cadrée est montrée en hauteur.
+  const [eL, eH] = _rotVue % 180 ? [demiH, demiL] : [demiL, demiH];
+  const z = Math.max(ajuste, Math.min(wrap.clientWidth / (2 * eL * SC), hv / (2 * eH * SC)));
   setZoom(z);
-  wrap.scrollLeft = (x0 + x1) / 2 * SC * zoom - wrap.clientWidth / 2;
-  wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - hv / 2;
+  const v = _carteVersVue((x0 + x1) / 2 * SC, (y0 + y1) / 2 * SC);
+  wrap.scrollLeft = v.x * zoom - wrap.clientWidth / 2;
+  wrap.scrollTop  = v.y * zoom - hv / 2;
 }
 
 function majBarreLog(){ rafraichirActions(['relecture', 'relectureRail', 'relectureFin', ...ACTIONS.relecture.groupe]); majHautBas(); }
@@ -12098,6 +12205,12 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
   // Un hexagone à côtés plats en haut et en bas : 2/√3 fois plus large que haut.
   const cote = hexSeul ? hex * 2 / Math.sqrt(3) * 1.04 : 2 * LOUPE_RAYON_HEX * hex;
   const x0 = px - cote / 2, y0 = py - cote / 2, k = cv.width / cote;
+  // Repère de la carte dans la loupe, tourné comme la vue autour du centre.
+  const repere = () => {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.translate(cv.width / 2, cv.height / 2); g.rotate(_rotVue * Math.PI / 180); g.translate(-cv.width / 2, -cv.height / 2);
+    g.transform(k, 0, 0, k, -x0 * k, -y0 * k);
+  };
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, cv.width, cv.height);
   const contourHex = () => {
@@ -12107,9 +12220,9 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
       .forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](px + x, py + y));
     g.closePath();
   };
-  g.setTransform(k, 0, 0, k, -x0 * k, -y0 * k);
+  repere();
   if(hexSeul){ g.save(); contourHex(); g.clip(); }
-  else { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height); g.setTransform(k, 0, 0, k, -x0 * k, -y0 * k); }
+  else { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height); repere(); }
   for(const b of document.querySelectorAll('#mapInner canvas.boardLayer')){
     const L = parseFloat(b.style.left), T = parseFloat(b.style.top), W = parseFloat(b.style.width), H = parseFloat(b.style.height);
     if(L > x0 + cote || T > y0 + cote || L + W < x0 || T + H < y0) continue;
@@ -12119,7 +12232,11 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
     if(p.deleted || p.cache || !p.face.src || p.face.style.display === 'none') continue;
     const L = parseFloat(p.el.style.left), T = parseFloat(p.el.style.top), W = parseFloat(p.el.style.width) || p.sz;
     if(L > x0 + cote || T > y0 + cote || L + W < x0 || T + W < y0) continue;
-    try { g.drawImage(p.face, L, T, W, W); } catch(e){}
+    // Droit à l'écran, comme sur la carte.
+    try {
+      g.save(); g.translate(L + W / 2, T + W / 2); g.rotate(-_rotVue * Math.PI / 180);
+      g.drawImage(p.face, -W / 2, -W / 2, W, W);
+    } catch(e){} finally { g.restore(); }
   }
   if(hexSeul){
     if(surcouche) surcouche(g, k);
@@ -12170,7 +12287,8 @@ function clientVersCarte(cx, cy, rects, libre){
     const el = document.elementFromPoint(cx, cy);
     if(el && !document.getElementById('mapWrap').contains(el)) return null;
   }
-  return {x: (cx - mr.left) / zoom / SC, y: (cy - mr.top) / zoom / SC};
+  const c = _vueVersCarte((cx - mr.left) / zoom, (cy - mr.top) / zoom);
+  return {x: c.x / SC, y: c.y / SC};
 }
 
 // ── Panneau de la pile sélectionnée, du sommet vers le fond.
@@ -15315,6 +15433,14 @@ const ACTIONS = {
   zoomTxt:  {etiquette: () => Math.round(zoom * 100) + ' %', classe: 'zoom'},
   ajuster:  {lib: 'Ajuster la carte à la vue', court: 'Ajuster', ico: '⤢', faire: zoomFit},
   zoom100:  {lib: 'Zoom 100 %', court: '100 %', ico: '1:1', faire: () => setZoom(1)},
+  // Rotation de l'affichage de la carte seulement : les pions restent droits.
+  rotDroite:{lib: 'Tourner la carte de 90° (sens horaire)', court: '90° ⟳', ico: '⟳', faire: () => tournerVue(90),
+             allume: () => _rotVue !== 0},
+  rotGauche:{lib: 'Tourner la carte de 90° (sens antihoraire)', court: '90° ⟲', ico: '⟲', faire: () => tournerVue(-90),
+             allume: () => _rotVue !== 0},
+  rot180:   {lib: 'Tourner la carte de 180°', court: '180°', ico: '⇅', faire: () => tournerVue(180),
+             allume: () => _rotVue !== 0},
+  rot0:     {lib: 'Carte non tournée', court: '0°', ico: '⬆', coche: () => _rotVue === 0, faire: () => tournerVue(-_rotVue)},
   reseau:   {lib: () => 'Partie à distance — ' + _texteReseau(), court: _texteReseau, ico: '🌐', classe: 'reseau',
              texteBarre: true, faire: ouvrirReseau, allume: () => !!_net},
   utilisateur: {lib: () => `Utilisateur : ${_nomUtilisateur()} — changer ou gérer les utilisateurs`,
@@ -15589,14 +15715,14 @@ const DISPOSITIONS = {
       'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'brises', 'sniper', '-', 'infoScenario'],
       // Masqués à la demande : sélection des cartes et panneaux, effectif
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
-      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
+      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'rotDroite', 'rotGauche', 'rot180', 'rot0', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
                     'couche_overlay', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
       'Outils':    ['los', 'losMuet'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
       'Aide':      ['raccourcis']
     },
-    barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster',
+    barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster', 'rotGauche', 'rotDroite',
             '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', '|', 'reseau', 'utilisateur'],
     // Les dés restent à portée, en boutons sous la barre d'icônes.
     barreDes: [...DES.filter(d => d.id.startsWith('DR_')).map(d => d.id), '|', ...DES.filter(d => d.id.startsWith('dr_')).map(d => d.id)],
@@ -15810,7 +15936,7 @@ function placerColonne(c){
 // PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
 // La sélection des overlays reste : sans elle, un overlay posé ne pourrait
 // plus être ni déplacé ni retiré au doigt.
-const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'couche_overlay', '-', 'reseau', 'utilisateur', '-',
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'couche_overlay', '-', 'rotDroite', 'rot180', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
