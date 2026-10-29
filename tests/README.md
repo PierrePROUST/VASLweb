@@ -56,6 +56,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mov-relecture.js` | Mark unmoved (MOV) après la relecture d'un D/ dont le nouvel état finit par une contre-oblique : état du pion entier, image gardée, Undo |
 | `precadrage.js` | Relecture : la vue rejoint la case d'arrivée avant que le pion bouge et que le message du coup paraisse ; ▶ pendant la pause joue le coup en attente |
 | `log-coups.js` | .vlog écrit puis relu : un D/ dont l'état finit par une contre-oblique, dernier de son coup, est mis entre apostrophes ; deux déplacements de suite restent deux coups |
+| `devoilement.js` | Log commencé avec « Permettre à mes adversaires de démasquer mes unités » : commande UNMASK de VASSAL dans le .vlog ; rouvert par un autre joueur, l'unité reste un « ? » dont seule la commande Conceal est permise, et la démasque ; sans la case, tout est refusé |
 | `couches-noms.js` | Couches dont l'image est un nom nu (« mofan », « mober », « mohro » d'un module plus ancien) : Fanatic, Berserk et Heroic dessinés et cumulés |
 | `munitions.js` | Munitions épuisées d'un véhicule (Sherman III(a)) : label « $finalammo$ » calculé, s / WP barrés en rouge, Toggle On/Off |
 | `qrdc.js` | Tables QRDC (ChartWindow de VASL). En tactile, sous la zone de la carte : trois petits pions sous les boards, onglets du module au doigt (CC, Vehicle TK > HEAT), déplacement et pose refusés sur les tables, rien dans le `.vsav`, masquage ; au PC, rien sur la carte, fenêtre flottante à onglets, déplacée par son titre, fermée par ✕ |

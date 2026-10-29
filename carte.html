@@ -769,6 +769,7 @@ const EN = {
   'salle injoignable': 'room unreachable', 'code de salle invalide': 'invalid room code',
   // Fichier de log
   'Nom du fichier': 'File name', 'Commencer': 'Begin',
+  'Permettre à mes adversaires de démasquer mes unités': 'Allow opponents to unmask my units',
   'Les coups joués, reçus ou relus à partir de cette position y seront enregistrés ; « Log » à nouveau termine le fichier et l\'écrit.':
     'Moves played, received or replayed from this position will be recorded in it; “Log” again ends the file and writes it.',
   'La relecture commence. Commencer un nouveau fichier de log ?': 'Replay begins. Begin a new logfile?',
@@ -6048,7 +6049,7 @@ function _piecesLOS(){
   const piles = new Map(), out = [];
   for(const p of vivants()){
     if(p.cache || p.outil) continue;
-    if(p.masqueProprio && !_admin && p.masqueProprio !== idJoueur()) continue;
+    if(p.masqueProprio && !voitMasque(p.masqueProprio)) continue;
     if(p._losSeg !== p.seg){
       const ts = _developperPrototypes(_splitTypeState(p.seg), 0), pr = _proprietes(ts);
       p._losSeg = p.seg;
@@ -7904,7 +7905,7 @@ async function majApparence(p, d){
   // Comme Concealable de VASL : l'adversaire ne voit que le « ? », le
   // joueur qui a dissimulé l'unité la voit, marquée d'un petit « ? ».
   // L'administrateur voit tout.
-  const voile = d.masque && !_admin && d.masqueProprio !== idJoueur() ? d.masque : null;
+  const voile = d.masque && !voitMasque(d.masqueProprio) ? d.masque : null;
   p.el.title = voile ? T('Pion dissimulé') : d.nom + (d.masque ? ' (?)' : '');
   p.proprietaire = d.proprietaire;
   p.masqueProprio = d.masqueProprio;
@@ -7912,7 +7913,7 @@ async function majApparence(p, d){
   p.compteurProprio = d.compteurProprio;
   // HIP : invisible de l'adversaire ; son joueur et l'administrateur le
   // voient en transparence, comme Hideable de VASSAL.
-  const voitHip = d.hip && (_admin || d.hipProprio === idJoueur());
+  const voitHip = d.hip && voitMasque(d.hipProprio);
   p.el.style.display = d.hip && !voitHip ? 'none' : '';
   p.el.style.opacity = voitHip ? '.55' : '';
   p.cache = d.hip && !voitHip;
@@ -8375,6 +8376,7 @@ function importerPions(texte, label, annexes){
   if(iLog < 0) iLog = segs.length;
   _source = segs.slice(0, iLog).filter(s => !s.startsWith('UNDO'));
   _annexes = annexes || new Map();
+  _demasquables = lireDemasquables(_source);
   _nomFichier = label.replace(/\.(vsav|vlog)$/i, '');
 
   const rangs = _parseStacks(_source);
@@ -8984,7 +8986,7 @@ function _ciblesEtape(segs){
   const arrives = [], retires = [], modifies = [];
   const piles = new Map(_pilesVassal);
   const nes = new Map();   // pièces posées par le coup : uid → visible
-  const invisible = d => d.hip && !(_admin || d.hipProprio === idJoueur());
+  const invisible = d => d.hip && !voitMasque(d.hipProprio);
   const surCarte = uid => { const p = parUid(uid); return p && !p.cache ? p : null; };
   const ici = (l, p) => { if(p) l.push({x: p.x, y: p.y}); };
   for(let s of segs){
@@ -10489,7 +10491,7 @@ function retirerTous(action){
     return noms.has(d.nomBase) || noms.has(d.nom);
   });
   // Un pion masqué par un autre joueur n'a aucune commande : il reste.
-  const garde = cibles.filter(accesRefuse);
+  const garde = cibles.filter(p => accesRefuse(p));
   const partis = cibles.filter(p => !accesRefuse(p));
   for(const p of partis) retirer(p, true);
   chatLog(partis.length ? `✖️ Remove all « ${action.nom} » : ${partis.length} pion(s) retiré(s)`
@@ -11000,6 +11002,7 @@ function commandesDe(type){
       ajouter(i, ch[2], lireTouche(ch[1]), ({S}) => basculerJoueur(S, i));
     } else if(id === 'conceal'){
       ajouter(i, 'Conceal', toucheAncienne(ch[1], 2), ({p, effets}) => effets.push(() => dissimuler(p)));
+      cmds[cmds.length - 1].demasque = true;
     } else if(id === 'concealment'){
       // Le « ? » lui-même : sa commande réévalue la pile (Concealment.keyEvent).
       ajouter(i, 'Conceal', _touche(67, 2), ({p, effets}) => effets.push(() => ajusterDissimulation(cle(p))));
@@ -11119,7 +11122,12 @@ function commandesDe(type){
 // consignés par un « D/ » ; les effets (poser, retirer, cloner,
 // déplacer) passent après, chacun avec ses propres commandes de log.
 function executerTouche(p, touche, cmdDirecte, lot){
-  if(!p || p.deleted || refuser(p)) return false;
+  if(!p || p.deleted) return false;
+  // Obscurable.keyEvent : sur l'unité d'un autre, seule la commande
+  // Conceal agit, et elle démasque.
+  const k = touche || (cmdDirecte && cmdDirecte.touche);
+  if(accesRefuse(p) && !accesRefuse(p, k)){ dissimuler(p); return true; }
+  if(refuser(p, k)) return false;
   const te = _typeEtEtat(p.seg);
   if(!te) return false;
   const S = decoderTraits(te.etat);
@@ -11374,7 +11382,7 @@ function dissimuler(p){
   const m = infoDissimulation(p);
   if(!m.unite) return;
   if(m.proprio){
-    if((m.proprio === idJoueur() || _admin) && fixerMasque(p, null)) chatLog(`👁️ ${p.nom} démasqué`);
+    if((voitMasque(m.proprio) || demasquable(p)) && fixerMasque(p, null)) chatLog(`👁️ ${p.nom} démasqué`);
     return;
   }
   fixerMasque(p, idJoueur());
@@ -11542,7 +11550,8 @@ function arbreCommandes(p){
   const vues = new Set();
   // Comme Obscurable de VASSAL : un pion masqué par un autre joueur
   // n'offre aucune commande.
-  const visibles = accesRefuse(p) ? [] : cmds.filter(c => {
+  // Sauf Conceal, si son joueur laisse l'adversaire la démasquer.
+  const visibles = accesRefuse(p) ? cmds.filter(c => c.demasque && demasquable(p)) : cmds.filter(c => {
     if(!c.nom || restriction(c) === 'cacher') return false;
     const k = c.touche ? c.nom + '\u0001' + c.touche : null;
     if(k && vues.has(k)) return false;
@@ -11784,7 +11793,7 @@ function ciblesTouche(touche){
 function commanderSelection(touche, cmd){
   const tous = ciblesTouche(touche);
   if(!tous.length) return false;
-  const cibles = tous.filter(p => !accesRefuse(p));
+  const cibles = tous.filter(p => !accesRefuse(p, touche));
   if(!cibles.length){ refuser(tous[0]); return true; }
   commander(cibles, touche, cmd);
   return true;
@@ -12680,7 +12689,7 @@ function _rangeeCommandes(boite, avecDeplacer){
       try { localStorage.setItem('aslweb.freqCmd', JSON.stringify(_freqCmd)); } catch(e){}
       if(c.etat) basculerCommandeEtat(c);
       else if(_sel.size) commanderSelection(c.touche);
-      else commander(vises.filter(p => !accesRefuse(p) && commandesDe(_typeEtEtat(p.seg).type).cmds.some(x => x.touche === c.touche)), c.touche);
+      else commander(vises.filter(p => !accesRefuse(p, c.touche) && commandesDe(_typeEtEtat(p.seg).type).cmds.some(x => x.touche === c.touche)), c.touche);
       afficherPile();
     });
     boite.appendChild(b);
@@ -13542,6 +13551,56 @@ const joueur = () => _admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'we
 // Identifiant des masques (conceal, hide) : le mot de passe.
 const idJoueur = () => _admin ? 'admin' : (_utilisateur ? _utilisateur.mdp : 'web');
 
+// Vrai si l'utilisateur voit et commande ce que masque l'identifiant id.
+const voitMasque = id => _admin || id === idJoueur();
+
+// ── Dévoilement par l'adversaire : ObscurableOptions de VASSAL.
+// La préférence « OpponentUnmaskable » met l'identifiant du joueur dans
+// la liste des masques que l'adversaire peut lever. La partie la garde
+// dans une commande « UNMASK\t<id>\t<id>… » (SetAllowed), écrite dans le
+// .vsav et l'état de départ du .vlog. Comme Concealable.isMaskable de
+// VASL, l'adversaire ne voit toujours que le « ? » : il n'a que la
+// commande Conceal, qui démasque l'unité. Le HIP (Hideable) n'en tient
+// pas compte : il reste invisible.
+const UNMASK = 'UNMASK\t';
+const CLE_DEMASQUABLE = 'aslweb.OpponentUnmaskable';
+let _demasquables = new Set();
+function lireDemasquables(segs){
+  const seg = segs.find(x => x.startsWith(UNMASK));
+  return new Set(seg ? _decoupeSeq(seg.substring(UNMASK.length), '\t').filter(x => x) : []);
+}
+// Réécrit la commande UNMASK de l'état chargé, d'où partent .vsav et .vlog.
+function _ecrireDemasquables(){
+  if(!_source) return;
+  const i = _source.findIndex(x => x.startsWith(UNMASK));
+  const seg = UNMASK + [..._demasquables].map(x => x.replace(/\t/g, '\\\t')).join('\t');
+  if(i >= 0) _source[i] = seg;
+  else {
+    const iFin = _source.lastIndexOf('end_save');
+    _source.splice(iFin >= 0 ? iFin : _source.length, 0, seg);
+  }
+}
+// Le joueur connecté permet-il à l'adversaire de démasquer ses unités ?
+const demasquablesParMoi = () => _demasquables.has(idJoueur());
+function permettreDemasquage(oui){
+  if(!_utilisateur && !_admin) return;
+  _ecrireLocal(CLE_DEMASQUABLE, oui ? '1' : '0');
+  const id = idJoueur();
+  if(oui === _demasquables.has(id)) return;
+  if(oui) _demasquables.add(id); else _demasquables.delete(id);
+  _ecrireDemasquables();
+  chatLog(oui ? '🔓 Vos adversaires peuvent démasquer vos unités dissimulées'
+              : '🔒 Vos adversaires ne peuvent plus démasquer vos unités dissimulées');
+}
+// Unité dissimulée par un autre joueur qui l'a permis : seule la commande
+// Conceal lui reste (Obscurable.keyEvent → myKeyEvent).
+function demasquable(p){
+  if(!p || !p.masqueProprio || voitMasque(p.masqueProprio) || !_demasquables.has(p.masqueProprio)) return false;
+  const autrui = id => !!id && id !== 'web' && !voitMasque(id);
+  return !autrui(p.hipProprio) && !autrui(p.compteurProprio);
+}
+const _cmdDemasque = p => { const te = _typeEtEtat(p.seg); return te ? commandesDe(te.type).cmds.find(c => c.demasque) : null; };
+
 const CLE_COMPTES = 'aslweb.comptes';
 const CLE_DERNIER = 'aslweb.dernierUtilisateur';
 const _lireLocal = (k, def) => { try { const v = localStorage.getItem(k); return v === null ? def : v; } catch(e){ return def; } };
@@ -13597,6 +13656,8 @@ function joueursDuFichier(){
 function seConnecter(u, admin){
   _utilisateur = admin ? null : u;
   _admin = !!admin;
+  // ObscurableOptions.setup : la préférence du joueur vaut pour la partie.
+  if((_utilisateur || _admin) && _lireLocal(CLE_DEMASQUABLE, '0') === '1') permettreDemasquage(true);
   majUtilisateur();
   if(typeof majAideChat === 'function') majAideChat();
   _netMajInfo();
@@ -13614,14 +13675,17 @@ function majUtilisateur(){ rafraichirActions(['utilisateur']); }
 // « web » est l'identifiant d'avant les comptes : il ne réserve rien.
 const _masqueDe = (p, id) => !!id && (p.masqueProprio === id || p.hipProprio === id || p.compteurProprio === id);
 const nbMasques = id => vivants().filter(p => _masqueDe(p, id)).length;
-function accesRefuse(p){
+// Avec une touche : celle de Conceal reste permise sur une unité que son
+// joueur laisse démasquer.
+function accesRefuse(p, touche){
   if(!p || _admin) return false;
-  const autrui = id => !!id && id !== 'web' && id !== idJoueur();
+  if(touche && demasquable(p)){ const c = _cmdDemasque(p); if(c && c.touche === touche) return false; }
+  const autrui = id => !!id && id !== 'web' && !voitMasque(id);
   return autrui(p.masqueProprio) || autrui(p.hipProprio) || autrui(p.compteurProprio);
 }
 // Vrai si la commande est refusée ; le refus est dit au journal.
-function refuser(p){
-  if(!accesRefuse(p)) return false;
+function refuser(p, touche){
+  if(!accesRefuse(p, touche)) return false;
   chatLog(`🔒 ${p.el.title || p.nom} : masqué par un autre joueur, aucune commande`
     + ` — vous êtes ${_utilisateur ? _utilisateur.nom : 'observateur'}`);
   return true;
@@ -14821,6 +14885,8 @@ function commencerLog(){
   if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le log part d\'un état que VASL sache relire.'); return false; }
   _fenetreLog('Commencer un fichier de log', `
       <label>Nom du fichier<input id="lgNom" autocomplete="off" value="${_esc(_nomExport('vlog'))}"></label>
+      <label class="coche"><input id="lgDevoile" type="checkbox"${_utilisateur || _admin ? '' : ' disabled'}${demasquablesParMoi() ? ' checked' : ''}>
+        Permettre à mes adversaires de démasquer mes unités</label>
       <div class="fb"><button id="lgOk" class="prim">Commencer</button><button id="lgAnnul">Annuler</button></div>
       <p class="fnote">Les coups joués, reçus ou relus à partir de cette position y seront
         enregistrés ; « Log » à nouveau termine le fichier et l'écrit.</p>`, w => {
@@ -14832,6 +14898,7 @@ function commencerLog(){
       w.remove();
       _logNom = nom;
       _logEnr = []; _logGroupes = [];
+      permettreDemasquage(w.querySelector('#lgDevoile').checked);
       _logDepart = etatPartie();
       // beginOutput vide aussi logOutput : on n'annule pas en deçà du log.
       _histo = []; majUndo();
