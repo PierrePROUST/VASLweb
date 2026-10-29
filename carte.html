@@ -739,6 +739,10 @@ const EN = {
   'salle injoignable': 'room unreachable', 'code de salle invalide': 'invalid room code',
   // Fichier de log
   'Nom du fichier': 'File name', 'Commencer': 'Begin',
+  'Autoriser l\'adversaire à dévoiler mes pions dissimulés et HIP': 'Allow the opponent to reveal my concealed and HIP counters',
+  'Autoriser l\'adversaire à dévoiler tous les pions dissimulés et HIP': 'Allow the opponent to reveal all concealed and HIP counters',
+  '🔓 Le fichier autorise le dévoilement de tous les pions dissimulés et HIP': '🔓 This file allows revealing all concealed and HIP counters',
+  '🔓 Le fichier autorise le dévoilement des pions dissimulés et HIP de son auteur': '🔓 This file allows revealing its author\'s concealed and HIP counters',
   'Les coups joués, reçus ou relus à partir de cette position y seront enregistrés ; « Log » à nouveau termine le fichier et l\'écrit.':
     'Moves played, received or replayed from this position will be recorded in it; “Log” again ends the file and writes it.',
   'La relecture commence. Commencer un nouveau fichier de log ?': 'Replay begins. Begin a new logfile?',
@@ -6010,7 +6014,7 @@ function _piecesLOS(){
   const piles = new Map(), out = [];
   for(const p of vivants()){
     if(p.cache || p.outil) continue;
-    if(p.masqueProprio && !_admin && p.masqueProprio !== idJoueur()) continue;
+    if(p.masqueProprio && !voitMasque(p.masqueProprio)) continue;
     if(p._losSeg !== p.seg){
       const ts = _developperPrototypes(_splitTypeState(p.seg), 0), pr = _proprietes(ts);
       p._losSeg = p.seg;
@@ -7791,7 +7795,7 @@ async function majApparence(p, d){
   // Comme Concealable de VASL : l'adversaire ne voit que le « ? », le
   // joueur qui a dissimulé l'unité la voit, marquée d'un petit « ? ».
   // L'administrateur voit tout.
-  const voile = d.masque && !_admin && d.masqueProprio !== idJoueur() ? d.masque : null;
+  const voile = d.masque && !voitMasque(d.masqueProprio) ? d.masque : null;
   p.el.title = voile ? T('Pion dissimulé') : d.nom + (d.masque ? ' (?)' : '');
   p.proprietaire = d.proprietaire;
   p.masqueProprio = d.masqueProprio;
@@ -7799,7 +7803,7 @@ async function majApparence(p, d){
   p.compteurProprio = d.compteurProprio;
   // HIP : invisible de l'adversaire ; son joueur et l'administrateur le
   // voient en transparence, comme Hideable de VASSAL.
-  const voitHip = d.hip && (_admin || d.hipProprio === idJoueur());
+  const voitHip = d.hip && voitMasque(d.hipProprio);
   p.el.style.display = d.hip && !voitHip ? 'none' : '';
   p.el.style.opacity = voitHip ? '.55' : '';
   p.cache = d.hip && !voitHip;
@@ -8246,7 +8250,10 @@ function importerPions(texte, label, annexes){
   let iLog = segs.findIndex(_estLog);
   if(iLog < 0) iLog = segs.length;
   _source = segs.slice(0, iLog).filter(s => !s.startsWith('UNDO'));
-  _annexes = annexes || new Map();
+  _annexes = new Map(annexes || []);
+  _devoiles = lireDevoilement(_annexes);
+  if(_devoiles.size) chatLog(_devoiles.has('*') ? '🔓 Le fichier autorise le dévoilement de tous les pions dissimulés et HIP'
+                                                : '🔓 Le fichier autorise le dévoilement des pions dissimulés et HIP de son auteur');
   _nomFichier = label.replace(/\.(vsav|vlog)$/i, '');
 
   const rangs = _parseStacks(_source);
@@ -8856,7 +8863,7 @@ function _ciblesEtape(segs){
   const arrives = [], retires = [], modifies = [];
   const piles = new Map(_pilesVassal);
   const nes = new Map();   // pièces posées par le coup : uid → visible
-  const invisible = d => d.hip && !(_admin || d.hipProprio === idJoueur());
+  const invisible = d => d.hip && !voitMasque(d.hipProprio);
   const surCarte = uid => { const p = parUid(uid); return p && !p.cache ? p : null; };
   const ici = (l, p) => { if(p) l.push({x: p.x, y: p.y}); };
   for(let s of segs){
@@ -11244,7 +11251,7 @@ function dissimuler(p){
   const m = infoDissimulation(p);
   if(!m.unite) return;
   if(m.proprio){
-    if((m.proprio === idJoueur() || _admin) && fixerMasque(p, null)) chatLog(`👁️ ${p.nom} démasqué`);
+    if(voitMasque(m.proprio) && fixerMasque(p, null)) chatLog(`👁️ ${p.nom} démasqué`);
     return;
   }
   fixerMasque(p, idJoueur());
@@ -13205,6 +13212,31 @@ const joueur = () => _admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'we
 // Identifiant des masques (conceal, hide) : le mot de passe.
 const idJoueur = () => _admin ? 'admin' : (_utilisateur ? _utilisateur.mdp : 'web');
 
+// ── Dévoilement autorisé.
+// En commençant un log, un joueur peut permettre à l'adversaire de
+// dévoiler ses pions dissimulés et HIP dans la version HTML. Le fichier
+// porte alors une entrée de plus, que VASL ignore : les empreintes des
+// identifiants de masque concernés, « * » pour tous (administrateur).
+// À l'ouverture, ces masques ne réservent plus rien : leurs pions sont
+// visibles et commandables par tous. L'autorisation vaut pour ce
+// fichier : elle n'est pas reprise dans ceux qu'on en tire.
+const ANNEXE_DEVOILEMENT = 'aslweb-devoilement';
+let _devoiles = new Set();
+const devoile = id => !!id && (_devoiles.has('*') || _devoiles.has(_empreinte(id)));
+// Vrai si l'utilisateur voit et commande ce que masque l'identifiant id.
+const voitMasque = id => _admin || id === idJoueur() || devoile(id);
+// Lit l'autorisation et la retire des annexes, réécrites telles quelles.
+function lireDevoilement(annexes){
+  const d = annexes.get(ANNEXE_DEVOILEMENT);
+  annexes.delete(ANNEXE_DEVOILEMENT);
+  if(!d) return new Set();
+  try {
+    const l = JSON.parse(new TextDecoder().decode(d));
+    return new Set(Array.isArray(l) ? l.filter(x => typeof x === 'string') : []);
+  } catch(e){ return new Set(); }
+}
+const ecrireDevoilement = l => new TextEncoder().encode(JSON.stringify(l));
+
 const CLE_COMPTES = 'aslweb.comptes';
 const CLE_DERNIER = 'aslweb.dernierUtilisateur';
 const _lireLocal = (k, def) => { try { const v = localStorage.getItem(k); return v === null ? def : v; } catch(e){ return def; } };
@@ -13279,7 +13311,7 @@ const _masqueDe = (p, id) => !!id && (p.masqueProprio === id || p.hipProprio ===
 const nbMasques = id => vivants().filter(p => _masqueDe(p, id)).length;
 function accesRefuse(p){
   if(!p || _admin) return false;
-  const autrui = id => !!id && id !== 'web' && id !== idJoueur();
+  const autrui = id => !!id && id !== 'web' && !voitMasque(id);
   return autrui(p.masqueProprio) || autrui(p.hipProprio) || autrui(p.compteurProprio);
 }
 // Vrai si la commande est refusée ; le refus est dit au journal.
@@ -14455,6 +14487,7 @@ function ouvrirReseau(){
 let _logEnr = null;       // commandes du log en cours ; null : pas de log
 let _logDepart = null;    // état de la partie au début du log
 let _logNom = null;       // fichier choisi au début du log
+let _logDevoile = null;   // empreintes des masques que l'adversaire peut dévoiler ; null : aucun
 
 // Toutes les commandes nées d'une même action du joueur — le même tour de
 // boucle d'événements — forment un coup, écrit en une seule entrée LOG
@@ -14484,6 +14517,8 @@ function commencerLog(){
   if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le log part d\'un état que VASL sache relire.'); return false; }
   _fenetreLog('Commencer un fichier de log', `
       <label>Nom du fichier<input id="lgNom" autocomplete="off" value="${_esc(_nomExport('vlog'))}"></label>
+      <label class="coche"><input id="lgDevoile" type="checkbox"${_utilisateur || _admin ? '' : ' disabled'}>
+        Autoriser l'adversaire à dévoiler ${_admin ? 'tous les' : 'mes'} pions dissimulés et HIP</label>
       <div class="fb"><button id="lgOk" class="prim">Commencer</button><button id="lgAnnul">Annuler</button></div>
       <p class="fnote">Les coups joués, reçus ou relus à partir de cette position y seront
         enregistrés ; « Log » à nouveau termine le fichier et l'écrit.</p>`, w => {
@@ -14496,9 +14531,11 @@ function commencerLog(){
       _logNom = nom;
       _logEnr = []; _logGroupes = [];
       _logDepart = etatPartie();
+      _logDevoile = w.querySelector('#lgDevoile').checked ? (_admin ? ['*'] : [_empreinte(idJoueur())]) : null;
       // beginOutput vide aussi logOutput : on n'annule pas en deçà du log.
       _histo = []; majUndo();
-      chatLog(`⏺️ Enregistrement du log commencé : ${nom}`);
+      chatLog(`⏺️ Enregistrement du log commencé : ${nom}`
+        + (_logDevoile ? ' — dévoilement des pions masqués autorisé' : ''));
       majBoutons();
     };
     w.querySelector('#lgOk').onclick = ok;
@@ -14514,7 +14551,7 @@ function terminerLog(){
   if(!enregistreLog()) return false;
   if(_logEnr.length) ecrireVlog();
   else chatLog('⏹️ Log terminé : aucun coup enregistré, aucun fichier écrit');
-  _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = [];
+  _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = []; _logDevoile = null;
   _garderLog();
   majBoutons();
   return true;
@@ -14526,7 +14563,7 @@ function fermerLog(){
   if(!enregistreLog()) return;
   if(_logEnr.length && confirm(T(`Le log « ${_logNom} » n'est pas écrit (${_nbActions()} coup(s)). L'écrire maintenant ?`)))
     ecrireVlog();
-  _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = [];
+  _logEnr = null; _logDepart = null; _logNom = null; _logGroupes = []; _logDevoile = null;
   _garderLog();
   const f = document.getElementById('fenLog');
   if(f) f.remove();
@@ -14543,7 +14580,7 @@ function _garderLog(){
   try {
     if(!_logEnr || !_logEnr.length || !_logDepart){ localStorage.removeItem(CLE_LOG_SECOURS); return; }
     localStorage.setItem(CLE_LOG_SECOURS, JSON.stringify({nom: _logNom, depart: _logDepart, enr: _logEnr,
-      groupes: _logGroupes, annexes: [..._annexes].map(([n, d]) => [n, _versB64(d)])}));
+      groupes: _logGroupes, devoile: _logDevoile, annexes: [..._annexes].map(([n, d]) => [n, _versB64(d)])}));
   } catch(e){
     // Trop gros pour le stockage : pas de copie périmée non plus.
     try { localStorage.removeItem(CLE_LOG_SECOURS); } catch(e2){}
@@ -14555,7 +14592,7 @@ function _reprendreLogGarde(){
   if(!g || !Array.isArray(g.enr) || !g.enr.length || !Array.isArray(g.depart)) return;
   const n = new Set(g.groupes).size;
   if(!confirm(T(`Le log « ${g.nom} » n'a pas été écrit avant la fermeture de la page (${n} coup(s)). L'écrire maintenant ?`))) return;
-  ecrireVlog({enr: g.enr, groupes: g.groupes || [], depart: g.depart, nom: g.nom,
+  ecrireVlog({enr: g.enr, groupes: g.groupes || [], depart: g.depart, nom: g.nom, devoile: g.devoile || null,
               annexes: new Map((g.annexes || []).map(([k, t]) => [k, _deB64(t)]))});
 }
 
@@ -14664,7 +14701,7 @@ function ecrireVsav(){
 }
 
 // BasicLogger : état de départ, puis « LOG\t<commande> » par action.
-function ecrireVlog(log = {enr: _logEnr, groupes: _logGroupes, depart: _logDepart, nom: _logNom, annexes: _annexes}){
+function ecrireVlog(log = {enr: _logEnr, groupes: _logGroupes, depart: _logDepart, nom: _logNom, devoile: _logDevoile, annexes: _annexes}){
   if(!log.enr || !log.enr.length || !log.depart) return false;
   // BasicLogger.write : chaque coup devient une LogCommand, dont chaque
   // sous-commande est elle-même une LogCommand. GameModule.encode écrit
@@ -14686,7 +14723,9 @@ function ecrireVlog(log = {enr: _logEnr, groupes: _logGroupes, depart: _logDepar
     else entrees.push([c]);
   });
   const lignes = entrees.map(l => jeton(l.map(c => jeton('LOG\t' + c)).join('\x1b')));
-  _telecharger([...log.depart, ...lignes].join('\x1b'), log.nom || _nomExport('vlog'), log.annexes);
+  const annexes = new Map(log.annexes);
+  if(log.devoile && log.devoile.length) annexes.set(ANNEXE_DEVOILEMENT, ecrireDevoilement(log.devoile));
+  _telecharger([...log.depart, ...lignes].join('\x1b'), log.nom || _nomExport('vlog'), annexes);
   chatLog(`📼 Log écrit : ${log.nom} — ${entrees.length} coup(s), ${log.enr.length} commande(s)`);
   return true;
 }

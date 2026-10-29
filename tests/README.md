@@ -56,6 +56,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mov-relecture.js` | Mark unmoved (MOV) après la relecture d'un D/ dont le nouvel état finit par une contre-oblique : état du pion entier, image gardée, Undo |
 | `precadrage.js` | Relecture : la vue rejoint la case d'arrivée avant que le pion bouge et que le message du coup paraisse ; ▶ pendant la pause joue le coup en attente |
 | `log-coups.js` | .vlog écrit puis relu : un D/ dont l'état finit par une contre-oblique, dernier de son coup, est mis entre apostrophes ; deux déplacements de suite restent deux coups |
+| `devoilement.js` | Log commencé avec « Autoriser l'adversaire à dévoiler… » : rouvert par un autre joueur, l'unité dissimulée lui est visible et démasquable ; sans la case, elle reste voilée |
 | `couches-noms.js` | Couches dont l'image est un nom nu (« mofan », « mober », « mohro » d'un module plus ancien) : Fanatic, Berserk et Heroic dessinés et cumulés |
 | `munitions.js` | Munitions épuisées d'un véhicule (Sherman III(a)) : label « $finalammo$ » calculé, s / WP barrés en rouge, Toggle On/Off |
 | `page-html.js` | Page HTML d'un label (« HTML Placeholder », VASL Information Tables) : dessinée à l'échelle de Swing (×1,3), au fond sous le pion posé dans une case, logos de nationalité remplacés par les marqueurs de tour VASL, coins de renfort, ni script ni `onerror`, feuille de style cloisonnée |
