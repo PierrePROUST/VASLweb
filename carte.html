@@ -9884,16 +9884,10 @@ function _demarrer(p, e, pos, vca, motion){
 // propre à un pion (« REV × # » au dos) n'est pas connu. Motos et
 // attelages : pas de marche arrière.
 const _MULT_RECUL = {ft: 4, ht: 4, tr: 3, ac: 2};
-// Pour un véhicule en marche sans Motion, le cumul avec l'arrêt (D2.13).
-function _avecArret(p, n, motion){
-  const arret = n.unite === 'MP' && !motion && !/ALL|\?/.test(_mvtCumul(p))
-    && p.mvt && _etatMvt(p.mvt.etapes).etat === 'marche';
-  return arret ? `${_fmtCout(_plus(_mvtSomme(p), 1))} avec l'arrêt` : '';
-}
-// Cumul annoncé ; pour un véhicule sans Motion, avec l'arrêt.
-function _texteCumul(p, n, motion){
-  const a = _avecArret(p, n, motion);
-  return `cumul ${_mvtCumul(p)} ${n.unite}` + (a ? ', ' + a : '');
+// Décompte d'un véhicule : « 1MP/ 3MP (démarrage 1) », coût puis cumul.
+function _texteMP(p, cout, plus){
+  plus = (plus || []).filter(Boolean);
+  return `${cout}MP/ ${_mvtCumul(p)}MP` + (plus.length ? ` (${plus.join(', ')})` : '');
 }
 const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
 
@@ -9967,9 +9961,7 @@ function compterMouvement(avant, portes, local){
     if(entree) Object.assign(e[e.length - 1], {entree});
     const pas = ch.map(r => _fmtCout(r.cout)).join('+');
     if(!veh){ pied.push({p, pas}); continue; }
-    const motion = _enMotion(p, p.x, p.y, groupe);
-    const plus = [recul && `marche arrière ×${recul}`, demarrage && 'démarrage 1', _avecArret(p, n, motion)].filter(Boolean);
-    const txt = `${pas}MP/ ${_mvtCumul(p)}MP` + (plus.length ? ` (${plus.join(', ')})` : '');
+    const txt = _texteMP(p, pas, [recul && `marche arrière ×${recul}`, demarrage && 'démarrage 1']);
     if(!lignes.has(txt)) lignes.set(txt, []);
     lignes.get(txt).push(nomRapport(p));
   }
@@ -10022,8 +10014,7 @@ function compterVCA(p, T, S0, S1){
   const demarrage = _demarrer(p, e, P.cle, a, motion);
   const d = _etatMvt(e);
   e.push({pos: P.cle, vca: b, cout: pas * (dedans ? 2 : 1), lib: 'VCA', byp: d.byp, etat: d.etat, recul: d.recul});
-  rapport(`${nomRapport(p)} : VCA ${pas * (dedans ? 2 : 1)} MP` + (demarrage ? ', démarrage 1' : '')
-        + ` (${_texteCumul(p, n, motion)})`);
+  rapport(`${nomRapport(p)} : VCA ${_texteMP(p, pas * (dedans ? 2 : 1), [demarrage && 'démarrage 1'])}`);
 }
 
 // ── Start, Stop, Reverse : commandes du menu des véhicules, avant le
@@ -10040,26 +10031,27 @@ function commandeVehicule(p, quoi){
   const e = _mvtDepart(p, P.cle, vca), n0 = e.length;
   const d = _etatMvt(e);
   const ajout = (cout, lib, etat, recul) => e.push({pos: P.cle, vca, cout, lib, byp: d.byp, etat, recul});
-  const morceaux = [];
+  let quoiTxt = null, cout = 0, plus = [];
   if(quoi === 'start' && d.etat !== 'marche'){
     ajout(1, 'démarrage', 'marche', d.recul);
-    morceaux.push('Start 1 MP' + (d.recul ? ' en marche arrière' : ''));
+    quoiTxt = 'Start'; cout = 1; plus = [d.recul && 'marche arrière'];
   } else if(quoi === 'stop' && d.etat === 'marche'){
     ajout(1, 'arrêt', 'arret', d.recul);
-    morceaux.push('Stop 1 MP');
+    quoiTxt = 'Stop'; cout = 1;
   } else if(quoi === 'reverse'){
     const vers = !d.recul;
+    quoiTxt = vers ? 'Reverse' : 'Marche avant';
     if(d.etat === 'marche'){
       ajout(1, 'arrêt', 'arret', d.recul);
       ajout(1, 'démarrage', 'marche', vers);
-      morceaux.push(`${vers ? 'Reverse' : 'Marche avant'} : arrêt 1, démarrage 1 MP`);
+      cout = 2; plus = ['arrêt 1, démarrage 1'];
     } else {
       ajout(0, vers ? 'marche arrière' : 'marche avant', 'arret', vers);
-      morceaux.push(vers ? 'Reverse déclaré' : 'Marche avant déclarée');
+      plus = [vers ? 'déclaré' : 'déclarée'];
     }
   }
-  if(!morceaux.length){ if(!avait && e.length === 1) delete p.mvt; return; }
-  rapport(`${nomRapport(p)} : ${morceaux.join(', ')} (${_texteCumul(p, n, _enMotion(p, p.x, p.y, [p]))})`);
+  if(!quoiTxt){ if(!avait && e.length === 1) delete p.mvt; return; }
+  rapport(`${nomRapport(p)} : ${quoiTxt} ${_texteMP(p, cout, plus)}`);
   const etapes = e;
   _histoJs(() => {
     if(p.mvt && p.mvt.etapes === etapes) etapes.length = n0;
@@ -10162,7 +10154,7 @@ function commandeTransport(p, quoi){
   }
   rapport(`${nomRapport(p)} : ${txtP} (cumul ${_mvtCumul(p)} MF)`);
   if(alertes.length) chatLog(`⚠️ ${nomRapport(p)} : ${alertes.join(', ')} (D6.${quoi === 'load' ? 4 : 5})`);
-  if(txtV) rapport(`${nomRapport(v)} : ${txtV} (${_texteCumul(v, nv, _enMotion(v, v.x, v.y, [v]))})`);
+  if(txtV) rapport(`${nomRapport(v)} : ${txtV} (cumul ${_mvtCumul(v)} MP)`);
   if(quoi === 'unload') v._dechargeNo = _actionNo;
   const etP = eP, etV = eV;
   _histoJs(() => {
