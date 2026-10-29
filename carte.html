@@ -33,7 +33,7 @@ button:disabled{opacity:.4;cursor:default}
 /* ── Interface : menus, barre d'icônes, panneau à onglets (profil PC). */
 :root{--cible:28px;--marge-h:env(safe-area-inset-top,0px);--marge-b:env(safe-area-inset-bottom,0px);
   --marge-g:env(safe-area-inset-left,0px);--marge-d:env(safe-area-inset-right,0px)}
-body:is([data-terminal=mobile],[data-terminal=tablette]){--cible:44px}
+body[data-terminal=tactile]{--cible:44px}
 #chromeHaut,#chromeBas,#chromeGauche{flex:none}
 .menus{display:flex;align-items:center;height:calc(26px + var(--marge-h));padding:var(--marge-h) calc(6px + var(--marge-d)) 0 calc(6px + var(--marge-g));background:var(--barre);font-size:13px}
 .menus h1{font-size:13px;margin:0 10px 0 2px;font-weight:600;color:var(--doux);white-space:nowrap}
@@ -250,39 +250,39 @@ body:not([data-terminal=pc]) .coteOnglets button.fermeCote{display:block}
 .navGauche .groupeAct{flex-direction:column;gap:2px}
 .navGauche .groupeAct .etiqAct{width:46px;font-size:10px;text-align:center;white-space:normal;color:var(--texte)}
 :root{--railMobile:52px}
-/* Tablette et téléphone : la colonne d'icônes est sur la droite de l'écran. */
-body:is([data-terminal=mobile],[data-terminal=tablette]) #chromeGauche{display:flex;background:var(--barre);order:9}
+/* Affichage tactile : la colonne d'icônes est sur la droite de l'écran. */
+body[data-terminal=tactile] #chromeGauche{display:flex;background:var(--barre);order:9}
 /* … ou à gauche, au choix de l'utilisateur (icône ⇄ de la colonne). */
 body[data-colonne=gauche] #chromeGauche{order:0}
 body[data-colonne=gauche] .navGauche.navBas{padding-left:calc(var(--marge-g) + 2px);padding-right:2px;border-left:none;border-right:1px solid var(--bord)}
-body[data-colonne=gauche]:is([data-terminal=mobile],[data-terminal=tablette]) #cote,
-body[data-colonne=gauche]:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){left:var(--railMobile);right:0}
+body[data-colonne=gauche][data-terminal=tactile] #cote,
+body[data-colonne=gauche][data-terminal=tactile] #bas:not([hidden]){left:var(--railMobile);right:0}
 .navBas.suiteGauche.suiteDroite{-webkit-mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent);
   mask-image:linear-gradient(to right,transparent,#000 28px,#000 calc(100% - 28px),transparent)}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeCote,body:is([data-terminal=mobile],[data-terminal=tablette]) #poigneeJournal,
-body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets button[data-onglet]{display:none}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #coteOnglets{justify-content:flex-end}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #couches{display:none}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #cote{position:absolute;left:0;right:var(--railMobile);bottom:0;z-index:70;width:auto;border-left:none;
+body[data-terminal=tactile] #poigneeCote,body[data-terminal=tactile] #poigneeJournal,
+body[data-terminal=tactile] #coteOnglets button[data-onglet]{display:none}
+body[data-terminal=tactile] #coteOnglets{justify-content:flex-end}
+body[data-terminal=tactile] #couches{display:none}
+body[data-terminal=tactile] #cote{position:absolute;left:0;right:var(--railMobile);bottom:0;z-index:70;width:auto;border-left:none;
   border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.5)}
-body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
-body:is([data-terminal=mobile],[data-terminal=tablette])[data-vue=pions] #cote{top:0}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas:not([hidden]){position:fixed;left:0;right:var(--railMobile);z-index:80;display:flex;flex-direction:column;
+body[data-terminal=tactile][data-vue=pile] #cote{top:auto;height:58%;border-radius:12px 12px 0 0}
+body[data-terminal=tactile][data-vue=pions] #cote{top:0}
+body[data-terminal=tactile] #bas:not([hidden]){position:fixed;left:0;right:var(--railMobile);z-index:80;display:flex;flex-direction:column;
   top:calc(var(--vv-haut,0px) + var(--marge-h));bottom:var(--hautBas,calc(55px + var(--marge-b)));background:var(--barre)}
 /* Saisie au doigt : le chat touche le clavier ; la relecture, dessous de
    toute façon, s'efface ; la colonne d'icônes reste. Le chat
-   et les vues du téléphone laissent cette colonne visible. */
+   et les vues de l'affichage tactile laissent cette colonne visible. */
 body:not([data-terminal=pc]).saisie .navBas:not(.navGauche){display:none}
-body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
+body[data-terminal=tactile].saisie #bas:not([hidden]){bottom:var(--clavier,0px)}
 /* Chat compact : une feuille au-dessus du bas de l'écran, la carte visible. */
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
+body[data-terminal=tactile] #bas[data-etat=compact]:not([hidden]){top:auto;height:calc(var(--vv-h,100vh) * .45);
   border-radius:12px 12px 0 0;border-top:1px solid var(--bord);box-shadow:0 -6px 20px rgba(0,0,0,.55)}
-body:is([data-terminal=mobile],[data-terminal=tablette]).saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact] #journal{min-height:48px}
+body[data-terminal=tactile].saisie #bas[data-etat=compact]:not([hidden]){height:calc(var(--vv-h,100vh) * .5)}
+body[data-terminal=tactile] #bas[data-etat=compact] #journal{min-height:48px}
 .poigneeChat{display:none}
 .filtresChat{display:none;gap:6px;padding:4px 10px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
   background:var(--barre);border-bottom:1px solid var(--bord)}
-body:is([data-terminal=mobile],[data-terminal=tablette]).chatOuvert .filtresChat{display:flex}
+body[data-terminal=tactile].chatOuvert .filtresChat{display:flex}
 .filtresChat .pastilleChat{height:30px;font-size:12px;opacity:.55}
 .filtresChat .pastilleChat.actif{opacity:1;border-color:var(--accent)}
 body:not([data-terminal=pc]) #journal:not([data-filtres~=msg]) > .msg,
@@ -292,9 +292,9 @@ body:not([data-terminal=pc]) #journal:not([data-filtres~=sys]) > .sys:not(.alert
 body:not([data-terminal=pc]) .lieuChat{color:var(--accent);text-decoration:underline;cursor:pointer}
 .chatRapide{display:none;gap:6px;padding:4px 10px 2px;overflow-x:auto;touch-action:pan-x;scrollbar-width:none;flex:none;
   background:var(--barre)}
-body:is([data-terminal=mobile],[data-terminal=tablette]).chatOuvert .chatRapide{display:flex}
+body[data-terminal=tactile].chatOuvert .chatRapide{display:flex}
 .pastilleChat{flex:none;height:36px;padding:0 12px;border-radius:18px;white-space:nowrap;font-size:14px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
+body[data-terminal=tactile] #bas[data-etat=compact] .poigneeChat{display:block;flex:none;height:18px;touch-action:none;position:relative}
 .poigneeChat::after{content:"";position:absolute;left:50%;top:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:#666}
 .apercuChat{display:flex;align-items:center;gap:6px;min-height:40px;padding:2px 4px 2px 10px;background:#232323;
   border-top:1px solid var(--bord);font-size:12px;line-height:17px;color:var(--doux);cursor:pointer}
@@ -311,11 +311,11 @@ body.chatOuvert .apercuChat{display:none}
 .badgeAct{background:#c03a3a;color:#fff;border-radius:9px;padding:0 5px;font:600 11px/16px system-ui,sans-serif;flex:none}
 .act.rail{position:relative}
 .act.rail .badgeAct{position:absolute;top:3px;right:calc(50% - 22px)}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #journal{flex:1;height:auto;font-size:13px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #chatIn{font-size:16px;padding:8px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) #palRech{font-size:16px;padding:8px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) .vig{width:56px;height:56px}
-body:is([data-terminal=mobile],[data-terminal=tablette]) .vig .mini{transform:scale(1.25)}
+body[data-terminal=tactile] #journal{flex:1;height:auto;font-size:13px}
+body[data-terminal=tactile] #chatIn{font-size:16px;padding:8px}
+body[data-terminal=tactile] #palRech{font-size:16px;padding:8px}
+body[data-terminal=tactile] .vig{width:56px;height:56px}
+body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
 #mapWrap{flex:1;overflow:auto;position:relative;touch-action:none;cursor:grab;
   user-select:none;-webkit-user-select:none}
 /* Couche de sélection décochée : ses pièces laissent passer le clic vers
@@ -328,6 +328,32 @@ body:is([data-terminal=mobile],[data-terminal=tablette]) .vig .mini{transform:sc
 #mapScaler{position:relative}
 #mapInner{position:absolute;left:0;top:0;transform-origin:0 0}
 .boardLayer{position:absolute;pointer-events:none}
+/* Tables QRDC sous la zone de la carte : au-dessus des boards, sous les
+   pions. Les onglets gardent une taille lisible quand la carte s'éloigne. */
+.tablesQRDC{position:absolute;z-index:1;cursor:default}
+.tablesQRDC .qOnglets{display:flex;flex-wrap:wrap;gap:.25em;margin:.4em 0;font-size:calc(13px * max(1, var(--zinv, 1)))}
+.tablesQRDC .qOnglets button{font:inherit;padding:.25em .8em;background:#262626;color:#ccc;
+  border:1px solid var(--bord);border-radius:.3em;cursor:pointer}
+.tablesQRDC .qOnglets button.actif{background:#3a3a3a;color:var(--accent);border-color:var(--accent)}
+.tablesQRDC .qPanneau{display:flex;align-items:flex-start;gap:16px}
+.tablesQRDC .qPanneau.vert{flex-direction:column}
+.tablesQRDC img{display:block;max-width:none;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+/* Fenêtre QRDC du PC, flottante, comme la ChartWindow de VASL. */
+.fenQRDC{position:fixed;left:80px;top:90px;z-index:9000;display:flex;flex-direction:column;
+  width:min(90vw,820px);height:min(80vh,560px);min-width:220px;min-height:120px;resize:both;overflow:hidden;
+  background:var(--menu-fond);color:var(--menu-texte);border:1px solid var(--menu-bord);border-radius:6px;
+  box-shadow:0 8px 28px rgba(0,0,0,.6);font-size:13px}
+.fenQRDC .qTitre{display:flex;align-items:center;justify-content:space-between;flex:none;padding:4px 6px 4px 12px;
+  font-weight:700;background:#2f5f9e;color:#fff;cursor:move;user-select:none;touch-action:none}
+.fenQRDC .qFermer{background:none;border:none;color:#fff;font-size:15px;cursor:pointer;padding:2px 6px}
+.fenQRDC .qCorps{flex:1;overflow:auto;padding:0 8px 8px}
+.fenQRDC .qOnglets{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0}
+.fenQRDC .qOnglets button{font:inherit;padding:3px 10px;background:#262626;color:#ccc;border:1px solid var(--bord);
+  border-radius:4px;cursor:pointer}
+.fenQRDC .qOnglets button.actif{background:#3a3a3a;color:var(--accent);border-color:var(--accent)}
+.fenQRDC .qPanneau{display:flex;align-items:flex-start;gap:8px}
+.fenQRDC .qPanneau.vert{flex-direction:column}
+.fenQRDC img{display:block;max-width:none}
 #vide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   text-align:center;color:var(--doux);padding:16px;pointer-events:none}
 #bas{flex:none}
@@ -534,6 +560,7 @@ body.maj .pion.immob{pointer-events:auto}
         <label><input type="checkbox" data-couche="unite"> Unités</label>
         <label><input type="checkbox" data-couche="marqueur"> Marqueurs</label>
         <label><input type="checkbox" data-couche="carte"> Cartes et panneaux</label>
+        <label><input type="checkbox" data-couche="overlay"> Overlays</label>
       </span>
     </div>
     <div id="ongPalette" class="ongCorps" role="tabpanel">
@@ -597,6 +624,8 @@ const EN = {
     'Layers a click can select; the others let the click through',
   'Sélection :': 'Selection:',
   'Unités': 'Units', 'Marqueurs': 'Markers', 'Cartes et panneaux': 'Maps and panels',
+  'Tables QRDC sous la carte': 'QRDC charts below the map', 'Tables QRDC (fenêtre)': 'QRDC charts (window)',
+  'Tables QRDC indisponibles.': 'QRDC charts unavailable.',
   'Rechercher un pion…': 'Search counters…', 'Rechercher un pion': 'Search counters',
   'Piège Axis': 'Axis Booby Trap', 'Piège Allied': 'Allied Booby Trap',
   'Pile': 'Stack', 'Palette': 'Counters', 'Dés': 'Dice',
@@ -655,8 +684,9 @@ const EN = {
   'Raccourcis clavier et gestes…': 'Keyboard shortcuts and gestures…',
   'Sélection : unités': 'Selection: units', 'Sélection : marqueurs': 'Selection: markers',
   'Sélection : cartes et panneaux': 'Selection: maps and panels',
+  'Sélection : overlays': 'Selection: overlays',
   'Affichage : automatique': 'Display: automatic', 'Affichage : PC': 'Display: PC',
-  'Affichage : tablette': 'Display: tablet', 'Affichage : téléphone': 'Display: phone',
+  'Affichage : tactile': 'Display: touch',
   'Début du log': 'Start of logfile', 'Fin du log': 'End of logfile',
   'Coup précédent': 'Step back', 'Coup suivant': 'Step forward',
   'Un coup a été joué ici pendant la relecture : Undo pour l\'annuler':
@@ -746,7 +776,7 @@ const EN = {
   'Partie ouverte. Commencer un nouveau fichier de log ?': 'Game opened. Begin a new logfile?',
   'Relecture terminée. Commencer un nouveau fichier de log ?': 'Replay finished. Begin a new logfile?',
   'Fichier de log': 'Logfile', 'Oui': 'Yes', 'Non': 'No', 'Ne plus demander': 'Don\'t ask again',
-  // Lancer IFT (tablette, téléphone)
+  // Lancer IFT (affichage tactile)
   'Lancer IFT': 'IFT attack', 'Modificateur DR': 'DR modifier',
   'Valider': 'Roll', 'Relancer': 'Roll again'
 };
@@ -1034,6 +1064,7 @@ async function chargerPartie(texte, label, annexes){
     + boards.map(b => b.name + (b.reversed ? ' (retourné)' : '')).join(', '));
   await _renderBoards(boards);
   importerPions(texte, label, annexes);
+  poserTables();
   return true;
 }
 
@@ -1835,6 +1866,7 @@ async function _renderBoards(boards){
 
   const mi = document.getElementById('mapInner');
   mi.querySelectorAll('.boardLayer').forEach(e => e.remove());
+  _oublierTables();
   document.getElementById('vide').style.display = 'none';
 
   const {totalW, totalH} = _layoutBoards(boards);
@@ -1857,6 +1889,9 @@ async function _renderBoards(boards){
   _setMapSize(Math.round((totalW + BOARD_MARGIN*2) * SC), Math.round((totalH + BOARD_MARGIN*2) * SC));
   _buildHexTable(boards);
   const M = Math.round(BOARD_MARGIN * SC);
+  // Zone de la carte : l'emprise des boards affichés, sans la marge.
+  _empriseBoards = {x: M, y: M, w: Math.round(totalW * SC), h: Math.round(totalH * SC)};
+  _mapBase = {w: _mapW, h: _mapH};
   let ok = 0; const fail = [];
 
   await _runLimited(noms, n => _fetchBoardImage(n));
@@ -1939,7 +1974,10 @@ function zoomFit(){
   if(!_mapW) return;
   const wrap = document.getElementById('mapWrap');
   _zoomAuto = true;
-  try { setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/_mapH)); } finally { _zoomAuto = false; }
+  // Les tables restent sous la zone ajustée : on y descend en défilant.
+  const t = rectTables();
+  const h = t ? Math.min(_mapH, t.y) : _mapH;
+  try { setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/h)); } finally { _zoomAuto = false; }
   _zoomManuel = false;
   wrap.scrollLeft = 0; wrap.scrollTop = 0;
 }
@@ -6098,9 +6136,18 @@ const _nouveauFil = (mode, c0, c1) => ({mode, c0, c1, ctrl0: false, ctrl1: false
   m: null, complet: false, src: null, tgt: null, auxS: false, auxT: false,
   sl: 0, tl: 0, res: null, texte: '', compte: 0, de: '', vers: ''});
 
-// Au doigt, le relâché ne termine pas le fil : il reste ancré, avec un
-// panneau pour les niveaux, la validation et l'annulation ; un nouvel
-// appui ou glissé sur la carte déplace la cible. À la souris, rien ne change.
+// Au doigt, la visée se fait en deux temps, chacun avec la loupe dès
+// l'appui : le premier appui (ou glissé) vise la source, posée au relâché ;
+// le fil reste alors ancré, avec un panneau pour les niveaux, la validation
+// et l'annulation, et chaque nouvel appui ou glissé sur la carte vise la
+// cible, posée au relâché. Un deuxième doigt pendant une visée l'abandonne
+// et pince la carte. À la souris, rien ne change : on glisse de la source à
+// la cible.
+let _doigtFil = null;               // {id, x, y, abandonner} : visée au doigt en cours
+function _suivreDoigtFil(e, abandonner){
+  _doigtFil = {id: e.pointerId, x: e.clientX, y: e.clientY, abandonner};
+}
+function _finDoigtFil(id){ if(_doigtFil && _doigtFil.id === id) _doigtFil = null; }
 function commencerFil(e){
   const c = clientVersCarte(e.clientX, e.clientY);
   if(!c) return;
@@ -6110,16 +6157,31 @@ function commencerFil(e){
   const bouge = ev => {
     if(ev.pointerId !== id) return;
     ev.preventDefault();
+    if(doigt){
+      // La source suit le doigt.
+      _doigtFil.x = ev.clientX; _doigtFil.y = ev.clientY;
+      f.c0 = f.c1 = clientVersCarte(ev.clientX, ev.clientY) || f.c0;
+      if(f.m) _poserSource(f);
+      dessinerFil();
+      _loupeFil(ev, false);
+      return;
+    }
     f.c1 = clientVersCarte(ev.clientX, ev.clientY) || f.c1;
     f.ctrl1 = ev.ctrlKey;
     if(f.m) _poserCible(f);
     dessinerFil();
+    _loupeFil(ev, true);
   };
-  const fin = ev => {
-    if(ev.pointerId !== id) return;
+  const detacher = () => {
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
+    _finDoigtFil(id);
+    cacherLoupe();
+  };
+  const fin = ev => {
+    if(ev.pointerId !== id) return;
+    detacher();
     if(doigt && _fil === f){ f.ancre = true; panneauFil(f); return; }
     if(ev.type === 'pointerup') f.lache = true;
     if(f.m || f.pret) terminerFil(f);
@@ -6127,6 +6189,10 @@ function commencerFil(e){
   document.addEventListener('pointermove', bouge, true);
   document.addEventListener('pointerup', fin, true);
   document.addEventListener('pointercancel', fin, true);
+  if(doigt){
+    _suivreDoigtFil(e, () => { detacher(); if(_fil === f) _effacerFil(); });
+    _loupeFil(e, false);
+  }
   carteLOS().then(({map, complet}) => {
     if(_fil !== f) return;
     f.m = map; f.complet = complet; f.pret = true;
@@ -6134,6 +6200,8 @@ function commencerFil(e){
     if(map) _poserSource(f);
     if(map && (f.c1.x !== f.c0.x || f.c1.y !== f.c0.y)) _poserCible(f);
     dessinerFil();
+    // Doigt encore posé : la loupe nomme la source.
+    if(doigt && _doigtFil && _doigtFil.id === id) _loupeFil({clientX: _doigtFil.x, clientY: _doigtFil.y}, false);
     if(f.ancre) panneauFil(f);
     else if(f.lache) terminerFil(f);
   });
@@ -6143,26 +6211,63 @@ function commencerFil(e){
 // Fil ancré : la cible suit un nouvel appui ou glissé sur la carte.
 function deplacerCibleFil(e){
   const f = _fil, id = e.pointerId;
+  const doigt = !!e.pointerType && e.pointerType !== 'mouse';
+  // Cible d'avant, rendue si un pincement abandonne la visée.
+  const avant = {c1: f.c1, tgt: f.tgt, tgtBrut: f.tgtBrut, auxT: f.auxT, tl: f.tl, vers: f.vers,
+                 compte: f.compte, res: f.res, surOverlay: f.surOverlay};
   const suivre = ev => {
     if(ev.pointerId !== id) return;
+    if(doigt){ _doigtFil.x = ev.clientX; _doigtFil.y = ev.clientY; }
     const c = clientVersCarte(ev.clientX, ev.clientY);
     if(!c) return;
     f.c1 = c; f.ctrl1 = false;
     if(f.m) _poserCible(f);
     dessinerFil();
+    _loupeFil(ev, !ev.pointerType || ev.pointerType === 'mouse');
     panneauFil(f);
   };
-  const fin = ev => {
-    if(ev.pointerId !== id) return;
+  const detacher = () => {
     document.removeEventListener('pointermove', bouge, true);
     document.removeEventListener('pointerup', fin, true);
     document.removeEventListener('pointercancel', fin, true);
+    _finDoigtFil(id);
+    cacherLoupe();
   };
+  const fin = ev => { if(ev.pointerId === id) detacher(); };
   const bouge = ev => { ev.preventDefault(); suivre(ev); };
+  if(doigt) _suivreDoigtFil(e, () => {
+    detacher();
+    if(_fil !== f) return;
+    Object.assign(f, avant);
+    dessinerFil();
+    if(f.compte) _envoyerFil(f, false, true);
+    panneauFil(f);
+  });
   suivre(e);
   document.addEventListener('pointermove', bouge, true);
   document.addEventListener('pointerup', fin, true);
   document.addEventListener('pointercancel', fin, true);
+}
+
+// Pendant le tracé, la loupe de dépôt montre le fil et le lieu ciblé : au
+// doigt, qui cache la cible, un disque au-dessus centré sur le point visé ;
+// à la souris, l'hexagone survolé seul, à côté du curseur.
+function _loupeFil(ev, hexSeul){
+  const f = _fil;
+  const c = f && clientVersCarte(ev.clientX, ev.clientY);
+  if(!c){ cacherLoupe(); return; }
+  // Le lieu visé : la cible, ou la source tant qu'il n'y a pas de cible.
+  const texte = f.src ? f.vers : '';
+  const a = hexSeul ? Object.assign({}, ancragePlusProche(c.x, c.y) || c, {texte}) : {x: c.x, y: c.y, label: texte};
+  dessinerLoupe(ev.clientX, ev.clientY, a, null, hexSeul, (g, k) => {
+    for(const t of document.querySelectorAll('#filLOS line')){
+      g.strokeStyle = t.getAttribute('stroke'); g.lineWidth = 3 / k;
+      g.beginPath();
+      g.moveTo(+t.getAttribute('x1'), +t.getAttribute('y1'));
+      g.lineTo(+t.getAttribute('x2'), +t.getAttribute('y2'));
+      g.stroke();
+    }
+  });
 }
 
 // Panneau du fil ancré, au-dessus de la carte. Les niveaux suivent le
@@ -6508,6 +6613,14 @@ function _brancherFil(){
   // Pris avant les pions et le panoramique.
   wrap.addEventListener('pointerdown', e => {
     if(!_filArme || e.button > 0) return;
+    // Deuxième doigt pendant une visée : elle est abandonnée, et les deux
+    // doigts pincent la carte (le premier est rendu au panoramique).
+    if(_doigtFil && e.pointerId !== _doigtFil.id && e.pointerType && e.pointerType !== 'mouse'){
+      const d = _doigtFil;
+      d.abandonner();
+      _pointeursCarte.set(d.id, {x: d.x, y: d.y, pion: false, surPion: false, x0: d.x, y0: d.y, t0: Date.now(), btn: 0});
+      return;
+    }
     if(_fil && _fil.ancre && !_fil.distant){ e.preventDefault(); e.stopPropagation(); deplacerCibleFil(e); return; }
     if(_fil) return;
     e.preventDefault(); e.stopPropagation();
@@ -8091,11 +8204,14 @@ function rendrePile(k, tous){
     p.el.style.left = (r.x + (p.decX || 0) * SC) + 'px';
     p.el.style.top  = (r.y + (p.decY || 0) * SC) + 'px';
     // Une pile dépliée passe au-dessus de ses voisines. Une pièce qui ne
-    // s'empile pas (Fire Lane) se dessine au-dessus de la pile de son
+    // s'empile pas (un tunnel) se dessine au-dessus de la pile de son
     // hexagone, comme la pièce posée en dernier dans VASSAL.
     // Une carte, un panneau ou une page reste au fond, même s'il ne
     // s'empile pas : les pions posés dans ses cases passent par-dessus.
-    p.el.style.zIndex = p.fond ? 2 + i : p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : 10) + i;
+    // Un overlay déplaçable se pose sur le terrain, au-dessus des cartes et
+    // sous tous les pions (Fire Lane compris) ; entre overlays, le dernier
+    // posé est dessus.
+    p.el.style.zIndex = p.fond ? 2 + i : p.couche === 'overlay' ? 6 : p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : 10) + i;
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
@@ -8105,7 +8221,7 @@ function rendrePile(k, tous){
   if(_liens.size) _planifierLiens();
   // Les pièces non empilées posées au même endroit restent au-dessus.
   if(s.length && !s[0].seul)
-    for(const q of vivants()) if(q.seul && !q.fond && !q.cache && q.x === s[0].x && q.y === s[0].y)
+    for(const q of vivants()) if(q.seul && !q.fond && !q.cache && q.couche !== 'overlay' && q.x === s[0].x && q.y === s[0].y)
       q.el.style.zIndex = 10 + _hauteurSous(q);
 }
 // Hauteur de la pile ordinaire sur laquelle une pièce non empilée est posée.
@@ -8167,8 +8283,9 @@ function _viderDecors(){
 // La carte de scénario et les panneaux de VASL Tools couvrent de grandes
 // zones du terrain : un clic destiné à la carte les prenait, ou un pion
 // voisin. Chaque famille peut donc être retirée de la sélection ; ses
-// pièces restent affichées mais ne répondent plus au clic.
-const COUCHES_SEL = {unite: true, marqueur: true, carte: false};
+// pièces restent affichées mais ne répondent plus au clic. Les overlays
+// déplaçables font partie du terrain : en jeu, le clic les traverse.
+const COUCHES_SEL = {unite: true, marqueur: true, carte: false, overlay: false};
 try {
   const m = JSON.parse(localStorage.getItem('couchesSel') || 'null');
   if(m) for(const k in COUCHES_SEL) if(typeof m[k] === 'boolean') COUCHES_SEL[k] = m[k];
@@ -8179,7 +8296,9 @@ function coucheDe(d){
   // Le « ? » de dissimulation voyage avec les unités qu'il couvre.
   if(d.masque || /qmark/i.test(d.img)) return 'unite';
   const dir = d.img.includes('/') ? d.img.split('/')[0] : '';
-  return !dir || /^(MS|ML|MC|sh|DO|tables|CIDs)$/.test(dir) ? 'marqueur' : 'unite';
+  // Images des fenêtres Draggable Overlays (DO) et Deluxe Draggable (DD).
+  if(/^(DO|DD)$/.test(dir)) return 'overlay';
+  return !dir || /^(MS|ML|MC|sh|tables|CIDs)$/.test(dir) ? 'marqueur' : 'unite';
 }
 
 function _brancherCouches(){
@@ -8194,14 +8313,23 @@ function _brancherCouches(){
   });
 }
 
-function _etendreCarte(){
+// reduire : repartir de la taille des boards, pour que la carte se resserre
+// aussi (tables masquées, onglet plus petit).
+function _etendreCarte(reduire){
   let w = _mapW, h = _mapH;
+  if(reduire && _mapBase){ w = _mapBase.w; h = _mapBase.h; }
   for(const p of vivants()){
     // Une carte de scénario ou un panneau de notes déborde de son centre.
     w = Math.max(w, Math.ceil(p.x * SC + (p.larg || 0) / 2 + (p.decX || 0) * SC + 80));
     h = Math.max(h, Math.ceil(p.y * SC + (p.haut || 0) / 2 + (p.decY || 0) * SC + 80));
   }
-  if(w > _mapW || h > _mapH) _setMapSize(w, h);
+  // Les tables QRDC, et autant de marge sous elles que d'écart au-dessus.
+  const t = rectTables();
+  if(t){
+    w = Math.max(w, t.x + t.w + Math.round(ECART_TABLES * SC));
+    h = Math.max(h, t.y + t.h + Math.round(ECART_TABLES * SC));
+  }
+  if(reduire ? w !== _mapW || h !== _mapH : w > _mapW || h > _mapH) _setMapSize(w, h);
 }
 
 // ═══ IMPORT ═══
@@ -9083,6 +9211,7 @@ function deplacer(liste, x, y){
   // Un pion invisible pour moi (HIP adverse) ne part jamais avec les miens.
   liste = liste.filter(p => !p.cache);
   if(!liste.length) return;
+  if(surTables(x, y)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien déplacé'); return; }
   _avantAction();
   const pos = positionDepot(x, y);
   const kArr = pos.x + ',' + pos.y;
@@ -10449,6 +10578,7 @@ function poserDepuisPalette(x, cx, cy){
   if(!_source){ chatLog('⚠️ Ouvrir d\'abord une partie : le pion doit rejoindre une carte VASL.'); return; }
   const def = developperDefinition(x.cmd);
   if(!def){ chatLog(`⚠️ ${x.n} : définition VASSAL illisible`); return; }
+  if(surTables(cx, cy)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien posé'); return; }
   const pos = positionDepot(cx, cy);
   const p = poserTraits(def.T, def.S, pos.x, pos.y, null, 0);
   selectionnerPile(cle(p));
@@ -11941,7 +12071,9 @@ function _hautHexAu(x, y){
 // À la souris (hexSeul), la loupe ne montre que l'hexagone survolé, à sa
 // forme, à côté du curseur.
 const LOUPE_HEX = 150;
-function dessinerLoupe(cx, cy, a, rects, hexSeul){
+// surcouche(g) : dessin en plus, en pixels de #mapInner (le fil de la LOS) ;
+// a.texte, s'il est donné, remplace a.label sous la loupe.
+function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
   let l = document.getElementById('loupe');
   if(!a){ cacherLoupe(); return; }
   // Diamètre à l'écran : 200 px au doigt (moins sur un écran étroit), 150
@@ -11990,6 +12122,7 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul){
     try { g.drawImage(p.face, L, T, W, W); } catch(e){}
   }
   if(hexSeul){
+    if(surcouche) surcouche(g, k);
     // Le bord de l'hexagone, et l'ancrage visé s'il est sur un côté.
     g.restore();
     g.strokeStyle = '#d9a441'; g.lineWidth = 3 / k;
@@ -11999,12 +12132,16 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul){
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
   } else {
+    if(surcouche) surcouche(g, k);
     g.setTransform(1, 0, 0, 1, 0, 0);
     // L'ancrage visé : un cercle de 0,7 hexagone de diamètre.
     g.strokeStyle = '#d9a441'; g.lineWidth = 4;
     g.beginPath(); g.arc(cv.width / 2, cv.height / 2, hex * k * 0.35, 0, 2 * Math.PI); g.stroke();
   }
-  l.querySelector('span').textContent = a.label || '';
+  const lib = l.querySelector('span');
+  const texte = a.texte !== undefined ? a.texte : a.label;
+  lib.textContent = texte || '';
+  lib.style.display = texte ? '' : 'none';
   if(hexSeul){
     // À droite du curseur, un peu au-dessus ; à gauche faute de place.
     let x = cx + 28, y = cy - d - 12;
@@ -12878,13 +13015,13 @@ function armerPose(x){
   armerModeCarte({texte: `♟ ${x.n} — touchez la carte pour poser`, optionMultiple: true,
     multiple: _lirePref('aslweb.posesMultiples') === '1',
     toucher: c => poserDepuisPalette(x, c.x, c.y)});
-  // Sur téléphone, la palette se ferme pour montrer la carte.
+  // En affichage tactile, la palette se ferme pour montrer la carte.
   if(_telLike()) vueMobile('carte');
 }
 
 // ── Verrou des pions : un glissé déplace toujours la carte, jamais une
 // pile ; on déplace alors par « Déplacer… ».
-// Le verrou n'a plus de bouton (masqué sur tablette et téléphone) : on part
+// Le verrou n'a plus de bouton (masqué en affichage tactile) : on part
 // toujours déverrouillé, faute de quoi il resterait pris.
 let _verrouPions = false;
 function basculerVerrou(){
@@ -12930,7 +13067,9 @@ function appuiSurPile(k){
 // ═══════════════════════════════════════════════════════════════
 const VASL_BUILDFILE_URL =
   'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/buildFile';
-const FENETRES_PALETTE = ['VASL Counters', '?'];
+// Les deux fenêtres d'overlays déplaçables (routes, murs, décombres, FFE…)
+// suivent les pions, dans l'ordre du module.
+const FENETRES_PALETTE = ['VASL Counters', 'Draggable Overlays', 'Deluxe Draggable', '?'];
 let _bdd = null, _bddPromesse = null;
 
 function chargerBDD(){
@@ -13029,7 +13168,22 @@ async function _chargerBDD(){
     bottom: lireTouche(sm.getAttribute('bottom')) || METRIQUES_DEFAUT.bottom,
     up: lireTouche(sm.getAttribute('up')) || METRIQUES_DEFAUT.up,
     down: lireTouche(sm.getAttribute('down')) || METRIQUES_DEFAUT.down} : null;
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, version: mod.getAttribute('version')};
+  // Fenêtre QRDC (ChartWindow) : les tables de référence, en onglets.
+  // Chart : une image du module ; TabWidget : des onglets ; PanelWidget :
+  // ses enfants côte à côte, ou l'un sous l'autre (vert).
+  let qid = 0;
+  const lireTables = el => {
+    const t = el.tagName.split('.').pop();
+    const n = {id: qid++, t, nom: el.getAttribute('entryName') || el.getAttribute('chartName') || '',
+               vert: el.getAttribute('vert') !== 'false', enfants: []};
+    if(t === 'Chart') n.fichier = el.getAttribute('fileName');
+    for(const c of el.children) if(/(Widget|\.Chart)$/.test(c.tagName)) n.enfants.push(lireTables(c));
+    return n;
+  };
+  const fenCharts = [...mod.children].filter(w => w.tagName.endsWith('.ChartWindow'));
+  const cw = fenCharts.find(w => w.getAttribute('name') === 'QRDC') || fenCharts[0];
+  const qrdc = cw ? lireTables(cw) : null;
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, version: mod.getAttribute('version')};
   rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
@@ -13176,6 +13330,189 @@ function remplirGrille(liste){
     }, {appuiLong: 300}));
   }
   return g;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TABLES QRDC — la fenêtre « QRDC » de VASL (ChartWindow)
+// Ses tables (IFT, CC, TH, TK, Concealment), avec les onglets du module.
+// Au PC, elles s'ouvrent dans une fenêtre flottante, comme dans VASL.
+// En tactile, elles sont posées sur la carte, sous sa zone, c'est-à-dire
+// sous l'emprise des boards affichés, à trois petits pions d'écart. C'est
+// une couche de l'affichage seulement : rien n'en va dans le .vsav ni au
+// log, et aucun pion ne peut s'y poser. Les pièces déjà posées sous les
+// boards (carte de scénario, unités hors carte) gardent leur place : les
+// tables passent sous elles.
+// ═══════════════════════════════════════════════════════════════
+const ECART_TABLES = 3 * 48;          // trois petits pions, pixels natifs
+let _empriseBoards = null;            // {x, y, w, h} en pixels de #mapInner
+let _mapBase = null;                  // taille de la carte sans les tables
+let _tablesEl = null;
+let _tablesVisibles = _lirePref('aslweb.tables') !== '0';   // en tactile
+const _tablesSel = (() => {
+  try { return new Map(JSON.parse(localStorage.getItem('qrdcSel') || '[]')); } catch(e){ return new Map(); }
+})();
+
+function _oublierTables(){
+  if(_tablesEl) _tablesEl.remove();
+  _tablesEl = null;
+}
+
+async function poserTables(){
+  _oublierTables();
+  if(!_empriseBoards || !_tablesVisibles || !_telLike()) return;
+  let bdd;
+  try { bdd = await chargerBDD(); } catch(e){ return; }
+  if(!bdd.qrdc || _tablesEl || !_empriseBoards || !_tablesVisibles || !_telLike()) return;
+  const el = document.createElement('div');
+  el.id = 'tablesQRDC';
+  el.className = 'tablesQRDC';
+  el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', 'Tables QRDC');
+  // Sous l'emprise des boards, et sous les pièces déjà posées plus bas.
+  let bas = _empriseBoards.y + _empriseBoards.h;
+  for(const p of vivants()){
+    if(p.cache || p.y * SC < bas) continue;
+    bas = Math.max(bas, Math.ceil(p.y * SC + (p.haut || p.sz || 48 * SC) / 2 + (p.decY || 0) * SC));
+  }
+  el.style.left = _empriseBoards.x + 'px';
+  el.style.top = Math.round(bas + ECART_TABLES * SC) + 'px';
+  _tablesEl = el;
+  _dessinerTables();
+  document.getElementById('mapInner').appendChild(el);
+  // Les images arrivent après coup : la carte s'agrandit à leur mesure.
+  if(window.ResizeObserver) new ResizeObserver(() => {
+    if(_tablesEl === el) _etendreCarte(true);
+  }).observe(el);
+  _etendreCarte();
+}
+
+// Sur la carte, à l'échelle des boards ; dans la fenêtre, à la taille de
+// VASL (un pixel de l'image pour un pixel de l'écran).
+function _dessinerTables(){
+  if(!_bdd || !_bdd.qrdc) return;
+  if(_tablesEl){ _tablesEl.replaceChildren(); rendreTable(_bdd.qrdc, _tablesEl, SC); }
+  const f = document.querySelector('#fenQRDC .qCorps');
+  if(f){ f.replaceChildren(); rendreTable(_bdd.qrdc, f, 1); }
+}
+
+// Comme les widgets de la palette : seule la branche choisie est dessinée,
+// et le choix de chaque onglet est retenu d'une visite à l'autre.
+function rendreTable(n, boite, k){
+  if(n.t === 'Chart'){
+    const im = document.createElement('img');
+    im.alt = im.title = n.nom;
+    im.draggable = false;
+    im.addEventListener('load', () => { im.style.width = Math.round(im.naturalWidth * k) + 'px'; });
+    chargerImage(n.fichier).then(u => { if(u) im.src = u; });
+    boite.appendChild(im);
+    return;
+  }
+  if(n.t === 'TabWidget' && n.enfants.length){
+    const sel = Math.min(_tablesSel.get(n.id) || 0, n.enfants.length - 1);
+    const o = document.createElement('div');
+    o.className = 'qOnglets';
+    o.setAttribute('role', 'tablist');
+    n.enfants.forEach((w, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = i === sel ? 'actif' : '';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', i === sel);
+      b.textContent = w.nom || '—';
+      // Le bouton garde son appui : la carte ne le capture pas pour défiler.
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      b.addEventListener('click', () => {
+        _tablesSel.set(n.id, i);
+        try { localStorage.setItem('qrdcSel', JSON.stringify([..._tablesSel])); } catch(e){}
+        _dessinerTables();
+      });
+      o.appendChild(b);
+    });
+    const z = document.createElement('div');
+    z.className = 'qContenu';
+    rendreTable(n.enfants[sel], z, k);
+    boite.append(o, z);
+    return;
+  }
+  // PanelWidget, ChartWindow : les enfants dans l'ordre du module.
+  const z = document.createElement('div');
+  z.className = 'qPanneau' + (n.vert ? ' vert' : '');
+  for(const e of n.enfants) rendreTable(e, z, k);
+  boite.appendChild(z);
+}
+
+// Rectangle des tables, en pixels de #mapInner, ou null sans tables.
+function rectTables(){
+  const e = _tablesEl;
+  if(!e || !e.isConnected) return null;
+  return {x: e.offsetLeft, y: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight};
+}
+
+// Point VASL natif sur les tables : aucun pion ne s'y pose.
+function surTables(x, y){
+  const r = rectTables();
+  return !!r && _rectContient({x: r.x, y: r.y, width: r.w, height: r.h}, x * SC, y * SC);
+}
+
+// Fenêtre flottante du PC : on la déplace par son titre, on la
+// redimensionne par son coin ; elle ne bloque pas la carte.
+async function ouvrirFenetreTables(){
+  if(document.getElementById('fenQRDC')) return;
+  const w = document.createElement('div');
+  w.id = 'fenQRDC';
+  w.className = 'fenQRDC';
+  w.setAttribute('role', 'dialog');
+  w.setAttribute('aria-label', 'QRDC');
+  w.innerHTML = '<div class="qTitre"><span>QRDC</span><button type="button" class="qFermer" title="Fermer" aria-label="Fermer">✕</button></div>'
+    + '<div class="qCorps"><div style="padding:8px;color:var(--doux)">Chargement de la base VASL…</div></div>';
+  document.body.appendChild(w);
+  w.querySelector('.qFermer').addEventListener('click', fermerFenetreTables);
+  const titre = w.querySelector('.qTitre');
+  titre.addEventListener('pointerdown', e => {
+    if(e.button > 0 || e.target.closest('button')) return;
+    e.preventDefault();
+    const r = w.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    const bouge = ev => {
+      w.style.left = Math.max(0, Math.min(innerWidth - 60, ev.clientX - dx)) + 'px';
+      w.style.top = Math.max(0, Math.min(innerHeight - 30, ev.clientY - dy)) + 'px';
+    };
+    const fin = () => { removeEventListener('pointermove', bouge); removeEventListener('pointerup', fin); };
+    addEventListener('pointermove', bouge);
+    addEventListener('pointerup', fin);
+  });
+  rafraichirActions(['tables']);
+  try { await chargerBDD(); } catch(e){}
+  if(!_bdd || !_bdd.qrdc){
+    const c = w.querySelector('.qCorps');
+    if(c) c.innerHTML = '<div style="padding:8px">Tables QRDC indisponibles.</div>';
+    return;
+  }
+  _dessinerTables();
+}
+function fermerFenetreTables(){
+  const w = document.getElementById('fenQRDC');
+  if(w){ w.remove(); rafraichirActions(['tables']); }
+}
+
+// Changement de profil : la fenêtre au PC, la couche de la carte en tactile.
+_apresProfil.push(() => {
+  if(_telLike()){ fermerFenetreTables(); if(!_tablesEl) poserTables(); }
+  else if(_tablesEl){ _oublierTables(); _etendreCarte(true); }
+});
+
+function basculerTables(){
+  if(!_telLike()){
+    if(document.getElementById('fenQRDC')) fermerFenetreTables(); else ouvrirFenetreTables();
+    return;
+  }
+  _tablesVisibles = !_tablesVisibles;
+  try { localStorage.setItem('aslweb.tables', _tablesVisibles ? '1' : '0'); } catch(e){}
+  if(_tablesVisibles) poserTables();
+  else {
+    _oublierTables();
+    _etendreCarte(true);
+  }
+  rafraichirActions(['tables']);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -13736,7 +14073,7 @@ function _annoncesDR(cat, a, b){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// LANCER IFT (tablette, téléphone)
+// LANCER IFT (affichage tactile)
 // Au doigt, le bouton IFT ouvre une feuille à deux roues : la colonne de
 // FP de l'IFT (4 par défaut) et le modificateur du DR, de -6 à +8 (0 par
 // défaut), avec deux cases, Leader et Green. À la validation, le DR est
@@ -14833,7 +15170,7 @@ function _zipWrite(files){
 // ═══════════════════════════════════════════════════════════════
 // INTERFACE — PROFILS DE TERMINAL ET REGISTRE D'ACTIONS
 // Toute action de l'interface est déclarée une seule fois (ACTIONS) ;
-// chaque profil (PC, tablette, téléphone) dit où l'afficher
+// chaque profil (PC, tactile) dit où l'afficher
 // (DISPOSITIONS). rafraichirActions() met à jour tout élément qui porte
 // data-action : libellé, raccourci, état actif, allumé, coché, visible.
 // Les raccourcis clavier ne passent pas par ce registre : leurs écouteurs
@@ -14993,17 +15330,19 @@ const ACTIONS = {
   des:      {lib: 'Dés', court: 'Dés', ico: '🎲', faire: () => montrerOnglet('des')},
   verrou:   {lib: 'Verrou des pions (un glissé déplace la carte)', court: 'Verrou', ico: '🔒',
              coche: () => _verrouPions, faire: () => basculerVerrou()},
+  tables:   {img: 'QRDC.gif', lib: () => _telLike() ? 'Tables QRDC sous la carte' : 'Tables QRDC (fenêtre)', court: 'QRDC',
+             coche: () => _telLike() ? _tablesVisibles : !!document.getElementById('fenQRDC'), faire: basculerTables},
   effectif: {ico: '🔢', lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
   couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
   couche_marqueur: {ico: '🏷', lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
   couche_carte:    {ico: '📋', lib: 'Sélection : cartes et panneaux', coche: () => COUCHES_SEL.carte, faire: () => basculerCouche('carte')},
+  couche_overlay:  {ico: '🛣', lib: 'Sélection : overlays', coche: () => COUCHES_SEL.overlay, faire: () => basculerCouche('overlay')},
   profil_auto:     {ico: '🔄', lib: 'Affichage : automatique', coche: () => _profilChoisi === 'auto', faire: () => choisirProfil('auto')},
   coteColonne:     {ico: '⇄', court: 'Côté', lib: () => _colonne === 'droite' ? 'Placer la barre d\'icônes à gauche' : 'Placer la barre d\'icônes à droite',
                     faire: () => placerColonne(_colonne === 'droite' ? 'gauche' : 'droite')},
   profil_pc:       {ico: '🖥', lib: 'Affichage : PC', coche: () => _profilChoisi === 'pc', faire: () => choisirProfil('pc')},
-  profil_tablette: {ico: '📟', lib: 'Affichage : tablette', coche: () => _profilChoisi === 'tablette', faire: () => choisirProfil('tablette')},
-  profil_mobile:   {ico: '📱', lib: 'Affichage : téléphone', coche: () => _profilChoisi === 'mobile', faire: () => choisirProfil('mobile')},
+  profil_tactile:  {ico: '📱', lib: 'Affichage : tactile', coche: () => _profilChoisi === 'tactile', faire: () => choisirProfil('tactile')},
   // Relecture d'un .vlog : visible seulement s'il reste des coups.
   relecture:{groupe: ['lgDebut', 'lgArr', 'logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
   // Colonne d'icônes du tactile : sans ⏮ ni ◀ ; ⏭ sous l'icône Unmoved,
@@ -15224,8 +15563,8 @@ function rafraichirActions(ids){
 // Le profil se choisit d'après le pointeur et la taille de l'écran, jamais
 // d'après le navigateur annoncé ; le réglage « Affichage » peut l'imposer.
 // Geste par geste, c'est pointerType qui décide (PC portable tactile).
-// Un affichage tablette ou téléphone imposé à la main ne vaut que pour la
-// séance : ces profils n'ont plus le choix de l'affichage pour en revenir.
+// Un affichage tactile imposé à la main ne vaut que pour la séance : ce
+// profil n'a plus le choix de l'affichage pour en revenir.
 let _profilChoisi = _lirePref('aslweb.profil') === 'pc' ? 'pc' : 'auto';
 let _profil = null;
 function detecterProfil(){
@@ -15233,9 +15572,8 @@ function detecterProfil(){
   // Pointeur principal grossier : un écran tactile, même si le navigateur
   // annonce aussi le survol (certains Android, les stylets) ; sinon le
   // téléphone prenait l'interface du PC, sans moyen de fermer ses panneaux.
-  const tactile = matchMedia('(pointer: coarse)').matches;
-  if(!tactile) return 'pc';
-  return Math.min(innerWidth, innerHeight) >= 600 ? 'tablette' : 'mobile';
+  // Tablette et téléphone partagent le même affichage tactile.
+  return matchMedia('(pointer: coarse)').matches ? 'tactile' : 'pc';
 }
 function choisirProfil(p){
   _profilChoisi = p;
@@ -15250,15 +15588,15 @@ const DISPOSITIONS = {
       'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'brises', 'sniper', '-', 'infoScenario'],
       // Masqués à la demande : sélection des cartes et panneaux, effectif
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
-      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', '-', 'couche_unite', 'couche_marqueur',
-                    '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tablette', 'profil_mobile'],
+      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
+                    'couche_overlay', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
       'Outils':    ['los', 'losMuet'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
       'Aide':      ['raccourcis']
     },
     barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster',
-            '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', '|', 'reseau', 'utilisateur'],
+            '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', '|', 'reseau', 'utilisateur'],
     // Les dés restent à portée, en boutons sous la barre d'icônes.
     barreDes: [...DES.filter(d => d.id.startsWith('DR_')).map(d => d.id), '|', ...DES.filter(d => d.id.startsWith('dr_')).map(d => d.id)],
     panneau: ['pile', 'palette', 'des']
@@ -15282,7 +15620,7 @@ function appliquerProfil(p){
   if(d.barreDes) haut.appendChild(construireBarre(d.barreDes, 'barreIcones barreDes'));
   construireOnglets(d.panneau || ['pile', 'palette', 'des']);
   if(d.construire) d.construire();
-  // Le tiroir de la tablette et les vues du téléphone partent fermés ; au
+  // Les vues de l'affichage tactile partent fermées ; au
   // PC, le panneau est ouvert, sauf d'abord sur un petit écran.
   if(p === 'pc') basculerCote(ancien ? true : window.innerWidth >= 700);
   rafraichirActions();
@@ -15317,7 +15655,7 @@ function construireOnglets(liste){
     o.appendChild(b);
   }
   // Croix rouge cerclée : partout où le panneau recouvre la carte
-  // (téléphone, tiroir de la tablette, PC sur un écran étroit).
+  // (affichage tactile, PC sur un écran étroit).
   const x = document.createElement('button');
   x.type = 'button'; x.className = 'fermeCote croixFermer';
   x.textContent = '✕'; x.title = 'Fermer le panneau'; x.setAttribute('aria-label', 'Fermer le panneau');
@@ -15327,7 +15665,7 @@ function construireOnglets(liste){
   montrerOnglet(_ongletCote, true);
 }
 function montrerOnglet(n, sansOuvrir){
-  // Pas d'onglet Dés sur tablette ni sur téléphone : SAN et dés ont leur feuille.
+  // Pas d'onglet Dés en affichage tactile : SAN et dés ont leur feuille.
   if(n === 'des' && _profil !== 'pc' && !sansOuvrir){ ouvrirFeuilleDes(); return; }
   if(_telLike() && !sansOuvrir){ vueMobile(n === 'palette' ? 'pions' : 'pile'); return; }
   _ongletCote = n;
@@ -15429,12 +15767,9 @@ function _brancherPoignees(){
     () => ({v: document.getElementById('journal').offsetHeight, sens: (dx, dy) => -dy}));
 }
 
-// ═══ INTERFACE — PROFILS TABLETTE ET TÉLÉPHONE ═══
-// Tablette : rail d'icônes à gauche, tiroir Pile | Palette à droite
-// (panneau fixe en paysage au-delà de 1000 px), bouton flottant des dés,
-// journal replié en bas, relecture flottante en haut de la carte.
-// Téléphone : barre du haut (☰, scénario, Undo, 🎲), navigation en bas
-// (Carte, Pile, Pions, Journal, Plus), une vue à la fois.
+// ═══ INTERFACE — PROFIL TACTILE (TABLETTE ET TÉLÉPHONE) ═══
+// Une seule interface pour tout écran tactile : colonne d'icônes sur le
+// côté, une vue à la fois (Carte, Pile, Pions, Journal) par-dessus la carte.
 const _vue = () => document.body.dataset.vue || 'carte';
 
 Object.assign(ACTIONS, {
@@ -15453,7 +15788,7 @@ Object.assign(ACTIONS, {
               allume: () => !document.getElementById('cote').classList.contains('ferme')}
 });
 
-// Côté de la colonne d'icônes, sur tablette et téléphone : à droite par
+// Côté de la colonne d'icônes, en affichage tactile : à droite par
 // défaut ; le choix de l'utilisateur est retenu sur cet appareil.
 let _colonne = _lirePref('aslweb.colonne') === 'gauche' ? 'gauche' : 'droite';
 document.body.dataset.colonne = _colonne;
@@ -15466,13 +15801,15 @@ function placerColonne(c){
 }
 
 // Le reste des actions, dans la feuille « Plus » des profils tactiles.
-// Masqués sur tablette et téléphone, à la demande : sélection des unités,
+// Masqués en affichage tactile, à la demande : sélection des unités,
 // des marqueurs, des cartes et panneaux, zoom avant, arrière, ajuster, LOS
 // détaillée, verrou des pions, effectif des piles, aperçu du chat,
 // raccourcis ; du choix de l'affichage ne reste que l'affichage ordinateur,
 // dans la feuille seulement. Les actions restent définies (menu Affichage du
 // PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
-const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', '-', 'reseau', 'utilisateur', '-',
+// La sélection des overlays reste : sans elle, un overlay posé ne pourrait
+// plus être ni déplacé ni retiré au doigt.
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'couche_overlay', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
@@ -15504,7 +15841,7 @@ function ouvrirFeuilleDes(){
   return f;
 }
 
-DISPOSITIONS.mobile = {
+DISPOSITIONS.tactile = {
   panneau: ['pile', 'palette'],
   construire(){
     // Pas de barre en haut : tout passe par la colonne d'icônes de droite ;
@@ -15552,14 +15889,11 @@ DISPOSITIONS.mobile = {
   }
 };
 
-// La tablette a la même disposition et le même fonctionnement que le
-// téléphone : colonne d'icônes à droite, une vue à la fois.
-DISPOSITIONS.tablette = DISPOSITIONS.mobile;
 // Téléphone ou tablette : l'interface tactile commune.
-function _telLike(){ return _profil === 'mobile' || _profil === 'tablette'; }
+function _telLike(){ return _profil === 'tactile'; }
 
 
-// Vue du téléphone : la carte seule, ou une vue par-dessus elle.
+// Vue de l'affichage tactile : la carte seule, ou une vue par-dessus elle.
 function vueMobile(v){
   if(!_telLike()) return;
   document.body.dataset.vue = v;

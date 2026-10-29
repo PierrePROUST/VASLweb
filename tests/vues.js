@@ -1,6 +1,6 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const tap = async sel => { const r = await pg.evaluate(s => { const e = document.querySelector(s).getBoundingClientRect(); return [e.left + e.width/2, e.top + e.height/2]; }, sel); await touche('touchStart', [[r[0], r[1], 1]]); await touche('touchEnd', []); await pg.waitForTimeout(250); };
   await pg.evaluate(() => selectionnerPile('900,700'));
   await pg.evaluate(() => montrerOnglet('pile')); await pg.waitForTimeout(200); await pg.screenshot({path: 'v_pile.png'});

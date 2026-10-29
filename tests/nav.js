@@ -4,7 +4,7 @@
 // vient la dernière, et sous la dernière, la première.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const pos = s => pg.evaluate(s => { const q = document.querySelector(s).getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, s);
   const tap = async s => { const [x, y] = await pos(s); await touche('touchStart', [[x, y, 1]]); await touche('touchEnd', []); await pg.waitForTimeout(200); };
   const vus = () => pg.evaluate(() => { const n = document.querySelector('.navBas'), h = n.getBoundingClientRect();

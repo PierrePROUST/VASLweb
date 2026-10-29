@@ -26,10 +26,10 @@ compare "gestes à la souris (M/)" "node '$ICI/jeu.js' ref.html jeu_ref.json" "n
 compare "raccourci sur une pile (D/)" "node '$ICI/touche.js' ref.html" "node '$ICI/touche.js' '$CARTE'"
 compare "segment CHAT au PC" "node '$ICI/chat1.js' ref.html" "node '$ICI/chat1.js' '$CARTE'"
 echo "— Scénarios (résultats à lire)"
-for t in pince doigt pc pile-arrivee p4 ui pcchat desbarre alerte alt log500 p3 l3 etat p5 vues chat0 chat2 chat3 chat4 cote qmark mf mf-ravin mf-contournement mf-cumul mf-start mf-transport mf-horscarte mf-relecture mf-route mf-niveaux mf-escaliers mov-relecture log-coups devoilement precadrage couches-noms munitions page-html insignes svg-webkit liens; do
+for t in pince doigt pc pile-arrivee p4 ui pcchat desbarre alerte alt log500 p3 l3 etat p5 vues chat0 chat2 chat3 chat4 cote qmark mf mf-ravin mf-contournement mf-cumul mf-start mf-transport mf-horscarte mf-relecture mf-route mf-niveaux mf-escaliers mov-relecture log-coups devoilement precadrage couches-noms munitions page-html insignes svg-webkit liens qrdc overlays; do
   echo "· $t"; node "$ICI/$t.js" "$CARTE" 2>&1 | tr -d '\n' | cut -c1-600; echo
 done
-echo "· chat1 (téléphone)"; node "$ICI/chat1.js" "$CARTE" mobile
-for p in "mobile 360 740" "tablette 1024 768"; do echo "· prof $p"; node "$ICI/prof.js" "$CARTE" $p; done
+echo "· chat1 (téléphone)"; node "$ICI/chat1.js" "$CARTE" tactile
+for p in "tactile 360 740" "tactile 1024 768"; do echo "· prof $p"; node "$ICI/prof.js" "$CARTE" $p; done
 echo "— $echecs échec(s) de non-régression"
 exit $echecs

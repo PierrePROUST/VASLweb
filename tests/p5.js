@@ -1,6 +1,6 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, centre, touche, ecran, cmds} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 800, height: 900}, profil: 'tablette'});
+  const {b, pg, errs, centre, touche, ecran, cmds} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 800, height: 900}, profil: 'tactile'});
   const out = {};
   // loupe pendant un glissé au doigt
   let [x, y] = await centre('T9'); const [tx, ty] = await ecran(1080, 820);

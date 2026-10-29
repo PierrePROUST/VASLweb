@@ -1,6 +1,6 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const tap = async sel => { const r = await pg.evaluate(s => { const e = [...document.querySelectorAll(s)].find(x => { const q = x.getBoundingClientRect(); return q.height && q.top >= 0 && q.bottom <= innerHeight; }); if(!e) return null; const q = e.getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, sel); if(!r) return false; await touche('touchStart', [[r[0], r[1], 1]]); await touche('touchEnd', []); await pg.waitForTimeout(60); return true; };
   await pg.evaluate(() => {
     const segs = [];

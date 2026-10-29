@@ -2,7 +2,7 @@
 // ou à gauche, choix retenu ; « Affichage : PC » dans Plus, pas en icône.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const S = '';
   const etat = () => pg.evaluate(() => { const r = id => Math.round(document.getElementById(id).getBoundingClientRect().left);
     return [document.body.dataset.colonne, r('chromeGauche'), r('mapWrap'), document.querySelector('.navGauche :not([aria-hidden])[data-action=coteColonne]').title]; });

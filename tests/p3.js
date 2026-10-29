@@ -1,6 +1,6 @@
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, centre, ecran, touche, cmds} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, centre, ecran, touche, cmds} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const tap = async (x, y) => { await touche('touchStart', [[x, y, 1]]); await touche('touchEnd', []); await pg.waitForTimeout(120); };
   const glisse = async (x, y, tx, ty) => { await touche('touchStart', [[x, y, 1]]); for(let i = 1; i <= 12; i++) await touche('touchMove', [[x + (tx-x)*i/12, y + (ty-y)*i/12, 1]]); await pg.waitForTimeout(60); await touche('touchEnd', []); await pg.waitForTimeout(150); };
   const out = {profil: await pg.evaluate(() => _profil)};

@@ -5,7 +5,7 @@
 // mine A-T sur le DR final). Au PC, IFT reste un simple jet.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const tap = async s => { const r = await pg.evaluate(s => { const e = document.querySelector(s); e.scrollIntoView({block: 'nearest'}); const q = e.getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, s); await pg.waitForTimeout(150); await touche('touchStart', [[r[0], r[1], 1]]); await touche('touchEnd', []); await pg.waitForTimeout(250); };
   await tap('.navGauche :not([aria-hidden])[data-action="DR_IFT"]');
   const out = {};

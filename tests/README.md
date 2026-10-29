@@ -43,7 +43,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `log500.js` | « ⏭ Fin du log » sur 500 coups : un seul rendu |
 | `p3.js` | Téléphone 360×740 : éventail, 3ᵉ pion d'une pile de 6, commande, sommet, déplacement seul |
 | `l3.js` | Tablette : fil LOS ancré, mode pose, feuille de commandes |
-| `etat.js` | Commandes d'état en tête des barres rapides (panneau Pile au PC, barre de pile au doigt : `node etat.js carte.html mobile`) : Prep Fire, First Fire, Break, Pin, Conceal ; un seul Prep Fire pour la pile, retiré au second appui (une action) ; Pin à moitié puis sur chaque unité ; Break et Conceal basculés |
+| `etat.js` | Commandes d'état en tête des barres rapides (panneau Pile au PC, barre de pile au doigt : `node etat.js carte.html tactile`) : Prep Fire, First Fire, Break, Pin, Conceal ; un seul Prep Fire pour la pile, retiré au second appui (une action) ; Pin à moitié puis sur chaque unité ; Break et Conceal basculés |
 | `qmark.js` | Unités dissimulées sorties d'une pile : « ? » neuf si l'ancien coiffe encore d'autres unités, sinon l'ancien suit |
 | `mf.js` | Décompte des MF / MP (table des terrains de VASL Tools) : coût de l'hexagone et cumul au chat et au log — bois, mur, pile avec chef, saut, montée, Undo, T-34 sur route (1 MP boutonné, ½ CE) et en bois (Z), Mark unmoved |
 | `mf-ravin.js` | Board 5 : ravin 2 MF, ravin-bois 4 MF (B19.4), sortie de ravin à coût doublé (B10.4), pont sur le ravin par la route (B3.4) |
@@ -59,6 +59,8 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `devoilement.js` | Log commencé avec « Permettre à mes adversaires de démasquer mes unités » : commande UNMASK de VASSAL dans le .vlog ; rouvert par un autre joueur, l'unité reste un « ? » dont seule la commande Conceal est permise, et la démasque ; sans la case, tout est refusé |
 | `couches-noms.js` | Couches dont l'image est un nom nu (« mofan », « mober », « mohro » d'un module plus ancien) : Fanatic, Berserk et Heroic dessinés et cumulés |
 | `munitions.js` | Munitions épuisées d'un véhicule (Sherman III(a)) : label « $finalammo$ » calculé, s / WP barrés en rouge, Toggle On/Off |
+| `qrdc.js` | Tables QRDC (ChartWindow de VASL). En tactile, sous la zone de la carte : trois petits pions sous les boards, onglets du module au doigt (CC, Vehicle TK > HEAT), déplacement et pose refusés sur les tables, rien dans le `.vsav`, masquage ; au PC, rien sur la carte, fenêtre flottante à onglets, déplacée par son titre, fermée par ✕ |
+| `overlays.js` | Overlays déplaçables (fenêtres Draggable Overlays et Deluxe Draggable de VASL) : dans la palette, sur leur couche « Overlays », dessinés sous les pions ; en jeu, clic, Maj+clic et glissé les traversent (l'escouade posée sur une route reste prise) ; case « Overlays » cochée, la route se prend au clic ; repris sur leur couche par la sauvegarde |
 | `page-html.js` | Page HTML d'un label (« HTML Placeholder », VASL Information Tables) : dessinée à l'échelle de Swing (×1,3), au fond sous le pion posé dans une case, logos de nationalité remplacés par les marqueurs de tour VASL, coins de renfort, ni script ni `onerror`, feuille de style cloisonnée |
 | `insignes.js` | Images incluses d'un pion SVG (silhouette et insigne de classe : runes SS…) toutes intégrées, aucun chemin relatif laissé |
 | `svg-webkit.js` | Pions redessinés trois fois quand le `naturalWidth` d'une image affichée vaut sa taille à l'écran (comme sous WebKit : Safari, Firefox iOS) : leur taille ne change pas |
@@ -68,13 +70,15 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-escaliers.js` | Board 1 : arrivée au rez-de-chaussée sous le marqueur d'étage (B23.421) ; escalier imprimé (1U3), absent (1U2, B23.23), maison sans étage (1D4, B23.21), maison à deux niveaux 1F1-G1 (même étage : 2 MF), toit (B23.8) |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
 | `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
-| `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html mobile 360 740`) |
+| `loupelos.js` | LOS au doigt en deux temps : source puis cible, chacune avec la loupe dès l'appui et posée au relâché ; un deuxième doigt pince la carte |
+| `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html tactile 360 740`) |
 | `tabtel.js` | Tablette et téléphone : même disposition, dés dans la colonne d'icônes, aperçu du chat sur deux lignes avec les jets |
 | `fermer.js` | Téléphone : la pile se ferme d'un appui à côté (zoom « Ajuster » compris) ou par la croix rouge |
 | `liste.js` | Liste de la pile au téléphone (et profil PC sur écran étroit) : appui sur la carte et croix rouge la ferment |
 | `orphelin.js` | Un seul éventail à la fois (double appui, verrou des pions) ; la croix le ferme |
 | `vues.js` | Vues Pile, Pions, Journal, Plus du téléphone |
 | `loupepc.js` | PC : pendant un glissé à la souris, la loupe ne montre que l'hexagone survolé |
+| `loupelospc.js` | LOS à la souris : la loupe montre l'hexagone survolé avec le fil, et disparaît au relâché |
 | `nav.js` | Colonne d'icônes du téléphone (à droite) : ses icônes (toutes celles de Plus comprises, aucune vide), défilement au doigt, carte sans pions, Remove all |
 | `chat0.js` | Journal non ramené en bas, profil gelé pendant la saisie |
 | `chat2.js` | Relecture d'un log de 50 messages chat compact ouvert ; message reçu en vue Carte ; Retour |

@@ -2,7 +2,7 @@
 // ou par la croix rouge cerclée de l'éventail et de la barre de pile.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs, centre, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'mobile'});
+  const {b, pg, errs, centre, touche} = await ouvrir(process.argv[2], {hasTouch: true, isMobile: true, viewport: {width: 360, height: 740}, profil: 'tactile'});
   const tap = async (x, y) => { await touche('touchStart', [[x, y, 1]]); await touche('touchEnd', []); await pg.waitForTimeout(250); };
   const tapSel = async s => { const r = await pg.evaluate(s => { const e = document.querySelector(s); if(!e) return null; const q = e.getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; }, s); if(r) await tap(r[0], r[1]); return !!r; };
   const etat = () => pg.evaluate(() => [!!document.getElementById('eventail'), !!document.getElementById('barrePile'), _sel.size]);

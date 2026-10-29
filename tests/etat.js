@@ -3,7 +3,7 @@
 // l'état ; un appui les y met (un seul Prep Fire pour la pile), un second
 // les en sort. Au PC, la barre est en tête du panneau Pile ; au doigt,
 // dans la barre de pile.
-//   node etat.js [carte.html] [pc|mobile]
+//   node etat.js [carte.html] [pc|tactile]
 const {ouvrir} = require('./commun.js');
 (async () => {
   const profil = process.argv[3] || 'pc';
