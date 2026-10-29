@@ -1945,7 +1945,15 @@ function _setMapSize(w, h){
 }
 function _majScaler(){
   const s = document.getElementById('mapScaler');
-  const {w, h} = _tailleVue();
+  let {w, h} = _tailleVue();
+  // Vue tournée : les tables QRDC restent droites, sous la carte affichée.
+  const t = _tablesEl && _tablesEl.isConnected && _rotVue ? _tablesEl : null;
+  if(t){
+    const ecart = Math.round(ECART_TABLES * SC), x = Math.round(48 * SC);
+    Object.assign(t.style, {left: x * zoom + 'px', top: (h + ecart) * zoom + 'px', transform: `scale(${zoom})`, transformOrigin: '0 0'});
+    w = Math.max(w, x + t.offsetWidth + ecart);
+    h += ecart + t.offsetHeight + ecart;
+  }
   s.style.width  = Math.round(w * zoom) + 'px';
   s.style.height = Math.round(h * zoom) + 'px';
   // La carte tourne autour de son coin, puis revient dans la zone de
@@ -2007,6 +2015,8 @@ function tournerVue(pas){
     ? _vueVersCarte((wrap.scrollLeft + wrap.clientWidth/2) / zoom, (wrap.scrollTop + wrap.clientHeight/2) / zoom) : null;
   _rotVue = (((_rotVue + pas) % 360) + 360) % 360;
   try { localStorage.setItem('aslweb.rotation', String(_rotVue)); } catch(e){}
+  _placerTables();
+  _etendreCarte(true);
   _majScaler();
   if(centre && !_zoomManuel) zoomFit();
   else if(centre){
@@ -8432,6 +8442,7 @@ function _etendreCarte(reduire){
     h = Math.max(h, t.y + t.h + Math.round(ECART_TABLES * SC));
   }
   if(reduire ? w !== _mapW || h !== _mapH : w > _mapW || h > _mapH) _setMapSize(w, h);
+  else if(_rotVue) _majScaler();    // tables sous la carte tournée
 }
 
 // ═══ IMPORT ═══
@@ -12283,6 +12294,11 @@ const _rectsCarte = () => ({wrap: document.getElementById('mapWrap').getBounding
 function clientVersCarte(cx, cy, rects, libre){
   const {wrap: wr, inner: mr} = rects || _rectsCarte();
   if(cx < wr.left || cx > wr.right || cy < wr.top || cy > wr.bottom) return null;
+  // Tables QRDC hors de la carte tournée : ce n'est pas la carte.
+  if(_rotVue && _tablesEl && _tablesEl.isConnected){
+    const t = _tablesEl.getBoundingClientRect();
+    if(cx >= t.left && cx <= t.right && cy >= t.top && cy <= t.bottom) return null;
+  }
   if(!libre){
     const el = document.elementFromPoint(cx, cy);
     if(el && !document.getElementById('mapWrap').contains(el)) return null;
@@ -13492,16 +13508,28 @@ async function poserTables(){
     if(p.cache || p.y * SC < bas) continue;
     bas = Math.max(bas, Math.ceil(p.y * SC + (p.haut || p.sz || 48 * SC) / 2 + (p.decY || 0) * SC));
   }
-  el.style.left = _empriseBoards.x + 'px';
-  el.style.top = Math.round(bas + ECART_TABLES * SC) + 'px';
+  el._place = {left: _empriseBoards.x + 'px', top: Math.round(bas + ECART_TABLES * SC) + 'px'};
   _tablesEl = el;
   _dessinerTables();
-  document.getElementById('mapInner').appendChild(el);
+  _placerTables();
   // Les images arrivent après coup : la carte s'agrandit à leur mesure.
   if(window.ResizeObserver) new ResizeObserver(() => {
     if(_tablesEl === el) _etendreCarte(true);
   }).observe(el);
   _etendreCarte();
+}
+
+// Carte non tournée : les tables sont dans #mapInner, sous les boards.
+// Vue tournée : elles en sortent pour rester droites, et _majScaler les
+// pose sous la carte affichée, au zoom de la carte.
+function _placerTables(){
+  const el = _tablesEl;
+  if(!el) return;
+  if(_rotVue) document.getElementById('mapScaler').appendChild(el);
+  else {
+    Object.assign(el.style, el._place, {transform: '', transformOrigin: ''});
+    document.getElementById('mapInner').appendChild(el);
+  }
 }
 
 // Sur la carte, à l'échelle des boards ; dans la fenêtre, à la taille de
@@ -13559,10 +13587,11 @@ function rendreTable(n, boite, k){
   boite.appendChild(z);
 }
 
-// Rectangle des tables, en pixels de #mapInner, ou null sans tables.
+// Rectangle des tables, en pixels de #mapInner, ou null sans tables (ou
+// hors de la carte, vue tournée).
 function rectTables(){
   const e = _tablesEl;
-  if(!e || !e.isConnected) return null;
+  if(!e || !e.isConnected || _rotVue) return null;
   return {x: e.offsetLeft, y: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight};
 }
 

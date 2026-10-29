@@ -41,6 +41,18 @@ const {ouvrir} = require('./commun.js');
     await pg.keyboard.press('Escape'); await pg.keyboard.press('Escape');
     await pg.screenshot({path: `rotation-${rot}.png`});
   }
-  console.log(JSON.stringify(out), errs);
+  // Affichage tactile, tables QRDC sous la carte : elles restent droites,
+  // sous la carte tournée, et un appui sur elles ne vise pas la carte.
+  const t = await ouvrir(process.argv[2], {profil: 'tactile', viewport: {width: 625, height: 1000}, hasTouch: true, isMobile: true});
+  await t.pg.waitForTimeout(3000);
+  out.tables = await t.pg.evaluate(async () => {
+    tournerVue(90); zoomFit();
+    const el = document.getElementById('tablesQRDC'), m = document.getElementById('mapInner').getBoundingClientRect();
+    if(!el) return null;
+    const r = el.getBoundingClientRect();
+    return {horsCarte: el.parentElement.id, sous: r.top >= m.bottom, vise: clientVersCarte(r.left + 20, r.top + 20, null, true)};
+  });
+  console.log(JSON.stringify(out), errs, t.errs);
+  await t.b.close();
   await b.close();
 })();
