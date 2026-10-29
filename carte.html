@@ -9884,11 +9884,13 @@ function _demarrer(p, e, pos, vca, motion){
 // propre à un pion (« REV × # » au dos) n'est pas connu. Motos et
 // attelages : pas de marche arrière.
 const _MULT_RECUL = {ft: 4, ht: 4, tr: 3, ac: 2};
-// Décompte d'un véhicule : « 1MP/ 3MP (démarrage 1) », coût puis cumul.
-function _texteMP(p, cout, plus){
+// Décompte : coût puis cumul, « 1MP/ 3MP (démarrage 1) », « 2MF/ 4MF ».
+function _texteCout(p, cout, unite, plus){
   plus = (plus || []).filter(Boolean);
-  return `${cout}MP/ ${_mvtCumul(p)}MP` + (plus.length ? ` (${plus.join(', ')})` : '');
+  return `${cout}${unite}/ ${_mvtCumul(p)}${unite}` + (plus.length ? ` (${plus.join(', ')})` : '');
 }
+const _texteMP = (p, cout, plus) => _texteCout(p, cout, 'MP', plus);
+const _texteMF = (p, cout, plus) => _texteCout(p, cout, 'MF', plus);
 const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
 
 // Après deplacer() : coût de l'hexagone entré et cumul, au chat et au log.
@@ -10123,11 +10125,11 @@ function commandeTransport(p, quoi){
   const ajoutV = (cout, lib) => eV.push({pos: posDe(v), vca: _vcaPion(v), cout, lib, byp: dV.byp, etat: dV.etat, recul: dV.recul});
   const alertes = [];
   if(dV.etat === 'marche') alertes.push('véhicule en marche');
-  let txtP, txtV = null;
+  let txtP, txtV = null, coutP, plusP = [], coutV = 0, plusV = [];
   if(quoi === 'load'){
     if(eV.some((x, i) => i > 0 && x.pos !== eV[0].pos)) alertes.push('véhicule déjà déplacé');
     eP.push({pos: posDe(p), vca: null, cout: 1, lib: 'embarquement', etat: 'arret'});
-    txtP = `Load 1 MF`;
+    txtP = 'Load'; coutP = 1;
     // Rang : juste au-dessus du véhicule.
     if(s.indexOf(p) < s.indexOf(v)) deplacerDansPile(p, s.indexOf(v));
     if(nv.mp){
@@ -10135,26 +10137,27 @@ function commandeTransport(p, quoi){
       const garde = Math.min(nv.mp, _quartMP(nv.mp) * reste);
       const deja = eV.filter(x => x.lib === 'chargement').reduce((t, x) => t + x.cout, 0);
       const cout = Math.max(0, nv.mp - garde - deja);
-      if(cout){ ajoutV(cout, 'chargement'); txtV = `chargement ${_fmtMF(cout)} MP, ${_fmtMF(garde)} MP gardés`; }
-    } else txtV = 'chargement : MP du véhicule inconnus';
+      if(cout){ ajoutV(cout, 'chargement'); txtV = 'chargement'; coutV = _fmtMF(cout); plusV = [`${_fmtMF(garde)} MP gardés`]; }
+    } else { txtV = 'chargement'; plusV = ['MP du véhicule inconnus']; }
   } else {
     const depV = _cMax(_mvtSomme(v));
     if(nv.mp && depV > nv.mp * 3 / 4) alertes.push('plus des 3/4 des MP dépensés');
     // Un quart des MP par pile qui descend : une fois par coup.
     if(nv.mp && v._dechargeNo !== _actionNo){
       ajoutV(_quartMP(nv.mp), 'déchargement');
-      txtV = `déchargement ${_quartMP(nv.mp)} MP`;
+      txtV = 'déchargement'; coutV = _quartMP(nv.mp);
     }
     const quarts = nv.mp ? Math.ceil(depV / (nv.mp / 4)) : 0;
     const avant = _mfDepenses(p), cible = Math.max(avant, quarts) + 1;
     eP.push({pos: posDe(p), vca: null, cout: cible - avant, lib: 'débarquement', etat: 'arret'});
-    txtP = `Unload ${_fmtMF(cible - avant)} MF` + (quarts > avant ? ` (dont ${quarts - avant} pour le trajet en véhicule)` : '');
+    txtP = 'Unload'; coutP = _fmtMF(cible - avant);
+    plusP = [quarts > avant && `dont ${quarts - avant} pour le trajet en véhicule`];
     // Rang : sous le véhicule, à pied.
     deplacerDansPile(p, pile(cle(p)).indexOf(v));
   }
-  rapport(`${nomRapport(p)} : ${txtP} (cumul ${_mvtCumul(p)} MF)`);
+  rapport(`${nomRapport(p)} : ${txtP} ${_texteMF(p, coutP, plusP)}`);
   if(alertes.length) chatLog(`⚠️ ${nomRapport(p)} : ${alertes.join(', ')} (D6.${quoi === 'load' ? 4 : 5})`);
-  if(txtV) rapport(`${nomRapport(v)} : ${txtV} (cumul ${_mvtCumul(v)} MP)`);
+  if(txtV) rapport(`${nomRapport(v)} : ${txtV} ${_texteMP(v, coutV, plusV)}`);
   if(quoi === 'unload') v._dechargeNo = _actionNo;
   const etP = eP, etV = eV;
   _histoJs(() => {
@@ -10374,20 +10377,20 @@ function compterLieux(avant, local){
       der.entree.p = p;
       const c = _coutEntreeLieu(m, der.entree);
       der.cout = c.cout;
-      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : l'hexagone coûte ${_fmtCout(c.cout)} MF${c.lib.includes('tranchées') ? ' (tranchées reliées)' : ''}`;
+      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : hexagone ${_texteMF(p, _fmtCout(c.cout), [c.lib.includes('tranchées') && 'tranchées reliées'])}`;
       if(c.alerte) chatLog(`⚠️ ${nomRapport(p)} : ${c.alerte}`);
       if(!local) _histoJs(() => { der.cout = garde.cout; der.lib = garde.lib; der.entree.lieuArr = garde.lieuArr; });
     } else {
       const c = _coutLieu(l1, l2, m ? _hexDe(m, p.x, p.y) : null, pile(cle(p)));
       e.push({pos, vca: null, cout: c.cout, lib: _decrireChangement(l1, l2), etat: 'arret'});
-      txt = `${_decrireChangement(l1, l2)} : ${c.cout} MF`;
+      txt = `${_decrireChangement(l1, l2)} : ${_texteMF(p, c.cout)}`;
       if(c.alerte) chatLog(`⚠️ ${nomRapport(p)} : ${c.alerte}`);
       if(!local){
         const et = e;
         _histoJs(() => { if(p.mvt && p.mvt.etapes === et) et.length = n0; if(!avait && p.mvt && p.mvt.etapes.length <= 1) delete p.mvt; });
       }
     }
-    emettre(`${nomRapport(p)} : ${txt} (cumul ${_mvtCumul(p)} MF)`);
+    emettre(`${nomRapport(p)} : ${txt}`);
   }
 }
 
