@@ -15337,7 +15337,8 @@ const ACTIONS = {
   couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
   couche_marqueur: {ico: '🏷', lib: 'Sélection : marqueurs', coche: () => COUCHES_SEL.marqueur, faire: () => basculerCouche('marqueur')},
   couche_carte:    {ico: '📋', lib: 'Sélection : cartes et panneaux', coche: () => COUCHES_SEL.carte, faire: () => basculerCouche('carte')},
-  couche_overlay:  {ico: '🛣', lib: 'Sélection : overlays', coche: () => COUCHES_SEL.overlay, faire: () => basculerCouche('overlay')},
+  // Icône de la fenêtre Draggable Overlays de VASL (PieceWindow, icon="overlay").
+  couche_overlay:  {img: 'overlay.gif', lib: 'Sélection : overlays', coche: () => COUCHES_SEL.overlay, faire: () => basculerCouche('overlay')},
   profil_auto:     {ico: '🔄', lib: 'Affichage : automatique', coche: () => _profilChoisi === 'auto', faire: () => choisirProfil('auto')},
   coteColonne:     {ico: '⇄', court: 'Côté', lib: () => _colonne === 'droite' ? 'Placer la barre d\'icônes à gauche' : 'Placer la barre d\'icônes à droite',
                     faire: () => placerColonne(_colonne === 'droite' ? 'gauche' : 'droite')},
