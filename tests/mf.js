@@ -1,6 +1,6 @@
 // Décompte des MF / MP d'après la table des terrains de VASL Tools : après
 // chaque déplacement, coût de l'hexagone entré et cumul, au chat et au
-// log (« * 5-4-8 SSsq : +2 MF (cumul 2 MF) »). Bois, mur, pile avec chef,
+// log (« * 5-4-8 SSsq : +2MF/ 2MF »). Bois, mur, pile avec chef,
 // saut par le chemin le moins cher, montée, Undo, véhicule sur route
 // (1 MP boutonné, ½ équipage découvert) et en bois (Z : moitié des MP du gpid), Mark unmoved.
 const {ouvrir} = require('./commun.js');
@@ -20,7 +20,7 @@ const {ouvrir} = require('./commun.js');
     const poser = async (nom, h) => { const [x, y] = px(h); poserDepuisPalette(_bdd.pions.find(s => s.n === nom), x, y); await tic(); return vivants().slice(-1)[0]; };
     const aller = async (l, h) => { const [x, y] = px(h); deplacer(l, x, y); await tic(); };
     // Le décompte part au log comme un rapport : dernier segment CHAT.
-    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
+    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*(cumul|M[FP]\/ )/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
     const r = {};
     r.lignesInconnues = Object.entries(_LIGNE_TEC).filter(([k, v]) => !TEC_MVT[v]).map(([k]) => k);
     // 1. Terrain ouvert → bois : 2 MF.
