@@ -1,7 +1,9 @@
-// Dévoilement autorisé : un joueur masque une unité, commence un log en
-// cochant « Autoriser l'adversaire à dévoiler… », joue un coup et écrit
-// le .vlog. Rouvert par un autre joueur, le fichier lui montre l'unité et
-// la lui laisse démasquer ; sans la case, elle reste voilée.
+// Démasquage par l'adversaire (ObscurableOptions de VASSAL) : Alice
+// masque une unité et commence un log en cochant « Permettre à mes
+// adversaires de démasquer mes unités ». Le .vlog porte alors la commande
+// UNMASK avec son identifiant. Rouvert par Bob, l'unité reste voilée
+// (« ? ») et ses commandes refusées, sauf Conceal, qui la démasque ;
+// sans la case, Conceal lui est refusé aussi.
 const nav = require('./navigateur.js');
 (async () => {
   const b = await nav.lancer();
@@ -10,6 +12,7 @@ const nav = require('./navigateur.js');
   pg.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
   await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
   const r = await pg.evaluate(async () => {
+    try { localStorage.removeItem('aslweb.OpponentUnmaskable'); } catch(e){}
     const bdd = await chargerBDD();
     const x = bdd.pions.find(s => s.n === '4-6-7 sq') || bdd.pions.find(s => s.n === '5-4-8 SSsq');
     const def = developperDefinition(x.cmd);
@@ -18,8 +21,8 @@ const nav = require('./navigateur.js');
     const att = () => new Promise(f => setTimeout(f, 300));
     const fermer = () => document.querySelectorAll('.fenetre').forEach(w => w.remove());
     const partie = ['begin_save', 'bd\t0\t0\ta', `+/T1/${type}/${etat(900)}`, `+/T2/${type}/${etat(1200)}`, 'end_save'].join('\x1b');
-    let texte = null, annexes = null;
-    _telecharger = async (t, n, a) => { texte = t; annexes = a; };
+    let texte = null;
+    _telecharger = async t => { texte = t; };
 
     const ecrire = async coche => {
       await chargerPartie(partie, 'd.vsav', new Map()); await att(); fermer();
@@ -30,15 +33,17 @@ const nav = require('./navigateur.js');
       document.getElementById('lgOk').click();
       deplacer([parUid('T2')], 1260, 700); await att();
       terminerLog(); await att();
-      return {texte, annexes: new Map(annexes)};
+      return texte;
     };
-    const relire = async f => {
-      await chargerPartie(f.texte, 'd.vlog', f.annexes); await att(); fermer();
+    const relire = async t => {
+      await chargerPartie(t, 'd.vlog', new Map()); await att(); fermer();
       seConnecter({nom: 'Bob', mdp: 'secretB'}, false); await att();
       const p = parUid('T1');
-      const vu = p.el.title, refuse = accesRefuse(p);
-      dissimuler(p); await att();
-      return {annexe: f.annexes.has('aslweb-devoilement'), titre: vu, refuse, demasque: !lirePiece(p.seg).masque};
+      const unmask = t.split('\x1b').find(s => s.startsWith('UNMASK\t')) || null;
+      const menu = (arbreCommandes(p).items || []).map(i => i.nom).join(',');
+      const titre = p.el.title, refuse = accesRefuse(p);
+      commander([p], _cmdDemasque(p).touche); await att();
+      return {unmask, titre, refuse, menu, demasque: !lirePiece(p.seg).masque};
     };
     return {avec: await relire(await ecrire(true)), sans: await relire(await ecrire(false))};
   });
