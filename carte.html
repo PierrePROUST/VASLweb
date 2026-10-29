@@ -431,7 +431,8 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 .mini img{position:absolute;pointer-events:none}
 .pion{position:absolute;touch-action:none;cursor:pointer;-webkit-touch-callout:none}
 /* Vue tournée : chaque pion tourne en sens inverse autour de son centre et
-   reste droit à l'écran ; un overlay de terrain, lui, suit la carte. */
+   reste droit à l'écran ; un overlay de terrain, une carte de scénario ou
+   un panneau (.terrain), lui, suit la carte. */
 #mapInner .pion:not(.terrain){rotate:calc(-1 * var(--rotVue, 0deg))}
 /* Trait Immobilized : Fire Lane en surimpression… Le clic simple passe
    au travers ; Maj enfoncée, la pièce redevient saisissable. */
@@ -8275,6 +8276,10 @@ const metriques = () => (_bdd && _bdd.stackMetrics) || METRIQUES_DEFAUT;
 // Vue tournée : la pile s'étale de même à l'écran ; les rectangles sont
 // calculés dans le repère de l'écran, autour du centre du premier pion,
 // puis ramenés dans celui de la carte.
+// Vue tournée : un pion reste droit à l'écran ; un overlay de terrain suit
+// la carte, comme une carte de scénario ou un panneau, dont les cases
+// portent des pions qui doivent y rester.
+const _droitALEcran = p => p.couche !== 'overlay' && p.couche !== 'carte';
 function rectsPile(s, deplie){
   const m = metriques();
   const dx = m.disabled ? 0 : (deplie ? m.exSepX : m.unexSepX) * SC;
@@ -8284,8 +8289,9 @@ function rectsPile(s, deplie){
   let prec = null;
   for(const p of s){
     const w = p.larg || p.sz, h = p.haut || p.sz;
-    // Taille du pion vu à l'écran : un quart de tour échange ses côtés.
-    const W = quart ? h : w, H = quart ? w : h;
+    // Taille du pion vu à l'écran : un quart de tour échange les côtés
+    // d'un pion resté droit.
+    const W = quart && _droitALEcran(p) ? h : w, H = quart && _droitALEcran(p) ? w : h;
     let x = -W/2, y = -H/2;
     if(prec){
       x = dx > 0 ? prec.x + dx : dx < 0 ? prec.x + prec.w - W + dx : prec.x + prec.w/2 - W/2;
@@ -8323,7 +8329,7 @@ function rendrePile(k, tous){
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
-    p.el.classList.toggle('terrain', p.couche === 'overlay');
+    p.el.classList.toggle('terrain', !_droitALEcran(p));
   });
   _decorPile(k, s, rects, deplie);
   if(_reperes.brises || _reperes.sniper) dessinerReperes();
@@ -8380,7 +8386,7 @@ function _decorPile(k, s, rects, deplie){
     d.pastille.classList.toggle('partielle', !!nSel);
     // Au coin haut droit du pion du dessus, vu à l'écran.
     const haut = rects[rects.length - 1];
-    const [W, H] = _rotVue % 180 ? [haut.h, haut.w] : [haut.w, haut.h];
+    const [W, H] = _rotVue % 180 && _droitALEcran(s[s.length - 1]) ? [haut.h, haut.w] : [haut.w, haut.h];
     const c = _ecartVersCarte(W/2, -H/2);
     d.pastille.style.left = (haut.x + haut.w/2 + c.x) + 'px';
     d.pastille.style.top = (haut.y + haut.h/2 + c.y) + 'px';
