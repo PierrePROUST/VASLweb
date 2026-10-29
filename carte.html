@@ -8410,9 +8410,9 @@ function importerPions(texte, label, annexes){
   rendreToutes();
   majBoutons();
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
-  // Le décompte des MF / MP des coups relus a besoin du terrain : la
-  // carte LOS se construit dès maintenant.
-  if(_etapes.length && typeof carteLOS === 'function') carteLOS();
+  // Le décompte des MF / MP, au premier déplacement comme aux coups
+  // relus, a besoin du terrain : la carte LOS se construit dès maintenant.
+  if(typeof carteLOS === 'function') carteLOS();
 }
 
 // ═══ ANNULER — le bouton Undo de BasicLogger ═══
@@ -9351,7 +9351,7 @@ function fixerTrait(p, i, valeur){
 // ═══ DÉCOMPTE DES MF / MP — coût du terrain de chaque hexagone (TEC) ═══
 // Après chaque déplacement, le chat (et donc le log) reçoit, pour chaque
 // unité, le coût de l'hexagone entré et le cumul de la phase :
-//   « * 5-4-8 SSsq : +2 MF (cumul 3 MF) »
+//   « * 5-4-8 SSsq moves aA1 -> aA2 * 2MF/ 3MF »
 // Le coût vient de la table des terrains de l'extension VASL Tools, lue
 // sur la carte LOS : terrain du centre, dépression, côté franchi, niveau.
 // Un saut de plusieurs hexagones suit le chemin le moins cher. Undo
@@ -9884,17 +9884,21 @@ function _demarrer(p, e, pos, vca, motion){
 // propre à un pion (« REV × # » au dos) n'est pas connu. Motos et
 // attelages : pas de marche arrière.
 const _MULT_RECUL = {ft: 4, ht: 4, tr: 3, ac: 2};
-// Cumul annoncé ; pour un véhicule sans Motion, avec l'arrêt (D2.13).
-function _texteCumul(p, n, motion){
-  const c = _mvtCumul(p);
-  const arret = n.unite === 'MP' && !motion && !/ALL|\?/.test(c)
+// Pour un véhicule en marche sans Motion, le cumul avec l'arrêt (D2.13).
+function _avecArret(p, n, motion){
+  const arret = n.unite === 'MP' && !motion && !/ALL|\?/.test(_mvtCumul(p))
     && p.mvt && _etatMvt(p.mvt.etapes).etat === 'marche';
-  return `cumul ${c} ${n.unite}` + (arret ? `, ${_fmtCout(_plus(_mvtSomme(p), 1))} avec l'arrêt` : '');
+  return arret ? `${_fmtCout(_plus(_mvtSomme(p), 1))} avec l'arrêt` : '';
+}
+// Cumul annoncé ; pour un véhicule sans Motion, avec l'arrêt.
+function _texteCumul(p, n, motion){
+  const a = _avecArret(p, n, motion);
+  return `cumul ${_mvtCumul(p)} ${n.unite}` + (a ? ', ' + a : '');
 }
 const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
 
 // Après deplacer() : coût de l'hexagone entré et cumul, au chat et au log.
-// Rend le texte du décompte (« 2 MF (cumul 3 MF) »), que l'appelant met au
+// Rend le texte du décompte (« 2MF/ 3MF »), que l'appelant met au
 // bout de la ligne du déplacement, et les alertes, pour le chat local
 // seulement. null si la carte LOS n'est pas prête.
 function compterMouvement(avant, portes, local){
@@ -9964,8 +9968,8 @@ function compterMouvement(avant, portes, local){
     const pas = ch.map(r => _fmtCout(r.cout)).join('+');
     if(!veh){ pied.push({p, pas}); continue; }
     const motion = _enMotion(p, p.x, p.y, groupe);
-    const txt = `${pas} ${n.unite}` + (recul ? ` en marche arrière (×${recul})` : '')
-      + (demarrage ? ', démarrage 1' : '') + ` (${_texteCumul(p, n, motion)})`;
+    const plus = [recul && `marche arrière ×${recul}`, demarrage && 'démarrage 1', _avecArret(p, n, motion)].filter(Boolean);
+    const txt = `${pas}MP/ ${_mvtCumul(p)}MP` + (plus.length ? ` (${plus.join(', ')})` : '');
     if(!lignes.has(txt)) lignes.set(txt, []);
     lignes.get(txt).push(nomRapport(p));
   }
@@ -9977,7 +9981,7 @@ function compterMouvement(avant, portes, local){
                        return c.includes('ALL') ? Infinity : _cMax(_mvtSomme(x.p)); };
     const max = pied.reduce((a, x) => cle(x) > cle(a) ? x : a);
     const pas = [...new Set(pied.map(x => x.pas))].join(' / ');
-    segments.push({qui: pied.length > 1 ? 'Pile' : nomRapport(max.p), txt: `${pas} MF (cumul ${_mvtCumul(max.p)} MF)`});
+    segments.push({qui: pied.length > 1 ? 'Pile' : nomRapport(max.p), txt: `${pas}MF/ ${_mvtCumul(max.p)}MF`});
   }
   for(const [txt, noms] of lignes) segments.push({qui: noms.join(', '), txt});
   // Un seul groupe : le chiffre seul ; sinon chacun nommé.
@@ -9990,9 +9994,9 @@ const _nomsDeplaces = avant => avant.filter(a => !a.p.cache).map(a => nomRapport
 function _completerLigneMouvement(texte, avant){
   const j = document.getElementById('journal');
   const l = j && [...j.querySelectorAll('.rap')].reverse().find(x => / moves /.test(x.textContent));
-  // Ligne écrite ici avec son décompte (« … * 2 MF (cumul 4 MF) ») :
-  // elle le porte déjà, il n'est pas répété.
-  if(l && !l.dataset.mvt && /\(cumul [^)]*\)\s*$/.test(l.textContent)){ l.dataset.mvt = '1'; return; }
+  // Ligne écrite ici avec son décompte (« … * 2MF/ 4MF ») : elle le
+  // porte déjà, il n'est pas répété.
+  if(l && !l.dataset.mvt && /M[FP]\/ /.test(l.textContent)){ l.dataset.mvt = '1'; return; }
   if(l && !l.dataset.mvt){
     l.dataset.mvt = '1';
     l.appendChild(document.createTextNode(' ' + texte));

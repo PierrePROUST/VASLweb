@@ -30,7 +30,7 @@ const nav = require('./navigateur.js');
     // (escouade + chef) vers le terrain ouvert, puis une nouvelle phase.
     _etapes = [[M(sq.uid, bois, og)], [M('S77', og2, og)], ['CHAT* German Turn 1 - DFPh'], [M(ldr.uid, og, og2)]];
     _logPos = 0; _instantanes = [];
-    const lignes = () => [...document.querySelectorAll('.rap')].map(e => e.textContent).filter(t => /cumul/.test(t));
+    const lignes = () => [...document.querySelectorAll('.rap')].map(e => e.textContent).filter(t => /cumul|M[FP]\/ /.test(t));
     const r = {};
     avancerLog(true); r.coup1 = lignes().slice(-1)[0];
     // Le chef rejoint l'escouade dans le bois ; la pile VASSAL S77 les
@@ -43,7 +43,7 @@ const nav = require('./navigateur.js');
     avancerLog(true); r.coup4 = lignes().slice(-1)[0];
     reculerLog(true); reculerLog(true);
     r.recul = 'escouade ' + (sq.mvt ? _mvtCumul(sq) : 'aucun') + ', chef ' + (ldr.mvt ? _mvtCumul(ldr) : 'aucun');
-    r.dansLeLog = _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).length;
+    r.dansLeLog = _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*(cumul|M[FP]\/ )/.test(c)).length;
     return r;
   });
   console.log(JSON.stringify(r, null, 1), errs.length ? errs : 'sans erreur');

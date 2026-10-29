@@ -21,7 +21,7 @@ const nav = require('./navigateur.js');
     const tic = () => new Promise(f => setTimeout(f, 20));
     const poser = async (x, h) => { poserDepuisPalette(x, ...px(h)); await tic(); return vivants().slice(-1)[0]; };
     const piece = n => _bdd.pions.find(s => s.n === n);
-    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
+    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*(cumul|M[FP]\/ )/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
     const rang = async (p, q) => { const s = pile(cle(p)); deplacerDansPile(p, s.indexOf(q)); await tic(); };
     const ligne = [];
     let l = null;
