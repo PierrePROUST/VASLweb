@@ -9378,6 +9378,10 @@ const _LIGNE_TEC = (() => {
   mettre('ETO:Road-Elevated', 'Elevated Road');
   mettre('ETO:Road-Sunken', 'Sunken Road');
   mettre('ETO:Runway', 'Runway');
+  mettre('ETO:Railroads-GLRR', 'Railroad, Ground Level');
+  mettre('ETO:Railroads-EmRR (D)', 'Railroad, Embankment');
+  mettre('ETO:Railroads-ElRR (D O)', 'Railroad, Elevated');
+  mettre('ETO:Railroads-SuRR (D S)', 'Railroad, Sunken');
   mettre('ETO:Brush (½)', 'Brush');
   mettre('ETO:Grain (½)', 'Grain', 'Light Grain');
   mettre('ETO:Orchard', 'Orchard', 'Orchard, Out of Season');
@@ -9492,7 +9496,10 @@ function natureMouvement(p){
 
 function _hexDe(m, x, y){
   const q = _versLOS({x, y});
-  return m.onMap(q.x, q.y) ? m.gridToHex(q.x, q.y) : null;
+  if(m.onMap(q.x, q.y)) return m.gridToHex(q.x, q.y);
+  // Centre d'un demi-hexagone du bord : sur la limite de la carte LOS.
+  const cx = Math.min(Math.max(q.x, 0), m.gridWidth - 1), cy = Math.min(Math.max(q.y, 0), m.gridHeight - 1);
+  return Math.hypot(cx - q.x, cy - q.y) <= 2 ? m.gridToHex(cx, cy) : null;
 }
 function _coteVers(m, a, b){
   for(let s = 0; s < 6; s++) if(m.getAdjacentHex(a, s) === b) return s;
@@ -9508,14 +9515,16 @@ const _cFaire = (a, b) => a === b ? a : {a, b};
 const _plus = (x, y) => _cFaire(_cMin(x) + _cMin(y), _cMax(x) + _cMax(y));
 const _fois = (x, k) => _cFaire(_cMin(x) * k, _cMax(x) * k);
 
-// Valeur d'une case du chart. ctx : {cot, mp, ruisseau (0 sec, 1 peu
-// profond, 2 profond), bu (véhicule boutonné)}. Les drapeaux (B, D, R,
-// *…) ne changent pas le coût ; « R » (coût de route par un côté de
-// route) est traité par l'appelant.
+// Valeur d'une case du chart. ctx : {cot, mp, depense, ruisseau (0 sec,
+// 1 peu profond, 2 profond), bu (véhicule boutonné)}. Les drapeaux (B, D,
+// R, *…) ne changent pas le coût ; « R » (coût de route par un côté de
+// route), « D » et « L » sont traités par l'appelant. « ALL » d'un
+// véhicule : le reste de ses MP, dépense de la phase déduite (B13.41,
+// D2.7) ; ctx.depense absent, toute l'allocation (chemin le moins cher).
 function _valeurTEC(txt, ctx){
   // « [BU:1] » : la valeur pour un véhicule boutonné (route : ½, BU 1).
   const bu = /\[BU:\s*([^\]]+)\]/.exec(String(txt || ''));
-  if(bu && ctx.bu) return _valeurTEC(bu[1], {cot: ctx.cot, mp: ctx.mp});
+  if(bu && ctx.bu) return _valeurTEC(bu[1], {cot: ctx.cot, mp: ctx.mp, depense: ctx.depense});
   let t = String(txt || '').replace(/\[[^\]]*\]|\{[^}]*\}/g, ' ').trim();
   if(!t) return null;
   // « 1 or 2* » : les deux options restent comptées.
@@ -9538,7 +9547,8 @@ function _valeurTEC(txt, ctx){
   const k = m[1], plus = m[2] ? ctx.cot : 0;
   let v;
   if(k === 'NA' || k === 'CLIMB') return 'NA';
-  if(k === 'ALL' || k === 'Y' || k === 'M') return ctx.mp || 'ALL';   // Y, M : mouvement minimum
+  if(k === 'ALL' || k === 'Y' || k === 'M')                            // Y, M : mouvement minimum
+    return !ctx.mp ? 'ALL' : ctx.depense != null ? Math.max(0, ctx.mp - ctx.depense) : ctx.mp;
   if(k === 'DOT' || k === 'COT') v = ctx.cot;
   else if(k === 'Z') v = ctx.mp ? ctx.mp / 2 : null;
   else if(k === 'z') v = ctx.mp ? ctx.mp / 3 : null;
@@ -9550,6 +9560,11 @@ function _valeurTEC(txt, ctx){
 }
 const _casesTEC = (ligne, col) => (TEC_MVT[ligne] || [])[_COL_MVT[col]];
 const _parRouteTEC = c => /(^|\s)R(\s|$)/.test(c || '');
+// Code « D » : pénalités d'épave / véhicule et de VCA doublées (motos
+// exceptées) ; « L » : +1 MP pour un demi-niveau plus haut. « DOT » n'est
+// pas un « D ». Notation du PTO : lettres accolées (« B*DR »).
+const _codeTEC = (c, k) => String(c || '').replace(/\[[^\]]*\]/g, ' ').split(/[\s\/]+/)
+  .some(t => /^[A-Za-z*]+$/.test(t) && !/^(DOT|COT|ALL|NA|CLIMB)$/.test(t) && t.replace(/\*/g, '').includes(k));
 
 // Terrain de l'hexagone pour le coût. Dans une dépression, la carte LOS
 // met la dépression au centre : l'autre terrain (bois d'un ravin-bois,
@@ -9605,7 +9620,13 @@ function _autreTerrainMvt(h){
 }
 const _coteDe = (h, s) => h.getHexsideLocation(s) && h.getHexsideLocation(s).getTerrain();
 
-// Coût d'entrée dans b depuis a, voisins : {cout, lib}.
+// Demi-niveau d'un remblai de voie ferrée (code « L ») : la carte LOS de
+// VASL le marque « Railroad, Embankment », isHalfLevelHeight.
+const _demiNiveau = h => { const c = h.getCenterLocation().getTerrain();
+                           return c && c.isHalfLevelHeight() && /Railroad, Embankment/.test(c.getName()) ? 0.5 : 0; };
+// Coût d'entrée dans b depuis a, voisins : {cout, lib, hex, route, d}.
+// n.depense : MP déjà dépensés dans la phase (« ALL » d'un véhicule).
+// d : code « D » de l'hexagone entré (pénalité d'épave / véhicule doublée).
 function coutEntree(m, a, b, n){
   const col = n.col, veh = n.unite === 'MP';
   if(!col) return {cout: null, lib: '?'};
@@ -9620,21 +9641,25 @@ function coutEntree(m, a, b, n){
   const cs = s >= 0 ? _coteDe(a, s) : null, cb = s >= 0 ? _coteDe(b, (s + 3) % 6) : null;
   const parRoute = s >= 0 && ((cs && cs.isRoad()) || (cb && cb.isRoad()));
   const routeB = _routeMvt(b) || parRoute;
-  const caseC = ligne && _casesTEC(ligne, col);
+  // Hexagone de route entré par un côté sans route : terrain ouvert (B3.2),
+  // le tarif de la route ne vaut qu'au franchissement d'un côté de route
+  // (B3.41). Routes encaissées et surélevées : leurs propres lignes.
+  const caseC = ligne && _casesTEC(ligne === 'ETO:Road' && !parRoute ? 'ETO:Open Ground' : ligne, col);
   const tarifRoute = parRoute && (routeB || _parRouteTEC(caseC));
   // Chemin (B13.6) : dans un bois ou des broussailles, entrer par un côté
   // de chemin coûte 1 MF (2 à cheval) au lieu de 2 (4) ; on reste dans le
   // bois.
   const parChemin = !tarifRoute && s >= 0 && ((cs && /Path/.test(cs.getName())) || (cb && /Path/.test(cb.getName())))
     && /^ETO:(Woods|Woods-Pine|Woods-Light|Brush \(½\))$/.test(ligne || '') && (col === 'inf' || col === 'cav');
-  const autreCout = caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp}) : null;
+  const autreCout = caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp, depense: n.depense}) : null;
   let cout = tarifRoute
-    ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu})
+    ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu, depense: n.depense})
     : parChemin ? (col === 'inf' ? 1 : 2) : autreCout;
   if(tarifRoute && !veh && autre && _estNb(cout) && _estNb(autreCout) && _cMax(autreCout) > _cMax(cout))
     cout = _cFaire(_cMin(cout), _cMax(autreCout));
   if(parRoute && !(c && c.isRoad())) lib += routeB && b._pontMvt ? ' (pont)' : ' (route)';
   if(parChemin) lib += ' (chemin)';
+  if(ligne === 'ETO:Road' && !parRoute) lib += ' (hors route)';
   const cotHex = cout;
   // Dépression : le ravin, le ruisseau ou le wadi coûte en plus du
   // terrain de l'hexagone (« +COT »). À pied : ravin 2 MF (B19.4),
@@ -9646,7 +9671,7 @@ function coutEntree(m, a, b, n){
     const ld = _LIGNE_TEC[dep.getName()], cd = ld && _casesTEC(ld, col);
     if(cd != null){
       const nd = dep.getName();
-      const ctx = {cot: _estNb(cout) ? cout : 1, mp: n.mp,
+      const ctx = {cot: _estNb(cout) ? cout : 1, mp: n.mp, depense: n.depense,
                    ruisseau: /Dry/.test(nd) ? 0 : /Shallow/.test(nd) ? 1 : /Deep/.test(nd) ? 2 : null};
       cout = _valeurTEC(cd, ctx);
       if(!veh && /^(ETO:Gully|ETO:Stream|DTO:Wadi)$/.test(ld) && _estNb(cout) && lib !== 'Open Ground') cout = _plus(cout, ctx.cot);
@@ -9658,17 +9683,30 @@ function coutEntree(m, a, b, n){
     const r = _coteFranchi(a, b, s, col, n, cout);
     if(r){ cout = r.cout; lib += r.lib; }
   }
-  // Montée (B10.4) : h (infanterie) coût du terrain doublé par niveau ;
-  // H (véhicules) +4 MP par niveau, +2 par la route. Un ravin est au
+  // Changement d'élévation (B10.4, B10.51). Montée d'un niveau : h
+  // (infanterie) coût du terrain doublé ; H (véhicules) +4 MP, +2 par la
+  // route. Changement abrupt : chaque niveau intermédiaire coûte 2 MF / 4
+  // MP en montée, 1 MF / 2 MP en descente ; le dernier niveau, le coût de
+  // la montée d'un niveau, ou rien de plus en descente. Un ravin est au
   // niveau -1 : en sortir est une montée (B19.4). Un pont porte la route
   // au niveau du sol : pas de montée en le quittant par la route.
   const pont = parRoute && (a._pontMvt || b._pontMvt);
   const niv = pont ? 0 : b.getBaseLevelofHex() - a.getBaseLevelofHex();
-  if(niv >= 1 && _estNb(cout)){
-    cout = _plus(cout, veh ? niv * (parRoute ? 2 : 4) : _fois(_estNb(cotHex) ? cotHex : 1, niv));
-    lib += `, +${niv} niveau${niv > 1 ? 'x' : ''}`;
+  if(niv && _estNb(cout)){
+    const sup = niv >= 1 ? (veh ? niv * (parRoute ? 2 : 4) : _plus(_estNb(cotHex) ? cotHex : 1, 2 * (niv - 1)))
+              : niv <= -2 ? (veh ? 2 : 1) * (-niv - 1) : 0;
+    if(niv >= 1 || sup) lib += `, ${niv > 0 ? '+' : ''}${niv} niveau${Math.abs(niv) > 1 ? 'x' : ''}`;
+    cout = _plus(cout, sup);
   }
-  return {cout, lib, hex: b, route: tarifRoute};
+  // Code de la case : sur la route, celui de la route (un bois traversé par
+  // la route n'impose pas son « D » au véhicule qui reste sur la route).
+  const caseCode = tarifRoute && !/^ETO:Road/.test(ligne || '') ? _casesTEC('ETO:Road', col) : caseC;
+  // Code « L » : +1 MP pour entrer un demi-niveau plus haut (remblai).
+  if(veh && _codeTEC(caseCode, 'L') && _estNb(cout)
+     && b.getBaseLevelofHex() + _demiNiveau(b) - a.getBaseLevelofHex() - _demiNiveau(a) === 0.5){
+    cout = _plus(cout, 1); lib += ', +½ niveau (L)';
+  }
+  return {cout, lib, hex: b, route: tarifRoute, d: veh && col !== 'mc' && _codeTEC(caseCode, 'D')};
 }
 // Mur, haie, bocage sur le côté s de a (vers b) : nouveau coût, ou null.
 function _coteFranchi(a, b, s, col, n, cout){
@@ -9870,6 +9908,64 @@ function _vehiculesDans(m, h, groupe){
   }
   return k;
 }
+// Équivalent squad d'une unité (A5.1) : squad 1, HS ou équipage ½, SMC
+// rien. Les traits de VASL ne le disent pas de façon sûre (iCVP 2 pour un
+// équipage, aucun CounterType pour certains HS) ; l'image, oui : les
+// faces s'appellent <nation><FP><portée><moral>S|H|C (« ge548S »,
+// « ja238H », « ru228C »), les faces brisées <nation>s|h|c<moral>b
+// (« ges9b »).
+function _equivSquad(q){
+  const img = (lirePiece(q.seg).img || '').split('/').pop();
+  const m = /^[a-z]{2}\d{3}([SHC])/.exec(img) || /^[a-z]{2}([shc])\d/.exec(img);
+  return !m ? 0 : m[1].toLowerCase() === 's' ? 1 : 0.5;
+}
+// Camp d'un pion : la nation, dossier de son image (« ge/ », « ru/ »).
+const _nationPion = q => ((lirePiece(q.seg).img || '').match(/^([a-z]{2})\//) || [])[1] || null;
+// Surempilement de la Location de p (A5.11, A5.1) : équivalents squad du
+// même camp au même niveau au-delà de trois, arrondi au-dessus ; les
+// passagers d'un véhicule ne comptent pas (A5.3).
+function _surempilement(p){
+  const nat = _nationPion(p), niv = lieuDansPile(p).niveau || 0;
+  if(!nat) return 0;
+  let t = 0;
+  for(const q of pile(cle(p))){
+    if(q.deleted || _nationPion(q) !== nat || _estPassager(q)) continue;
+    const k = _equivSquad(q);
+    if(k && (lieuDansPile(q).niveau || 0) === niv) t += k;
+  }
+  return Math.ceil(Math.max(0, t - 3));
+}
+// Premier étage en décombres de l'hexagone h (B24.11), ou null : pion de
+// décombres posé sur un compteur d'étage de la pile s de l'hexagone, ou
+// terrain « Rubble Level n » de la carte LOS. Le pion de décombres ne
+// s'empile pas : il suffit qu'il soit dans l'hexagone ; il marque le plus
+// haut compteur d'étage de la pile, les niveaux au-dessus des décombres
+// en étant aussi. Sans compteur d'étage, l'hexagone entier est en
+// décombres : ce n'est plus un bâtiment (B24.1).
+function _niveauDecombres(h, s){
+  let r = null;
+  const garder = k => { if(k > 0 && (r === null || k < r)) r = k; };
+  const m = _losPrete;
+  if(m && h && vivants().some(q => /Rubble/i.test(lirePiece(q.seg).nomBase || q.nom || '') && _hexDe(m, q.x, q.y) === h)){
+    const niv = (s || []).map(_niveauCompteur).filter(v => typeof v === 'number');
+    if(niv.length) garder(Math.max(...niv));
+  }
+  let k = 1;
+  for(let l = h && h.getCenterLocation().getUpLocation(); l; l = l.getUpLocation(), k++){
+    const t = l.getTerrain();
+    if(t && /Rubble Level/.test(t.getName())){ garder(k); break; }
+  }
+  return r;
+}
+// Deux hexagones voisins du même bâtiment : bâtiment des deux côtés, et
+// le côté qui les sépare en est aussi.
+function _batimentRelie(m, a, b){
+  const s = _coteVers(m, a, b);
+  const ca = a.getCenterLocation().getTerrain(), cb = b.getCenterLocation().getTerrain();
+  if(s < 0 || !ca || !cb || !ca.isBuilding() || !cb.isBuilding()) return false;
+  const t1 = _coteDe(a, s), t2 = _coteDe(b, (s + 3) % 6);
+  return !!((t1 && t1.isBuilding()) || (t2 && t2.isBuilding()));
+}
 // Démarrage (D2.12) : 1 MP avant le premier hexagone ou le premier VCA
 // de la phase, sauf sous un marqueur Motion. Étape marquée « depart » :
 // Undo la retire avec le mouvement qui l'a provoquée.
@@ -9934,17 +10030,54 @@ function compterMouvement(avant, portes, local){
     const e = _mvtDepart(p, P.cle, vca);
     const ch = etapesDeplacement(m, P, Q, n, e);
     if(!ch.length) continue;
-    const demarrage = veh ? _demarrer(p, e, P.cle, vca, _enMotion(p, a.x, a.y, groupe)) : 0;
+    // Entrée depuis le hors-carte : en Motion, sans démarrage (D2.12, A2.52).
+    const demarrage = veh ? _demarrer(p, e, P.cle, vca, !P.hex || _enMotion(p, a.x, a.y, groupe)) : 0;
     // Épaves et véhicules dans l'hexagone entré : +1 MP chacun, +2 au
-    // tarif de la route (D2.14). Une moto n'en paie pas.
+    // tarif de la route (D2.14), doublé encore par le code « D » de
+    // l'hexagone (route encaissée, bois : B4.42, B13.41). Une moto n'en
+    // paie pas.
     if(veh && n.col !== 'mc') for(const r of ch){
       const k = r.hex ? _vehiculesDans(m, r.hex, groupe) : 0;
       if(!k || !_estNb(r.cout)) continue;
-      r.cout = _plus(r.cout, k * (r.route ? 2 : 1));
-      r.lib += ` + ${k} véhicule(s)/épave(s)`;
+      r.cout = _plus(r.cout, k * (r.route ? 2 : 1) * (r.d ? 2 : 1));
+      r.lib += ` + ${k} véhicule(s)/épave(s)` + (r.d ? ' (D)' : '');
+    }
+    // « ALL » d'un véhicule : le reste de ses MP, d'après ce que la phase
+    // a déjà coûté, démarrage et hexagones précédents compris (B13.41).
+    if(veh && n.mp){
+      let dep = _cMax(_mvtSomme(p));
+      ch.forEach((r, i) => {
+        const A = i ? ch[i - 1].hex : P.cote ? null : P.hex || r.hex;
+        if(r.hex && A && 'route' in r && (A === r.hex || _voisins(m, A, r.hex))){
+          const r2 = coutEntree(m, A, r.hex, Object.assign({}, n, {depense: dep}));
+          if(_estNb(r2.cout) && _estNb(r.cout) && _cMax(r2.cout) < _cMax(coutEntree(m, A, r.hex, n).cout)){
+            r.cout = r2.cout; r.all = true; r.lib += ' (ALL : reste des MP)';
+          }
+        }
+        if(_estNb(r.cout)) dep += _cMax(r.cout);
+      });
     }
     const d = _etatMvt(e), recul = veh && d.recul && _MULT_RECUL[n.col];
-    if(recul) for(const r of ch) if(_estNb(r.cout)){ r.cout = _fois(r.cout, recul); r.lib += ` (marche arrière ×${recul})`; }
+    if(recul) for(const r of ch) if(_estNb(r.cout) && !r.all){ r.cout = _fois(r.cout, recul); r.lib += ` (marche arrière ×${recul})`; }
+    // Surempilement (A5.11) à l'arrivée : +1 MF (MP) par équivalent squad
+    // au-delà de trois, l'unité qui entre comprise.
+    const der = ch[ch.length - 1], sur = Q.hex ? _surempilement(p) : 0;
+    if(sur && _estNb(der.cout) && !der.all){ der.cout = _plus(der.cout, sur); der.lib += ` + surempilement ${sur}`; }
+    // Étage en décombres (B24.2) : le rez-de-chaussée est couvert de
+    // décombres, 3 MF, sauf depuis un hexagone du même bâtiment (2 MF).
+    if(!veh && Q.hex && 'route' in der){
+      const A = ch.length > 1 ? ch[ch.length - 2].hex : P.cote ? null : P.hex;
+      const rd = A && A !== Q.hex && _voisins(m, A, Q.hex) && _niveauDecombres(Q.hex, pile(cle(p)));
+      if(rd){
+        const relie = _batimentRelie(m, A, Q.hex);
+        const bois = /Wooden/.test(Q.hex.getCenterLocation().getTerrain().getName());
+        const base = _valeurTEC(_casesTEC(!relie ? 'ETO:Rubble' : bois ? 'ETO:Building-Wooden' : 'ETO:Building-Stone', 'inf'), {cot: 1});
+        if(_estNb(base)){
+          der.cout = _plus(base, sur);
+          der.lib = (relie ? 'bâtiment relié' : 'décombres') + ` (étage ${rd} en décombres, B24.2)` + (sur ? ` + surempilement ${sur}` : '');
+        }
+      }
+    }
     ch.forEach((r, i) => e.push(Object.assign({pos: i === ch.length - 1 ? Q.cle : '·', vca,
       etat: d.etat, recul: d.recul}, r)));
     // Infanterie : sortie d'une fortification, étage d'arrivée (B23.4,
@@ -10010,13 +10143,23 @@ function compterVCA(p, T, S0, S1){
   const m = _losPrete;
   const P = m ? _posMvt(m, p.x, p.y) : {cle: lieu(p.x, p.y), hex: null, cote: null};
   const c = P.hex && !P.cote && P.hex.getCenterLocation().getTerrain();
-  const dedans = !!c && (_obstacleMvt(P.hex) || /Rubble/.test(c.getName()));
+  const e0 = p.mvt && p.mvt.etapes;
+  // Sur la route d'un hexagone de bois ou de bâtiment, le véhicule n'y est
+  // pas (D2.11, B13.41) : sa dernière entrée s'est faite au tarif de la
+  // route ; sans entrée dans la phase, la route au centre de l'hexagone.
+  const entre = e0 && [...e0].reverse().find(x => x.hex && x.pos === P.cle);
+  const surRoute = entre ? !!entre.route : !!c && c.isRoad();
+  const dedans = !!c && !surRoute && (_obstacleMvt(P.hex) || /Rubble/.test(c.getName()));
+  // Code « D » de l'hexagone occupé : VCA doublé, motos exceptées.
+  const ligne = c && (surRoute ? (_LIGNE_TEC[c.getName()] || 'ETO:Road') : _ligneTerrain(_autreTerrainMvt(P.hex) || _terrainMvt(P.hex)));
+  const codeD = !!c && n.col !== 'mc' && _codeTEC(ligne && _casesTEC(ligne, n.col), 'D');
   const e = _mvtDepart(p, P.cle, a);
   const motion = _enMotion(p, p.x, p.y, [p]);
   const demarrage = _demarrer(p, e, P.cle, a, motion);
   const d = _etatMvt(e);
-  e.push({pos: P.cle, vca: b, cout: pas * (dedans ? 2 : 1), lib: 'VCA', byp: d.byp, etat: d.etat, recul: d.recul});
-  rapport(`${nomRapport(p)} : VCA ${_texteMP(p, pas * (dedans ? 2 : 1), [demarrage && 'démarrage 1'])}`);
+  const cout = pas * (dedans || codeD ? 2 : 1);
+  e.push({pos: P.cle, vca: b, cout, lib: 'VCA', byp: d.byp, etat: d.etat, recul: d.recul});
+  rapport(`${nomRapport(p)} : VCA ${_texteMP(p, cout, [demarrage && 'démarrage 1'])}`);
 }
 
 // ── Start, Stop, Reverse : commandes du menu des véhicules, avant le
@@ -10293,12 +10436,16 @@ function _decrireChangement(l1, l2){
 // Un marqueur de niveau 3 (SSR) donne un escalier inhérent (B23.24). Une
 // usine n'a pas d'étage : son toit coûte 2 MF (1½ niveau) ou 3 MF (2½),
 // par un escalier imprimé ou un côté de route (B23.74, B23.87).
+// Vers ou depuis un étage en décombres (B24.4) : 3 MF au lieu de 1.
 // Rend {cout, alerte} ; le coût est compté même quand l'alerte est levée.
 function _coutNiveaux(h, l1, l2, s){
   const n1 = l1.niveau || 0, n2 = l2.niveau || 0;
   if(n1 === n2) return {cout: 0, alerte: ''};
   const dn = Math.abs(n2 - n1), bas = Math.min(n1, n2), hautN = Math.max(n1, n2);
   if(!h) return {cout: dn, alerte: ''};
+  const rd = _niveauDecombres(h, s);
+  let esc = 0;
+  for(let k = bas; k < hautN; k++) esc += rd !== null && k + 1 >= rd ? 3 : 1;
   const c = _terrainMvt(h);
   const nomBat = c ? c.getName() : '';
   const etages = [];
@@ -10310,17 +10457,17 @@ function _coutNiveaux(h, l1, l2, s){
     return {cout: /2\.5/.test(nomBat) ? 3 : 2,
             alerte: h.hasStairway() || route ? '' : "toit d'usine : par un escalier imprimé ou un côté de route (B23.87)"};
   }
-  if(!c || !c.isBuilding()) return {cout: dn, alerte: "pas de bâtiment dans l'hexagone"};
-  if(!nbEtages && !niveau3 && hautN > 0) return {cout: dn, alerte: "pas d'étage dans ce bâtiment (B23.21)"};
+  if(!c || !c.isBuilding()) return {cout: esc, alerte: "pas de bâtiment dans l'hexagone"};
+  if(!nbEtages && !niveau3 && hautN > 0) return {cout: esc, alerte: "pas d'étage dans ce bâtiment (B23.21)"};
   const sommet = niveau3 ? Math.max(nbEtages, 3) : nbEtages;
-  if((l1.toit || l2.toit) && !toit) return {cout: dn, alerte: "pas de toit praticable ici (B23.8)"};
+  if((l1.toit || l2.toit) && !toit) return {cout: esc, alerte: "pas de toit praticable ici (B23.8)"};
   const etageMax = Math.max(l1.toit ? 0 : n1, l2.toit ? 0 : n2);
-  if(etageMax > sommet) return {cout: dn, alerte: `le niveau ${etageMax} n'existe pas ici`};
+  if(etageMax > sommet) return {cout: esc, alerte: `le niveau ${etageMax} n'existe pas ici`};
   for(let k = Math.max(bas, 0); k < hautN; k++){
     const versToit = toit && k + 1 === sommet + 1 && (l1.toit || l2.toit);
-    if(!versToit && !h.hasStairway() && !niveau3) return {cout: dn, alerte: "pas d'escalier dans cet hexagone (B23.23)"};
+    if(!versToit && !h.hasStairway() && !niveau3) return {cout: esc, alerte: "pas d'escalier dans cet hexagone (B23.23)"};
   }
-  return {cout: dn, alerte: ''};
+  return {cout: esc, alerte: ''};
 }
 // Changement d'emplacement sur place : étages (ci-dessus), +1 MF pour
 // sortir d'une fortification, +1 MF pour y entrer (B27.4).

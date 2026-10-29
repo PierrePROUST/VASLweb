@@ -52,6 +52,8 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-start.js` | Board 5 : menu des véhicules — « Start/Stop » et « Reverse » avant « CA cw » ; marche arrière ×4, changement de sens en marche (arrêt + démarrage), Undo d'un Stop |
 | `mf-transport.js` | Board 5 : passagers et Riders — entrée à pied (pas passagère), Load (D6.4 : 1 MF, ¼ des MP gardés par MF restant), transport sans MF (D6.3), Unload (D6.5 : ¼ des MP, MF du trajet en véhicule), Undo, nouvelle phase à bord |
 | `mf-horscarte.js` | Board 5 : unité hors carte qui entre sur le board (coût du premier hexagone, le décompte ne plante plus) ; chef reconnu par son nom affiché |
+| `mf-corrections.js` | Corrections du décompte (eASLRB) : route abordée par un côté sans route (B3.2), pas de démarrage depuis le hors-carte (D2.12), « ALL » = reste des MP (B13.41), élévations abruptes (B10.51, boards 13 et 15), étage en décombres (B24.2, B24.4, board 20), code « D » (route surélevée, board 13), VCA sur la route d'un bois (19X1), code « L », surempilement (A5.11, 1F5) |
+| `log-vehicule.js` | Fabrique `logs/T-34_board1_terrains.vlog` (et son décompte en `.txt`) : un T-34 CE parcourt le board 1 en terrain ouvert, Paved Road et Dirt Road, avec VCA, Start/Stop et deux phases |
 | `mf-relecture.js` | Board 5 : décompte des coups relus d'un .vlog (M/ d'un pion, M/ d'une pile VASSAL), au chat sans entrer dans le log ; changement de phase relu ; recul |
 | `mov-relecture.js` | Mark unmoved (MOV) après la relecture d'un D/ dont le nouvel état finit par une contre-oblique : état du pion entier, image gardée, Undo |
 | `precadrage.js` | Relecture : la vue rejoint la case d'arrivée avant que le pion bouge et que le message du coup paraisse ; ▶ pendant la pause joue le coup en attente |
