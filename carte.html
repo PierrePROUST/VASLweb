@@ -7719,8 +7719,9 @@ function indexerPiles(){
 // viser un seul.
 let _sel = new Set();          // pions sélectionnés
 let _depliees = new Set();     // clés des piles dépliées
-// Ni un pion HIP de l'adversaire, ni une carte ou un panneau de VASL Tools.
-const selectionnable = p => !!p && !p.deleted && !p.cache && !p.fond;
+// Ni un pion HIP de l'adversaire, ni une carte ou un panneau de VASL Tools,
+// ni un overlay de l'extension VASL Overlays.
+const selectionnable = p => !!p && !p.deleted && !p.cache && !p.fond && !p.affichageSeul;
 const selDans = k => pile(k).filter(p => _sel.has(p));
 const pileEntiereSel = k => { const s = pile(k).filter(selectionnable); return s.length > 0 && s.every(p => _sel.has(p)); };
 // Fonctions appelées après chaque changement de sélection (panneau, éventail…).
@@ -7965,6 +7966,11 @@ async function majApparence(p, d){
   p.el.style.opacity = voitHip ? '.55' : '';
   p.cache = d.hip && !voitHip;
   p.couche = coucheDe(d);
+  // Overlay de l'extension VASL Overlays (image « ovr… » prise dans
+  // l'archive de l'overlay) : affiché seulement, jamais sélectionnable,
+  // même case « Overlays » cochée. Son segment repart tel quel dans la
+  // sauvegarde, et VASL avec l'extension le dessine comme avant.
+  p.affichageSeul = /^ovr/i.test(d.img) && !/^(DO|DD)\//.test(d.img);
   if(d.vt || d.page){ await _majPieceVaslTools(p, d, gen); return; }
   const imgFace = voile || d.img;
   const url = voile === '?' ? _pionInconnu() : await chargerImage(imgFace);
@@ -8261,7 +8267,7 @@ function rendrePile(k, tous){
     p.el.style.zIndex = p.fond ? 2 + i : p.couche === 'overlay' ? 6 : p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : 10) + i;
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
-    p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
+    p.el.classList.toggle('verrou', p.affichageSeul || !COUCHES_SEL[p.couche || 'unite']);
   });
   _decorPile(k, s, rects, deplie);
   if(_reperes.brises || _reperes.sniper) dessinerReperes();

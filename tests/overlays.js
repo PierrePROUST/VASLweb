@@ -83,7 +83,12 @@ const ST3 = "+/1790710308542/hide;79,130;Opaque;;player:;0.5;;false\timmob;c;I;R
     return {st3: s && [s.couche, s.face.naturalWidth + '×' + s.face.naturalHeight, s.el.style.zIndex],
             relus: v.map(p => p.couche).sort().join(','),
             dessousRelu: v.filter(p => p.couche === 'overlay').every(o => v.filter(p => p.couche === 'unite').every(u => +o.el.style.zIndex < +u.el.style.zIndex)),
-            verrou: v.filter(p => p.couche === 'overlay').every(p => p.el.classList.contains('verrou'))};
+            verrou: v.filter(p => p.couche === 'overlay').every(p => p.el.classList.contains('verrou')),
+            // Affichage seul : pas sélectionnable, même case « Overlays » cochée.
+            st3Sel: (() => { basculerCouche('overlay'); selectionner([s]); const n = _sel.size; basculerCouche('overlay'); return n; })(),
+            st3Verrou: s.el.classList.contains('verrou'),
+            // Sauvegarde : le segment de la pièce repart tel que VASL l'a écrit.
+            st3Sauve: etatPartie().includes(st3)};
   }, ST3);
   Object.assign(r, r2);
   delete r.pts;
