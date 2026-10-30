@@ -1833,12 +1833,21 @@ async function composerBoard(b, img){
     }
   }
   // Overlays d'hexagones, dans l'ordre de la sauvegarde, sur les SSR.
+  // Ce qui dépasse du board (overlay posé à cheval sur deux boards) est
+  // gardé à part : _renderBoards le pose sur le board voisin.
   b.ovrLOS = [];
+  b.ovrDebords = [];
   for(const o of overlays){
     try {
       const ov = await preparerOverlay(b, o);
       const img = await dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy);
       b.ovrLOS.push(Object.assign(_pixelsOverlay(o.nom, img, ov.x, ov.y), {archive: ov.archive}));
+      if(ov.x < sx || ov.y < sy || ov.x + img.width > sx + sw || ov.y + img.height > sy + sh){
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        b.ovrDebords.push({nom: o.nom, image: c, x: ov.x, y: ov.y});
+      }
       ov.image.close();
       chatLog(`🧱 bd${b.name} : overlay ${o.nom} en ${o.hex1}-${o.hex2} (${ov.archive}, orientation ${ov.orientation})`);
     } catch(e){
@@ -1848,7 +1857,9 @@ async function composerBoard(b, img){
   // Le repeint porte sur toute l'image : board, motifs, images et overlays.
   if(couleurs.length){
     try {
-      const n = repeindre(cv, tableSSR(couleurs, tbl));
+      const t = tableSSR(couleurs, tbl);
+      const n = repeindre(cv, t);
+      for(const d of b.ovrDebords) repeindre(d.image, t);
       if(n) chatLog(`🎨 bd${b.name} : ${couleurs.join(', ')} — ${n.toLocaleString('fr')} pixels repeints`);
       else  chatLog(`⚠️ bd${b.name} : aucune couleur à repeindre pour ${couleurs.join(', ')}`);
     } catch(e){
@@ -1905,6 +1916,7 @@ async function _renderBoards(boards){
 
   await _runLimited(noms, n => _fetchBoardImage(n));
 
+  const toiles = new Map();             // board → canvas affiché
   for(const b of boards){
     const x = Math.round(b.px * SC) + M, y = Math.round(b.py * SC) + M;
     const w = Math.round(b.dispW * SC), hgt = Math.round(b.dispH * SC);
@@ -1923,6 +1935,7 @@ async function _renderBoards(boards){
       if(b.reversed){ g.translate(b.dispW, b.dispH); g.scale(-1, -1); }
       g.drawImage(comp, 0, 0, b.dispW, b.dispH);
       mi.appendChild(cv);
+      toiles.set(b, {cv, kb});
       ok++;
     } catch(err){
       fail.push(b.name + (err && err.message ? ' (' + err.message + ')' : ''));
@@ -1933,9 +1946,49 @@ async function _renderBoards(boards){
       mi.appendChild(ph);
     }
   }
+  _poserDebordsOverlays(boards, toiles);
   if(ok) chatLog(`🗺️ ${ok} board(s) — composition ${totalW}×${totalH} px`);
   if(fail.length) chatLog('⚠️ Board(s) non chargé(s) : ' + fail.join(', '));
   zoomFit();
+}
+
+// Overlay d'hexagones à cheval sur deux boards : VASL le coupe au bord de
+// son board ; on pose la partie qui dépasse sur les boards voisins, par-
+// dessus leur image et leurs propres overlays. Le repère est celui du
+// board de l'overlay (recadrage, zoom, retournement), ramené à la carte.
+function _poserDebordsOverlays(boards, toiles){
+  for(const b of boards){
+    if(!b.ovrDebords || !b.ovrDebords.length) continue;
+    const gb = geoBoard(b);
+    const sx = b.crop ? b.crop.x : 0, sy = b.crop ? b.crop.y : 0;
+    const sw = (b.crop && b.crop.w > 0) ? b.crop.w : gb.w;
+    const sh = (b.crop && b.crop.h > 0) ? b.crop.h : gb.h;
+    for(const d of b.ovrDebords){
+      // Emprise de l'overlay sur la carte (pixels affichés, avant SC).
+      const kx = b.dispW / sw, ky = b.dispH / sh;
+      const lx = d.x - sx, ly = d.y - sy, w = d.image.width, h = d.image.height;
+      const x0 = b.px + (b.reversed ? sw - lx - w : lx) * kx;
+      const y0 = b.py + (b.reversed ? sh - ly - h : ly) * ky;
+      const x1 = x0 + w * kx, y1 = y0 + h * ky;
+      const voisins = [];
+      for(const B of boards){
+        const t = toiles.get(B);
+        if(B === b || !t) continue;
+        if(x1 <= B.px || x0 >= B.px + B.dispW || y1 <= B.py || y0 >= B.py + B.dispH) continue;
+        const g = t.cv.getContext('2d');
+        g.save();
+        g.setTransform(t.kb, 0, 0, t.kb, -B.px * t.kb, -B.py * t.kb);
+        g.translate(b.px, b.py);
+        if(b.reversed){ g.translate(b.dispW, b.dispH); g.scale(-1, -1); }
+        g.scale(kx, ky);
+        g.drawImage(d.image, lx, ly);
+        g.restore();
+        voisins.push(B.name);
+      }
+      if(voisins.length) chatLog(`🧱 overlay ${d.nom} de bd${b.name} prolongé sur bd${voisins.join(', bd')}`);
+    }
+    b.ovrDebords = null;
+  }
 }
 
 function _setMapSize(w, h){
@@ -5431,9 +5484,10 @@ class LosOverlay {
     this.cx = 0; this.cy = 0; this.px = 0; this.py = 0;
   }
   // Point de l'overlay → pixel de la carte LOS (board recadré, retourné).
+  // Hors du board, le point tombe sur le board voisin : un overlay à
+  // cheval sur deux boards les couvre tous les deux.
   versCarte(cx, cy){
     const lx = this.ov.x + cx - this.cropX, ly = this.ov.y + cy - this.cropY;
-    if(lx < 0 || ly < 0 || lx >= this.R.w || ly >= this.R.h) return null;
     return {x: this.R.x + (this.b.reversed ? this.R.w - 1 - lx : lx), y: this.R.y + (this.b.reversed ? this.R.h - 1 - ly : ly)};
   }
   surOverlay(x, y){ return x >= 0 && x < this.ov.w && y >= 0 && y < this.ov.h; }
@@ -5747,9 +5801,14 @@ async function construireCarteLOS(boards, terrainsXML, archiveDe, opts = {}){
       }
     }
     _ssrGrilles(m, R, b.ssrList || [], regles);
+  }
+  // Overlays une fois tous les boards posés (ASLMap.adjustLOSForOverlays) :
+  // ce qui déborde sur un board voisin n'est plus recouvert par lui.
+  for(const b of reels){
+    if(!donnees.get(b.name)) continue;
     for(const ov of _overlaysLOS(b)){
       if(!b._couleurs) b._couleurs = lireCouleursLOS(terrainsXML, donnees.get(b.name).meta);
-      new LosOverlay(m, b._couleurs, ov, R, b).passeGrilles();
+      new LosOverlay(m, b._couleurs, ov, b._los, b).passeGrilles();
     }
   }
 
