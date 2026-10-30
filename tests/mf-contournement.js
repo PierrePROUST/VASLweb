@@ -23,7 +23,7 @@ const nav = require('./navigateur.js');
     const poser = async (nom, h) => { const [x, y] = px(h); poserDepuisPalette(_bdd.pions.find(s => s.n === nom), x, y); await tic(); return vivants().slice(-1)[0]; };
     const aller = async (l, x, y) => { deplacer(l, x, y); await tic(); };
     // Dernier décompte au log (les traits Report de VASL écrivent aussi au chat).
-    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*cumul/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
+    const msg = () => _histo.flatMap(e => e.cmds).filter(c => /^CHAT.*(cumul|M[FP]\/ )/.test(c)).slice(-1)[0].replace(/^CHAT\* /, '');
     // Milieu du côté s (0 à 5) de l'hexagone h, en pixels de carte, et ses deux hexagones.
     const cote = (h, s) => { const c = h.getHexsideLocation(s).getEdgeCenterPoint(); return [c.x * _losZoom() + BOARD_MARGIN, c.y * _losZoom() + BOARD_MARGIN]; };
     const voisinPar = (h, s) => m.getAdjacentHex(h, s) ? [h, m.getAdjacentHex(h, s)] : null;

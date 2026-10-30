@@ -430,6 +430,10 @@ body:not([data-terminal=pc]) .lig button{min-width:var(--cible);min-height:var(-
 .mini{position:relative;width:42px;height:42px;overflow:hidden;pointer-events:none}
 .mini img{position:absolute;pointer-events:none}
 .pion{position:absolute;touch-action:none;cursor:pointer;-webkit-touch-callout:none}
+/* Vue tournée : chaque pion tourne en sens inverse autour de son centre et
+   reste droit à l'écran ; un overlay de terrain, une carte de scénario ou
+   un panneau (.terrain), lui, suit la carte. */
+#mapInner .pion:not(.terrain){rotate:calc(-1 * var(--rotVue, 0deg))}
 /* Trait Immobilized : Fire Lane en surimpression… Le clic simple passe
    au travers ; Maj enfoncée, la pièce redevient saisissable. */
 .pion.immob,.pion.immob-jamais{pointer-events:none}
@@ -464,7 +468,8 @@ body.maj .pion.immob{pointer-events:auto}
 .fondPile{position:absolute;z-index:4999;pointer-events:none;border:1px solid var(--accent);border-radius:4px;
   background:repeating-linear-gradient(45deg,rgba(20,20,20,.55) 0 6px,rgba(60,60,60,.55) 6px 12px)}
 .pion.deplie:hover:not(.sel){outline:1px dashed #fff;outline-offset:0}
-.pastille{position:absolute;z-index:6000;pointer-events:none;transform:translate(-50%,-50%) scale(var(--zinv,1));
+.pastille{position:absolute;z-index:6000;pointer-events:none;
+  transform:translate(-50%,-50%) rotate(calc(-1 * var(--rotVue, 0deg))) scale(var(--zinv,1));
   background:#1e1e1e;color:var(--texte);border:1px solid var(--bord);border-radius:9px;padding:0 5px;
   font:600 11px/16px system-ui,sans-serif;white-space:nowrap}
 .loupe{position:fixed;z-index:9990;pointer-events:none;text-align:center}
@@ -894,6 +899,10 @@ const BOARD_W = 1800, BOARD_H = 645;  // board géomorphique standard
 const HEX_COLS = 33, HEX_ROWS = 10;
 
 let zoom = 1, _mapW = 0, _mapH = 0;
+// Rotation de l'affichage de la carte, en degrés (0, 90, 180, 270), dans le
+// sens horaire. Elle ne touche que la vue de ce joueur : les positions
+// des pions, l'état de la partie et ce que voit l'adversaire n'en dépendent pas.
+let _rotVue = [90, 180, 270].includes(+_lirePref('aslweb.rotation')) ? +_lirePref('aslweb.rotation') : 0;
 
 // ── Journal
 // Lignes de la page elle-même : « sys », et « alerte » pour un
@@ -1937,8 +1946,91 @@ function _setMapSize(w, h){
 }
 function _majScaler(){
   const s = document.getElementById('mapScaler');
-  s.style.width  = Math.round(_mapW * zoom) + 'px';
-  s.style.height = Math.round(_mapH * zoom) + 'px';
+  let {w, h} = _tailleVue();
+  // Vue tournée : les tables QRDC restent droites, sous la carte affichée.
+  const t = _tablesEl && _tablesEl.isConnected && _rotVue ? _tablesEl : null;
+  if(t){
+    const ecart = Math.round(ECART_TABLES * SC), x = Math.round(48 * SC);
+    Object.assign(t.style, {left: x * zoom + 'px', top: (h + ecart) * zoom + 'px', transform: `scale(${zoom})`, transformOrigin: '0 0'});
+    w = Math.max(w, x + t.offsetWidth + ecart);
+    h += ecart + t.offsetHeight + ecart;
+  }
+  s.style.width  = Math.round(w * zoom) + 'px';
+  s.style.height = Math.round(h * zoom) + 'px';
+  // La carte tourne autour de son coin, puis revient dans la zone de
+  // défilement : la vue garde son origine en haut à gauche.
+  const W = _mapW * zoom, H = _mapH * zoom;
+  const [tx, ty] = {90: [H, 0], 180: [W, H], 270: [0, W]}[_rotVue] || [0, 0];
+  const mi = document.getElementById('mapInner');
+  mi.style.transform = (_rotVue ? `translate(${tx}px, ${ty}px) rotate(${_rotVue}deg) ` : '') + `scale(${zoom})`;
+  mi.style.setProperty('--rotVue', _rotVue + 'deg');
+}
+
+// ── Rotation de la vue. « Vue » : la carte telle qu'elle est affichée,
+// tournée, au zoom 1, origine en haut à gauche ; « carte » : pixels de
+// #mapInner. Les pions et les textes restent droits à l'écran (règle
+// .pion de la feuille de style) ; ce qui est dans un trait rotate
+// (Covered Arc, véhicule) suit la carte, pour rester face à un côté
+// d'hexagone.
+const _tailleVue = () => _rotVue % 180 ? {w: _mapH, h: _mapW} : {w: _mapW, h: _mapH};
+function _carteVersVue(x, y){
+  switch(_rotVue){
+    case 90:  return {x: _mapH - y, y: x};
+    case 180: return {x: _mapW - x, y: _mapH - y};
+    case 270: return {x: y, y: _mapW - x};
+    default:  return {x, y};
+  }
+}
+function _vueVersCarte(x, y){
+  switch(_rotVue){
+    case 90:  return {x: y, y: _mapH - x};
+    case 180: return {x: _mapW - x, y: _mapH - y};
+    case 270: return {x: _mapW - y, y: x};
+    default:  return {x, y};
+  }
+}
+// Un décalage vu à l'écran (dx vers la droite, dy vers le bas), dans le
+// repère de la carte ; et l'inverse.
+function _ecartVersCarte(dx, dy){
+  switch(_rotVue){
+    case 90:  return {x: dy, y: -dx};
+    case 180: return {x: -dx, y: -dy};
+    case 270: return {x: -dy, y: dx};
+    default:  return {x: dx, y: dy};
+  }
+}
+function _ecartVersVue(dx, dy){
+  switch(_rotVue){
+    case 90:  return {x: -dy, y: dx};
+    case 180: return {x: -dx, y: -dy};
+    case 270: return {x: dy, y: -dx};
+    default:  return {x: dx, y: dy};
+  }
+}
+
+// Tourne la vue de `pas` degrés (multiple de 90, horaire si positif), en
+// gardant au centre de l'écran le point de la carte qui y était.
+function tournerVue(pas){
+  const wrap = document.getElementById('mapWrap');
+  const centre = _mapW && wrap.clientWidth
+    ? _vueVersCarte((wrap.scrollLeft + wrap.clientWidth/2) / zoom, (wrap.scrollTop + wrap.clientHeight/2) / zoom) : null;
+  _rotVue = (((_rotVue + pas) % 360) + 360) % 360;
+  try { localStorage.setItem('aslweb.rotation', String(_rotVue)); } catch(e){}
+  _placerTables();
+  _etendreCarte(true);
+  _majScaler();
+  if(centre && !_zoomManuel) zoomFit();
+  else if(centre){
+    const v = _carteVersVue(centre.x, centre.y);
+    wrap.scrollLeft = v.x * zoom - wrap.clientWidth/2;
+    wrap.scrollTop  = v.y * zoom - wrap.clientHeight/2;
+  }
+  _noterCentre();
+  rendreToutes();
+  if(_fil) dessinerFil();
+  if(_liens.size) dessinerLiens();
+  if(_eventail) placerEventail();
+  rafraichirActions(['rotGauche', 'rotDroite', 'rot180', 'rot0']);
 }
 
 // ═══ ZOOM ET DÉPLACEMENT ═══
@@ -1953,7 +2045,6 @@ function setZoom(z, fx, fy){
   zoom = z;
   if(!_zoomAuto) _zoomManuel = true;
   const mi = document.getElementById('mapInner');
-  mi.style.transform = `scale(${zoom})`;
   mi.style.setProperty('--zinv', 1 / zoom);
   _majScaler();
   wrap.scrollLeft = wx*zoom - (fx - wr.left);
@@ -1975,9 +2066,11 @@ function zoomFit(){
   const wrap = document.getElementById('mapWrap');
   _zoomAuto = true;
   // Les tables restent sous la zone ajustée : on y descend en défilant.
-  const t = rectTables();
-  const h = t ? Math.min(_mapH, t.y) : _mapH;
-  try { setZoom(Math.min(wrap.clientWidth/_mapW, wrap.clientHeight/h)); } finally { _zoomAuto = false; }
+  // (Vue tournée : les tables tournent avec la carte, on ajuste le tout.)
+  const t = !_rotVue && rectTables();
+  const v = _tailleVue();
+  const h = t ? Math.min(v.h, t.y) : v.h;
+  try { setZoom(Math.min(wrap.clientWidth/v.w, wrap.clientHeight/h)); } finally { _zoomAuto = false; }
   _zoomManuel = false;
   wrap.scrollLeft = 0; wrap.scrollTop = 0;
 }
@@ -2081,9 +2174,11 @@ function _lasso(e){
     document.removeEventListener('pointercancel', fin);
     r.remove();
     if(ev.type !== 'pointerup') return;
-    const a = clientVersCarte(Math.min(x0, ev.clientX), Math.min(y0, ev.clientY), null, true);
-    const b = clientVersCarte(Math.max(x0, ev.clientX), Math.max(y0, ev.clientY), null, true);
-    if(!a || !b) return;
+    const c0 = clientVersCarte(x0, y0, null, true);
+    const c1 = clientVersCarte(ev.clientX, ev.clientY, null, true);
+    if(!c0 || !c1) return;
+    // Coins opposés, quelle que soit la rotation de la vue.
+    const a = {x: Math.min(c0.x, c1.x), y: Math.min(c0.y, c1.y)}, b = {x: Math.max(c0.x, c1.x), y: Math.max(c0.y, c1.y)};
     const dedans = (x, y) => x >= a.x && x <= b.x && y >= a.y && y <= b.y;
     const pris = [];
     for(const [k, l] of indexerPiles()){
@@ -6541,9 +6636,11 @@ function dessinerFil(){
     const e = document.createElement('div');
     e.className = 'etiqLOS';
     e.textContent = texte;
-    e.style.left = (p.x + (dx - 1) / zoom) + 'px';
-    e.style.top = (p.y + (dy - 1 - LOS_POLICE + LOS_DESCENTE) / zoom) + 'px';
-    e.style.transform = `scale(${1 / zoom})`;
+    // Décalage vu à l'écran ; le texte reste droit si la vue est tournée.
+    const c = _ecartVersCarte(dx - 1, dy - 1 - LOS_POLICE + LOS_DESCENTE);
+    e.style.left = (p.x + c.x / zoom) + 'px';
+    e.style.top = (p.y + c.y / zoom) + 'px';
+    e.style.transform = `rotate(${-_rotVue}deg) scale(${1 / zoom})`;
     document.getElementById('mapInner').appendChild(e);
   };
   if(!f.src){
@@ -6565,7 +6662,7 @@ function dessinerFil(){
   }
   if(f.src === f.tgt && !f.compte) return;
   // Décalages des étiquettes à l'écran (targetLOSLabelXoffset…).
-  const ecS = {x: pS.x * zoom, y: pS.y * zoom}, ecT = {x: pT.x * zoom, y: pT.y * zoom};
+  const ecS = _ecartVersVue(pS.x * zoom, pS.y * zoom), ecT = _ecartVersVue(pT.x * zoom, pT.y * zoom);
   const xT = ecS.x === ecT.x ? -10 : 10;
   const yT = ecS.y === ecT.y ? -40 : ecS.x === ecT.x ? (ecS.y > ecT.y ? -20 : 20)
     : ecS.y > ecT.y ? (ecS.x > ecT.x ? -30 : -10) : (ecS.x > ecT.x ? 10 : -10);
@@ -7038,13 +7135,19 @@ function _rotations(ts){
     if(n <= 1) a = -(parseFloat(e) || 0);
     else { const v = parseInt(e, 10) || 0; a = ((v % n + n) % n) * (360 / n); }
     a = ((a % 360) + 360) % 360;
-    if(a) out.push({i, angle: a});
+    // Gardé même à 0° : ce qui est à l'intérieur suit la vue tournée.
+    out.push({i, angle: a});
   }
   return out;
 }
 // Angle d'un trait de rang i : la somme des rotate qui l'englobent.
 const _angleInterieur = (rotations, i) =>
   ((rotations || []).reduce((a, r) => r.i < i ? a + r.angle : a, 0)) % 360;
+// Le trait de rang i est-il dans un trait rotate ?
+const _dansRotation = (rotations, i) => (rotations || []).some(r => r.i < i);
+// Rotation CSS de ce qui est dans un trait rotate : son angle, plus celui de
+// la vue, que le pion, droit à l'écran, annule par ailleurs.
+const _rotCSS = a => `rotate(calc(${a}deg + var(--rotVue, 0deg)))`;
 
 function lirePiece(seg){
   const ts = _developperPrototypes(_splitTypeState(seg), 0);
@@ -8016,14 +8119,13 @@ async function majApparence(p, d){
     p.el.style.background = '#b81414';
     p.el.title = `${d.nom} — image introuvable : ${imgFace || '?'}`;
   }
-  p.face.style.transform = d.rot ? `rotate(${d.rot}deg)` : '';
+  p.face.style.transform = _dansRotation(d.rotations, Infinity) ? _rotCSS(d.rot) : '';
   // Tout ce qui est intérieur à un trait rotate tourne avec la face,
   // autour du centre du pion (FreeRotator.draw).
   const orienter = (o, i, gauche, haut) => {
-    const a = _angleInterieur(d.rotations, i);
-    if(!a) return;
+    if(!_dansRotation(d.rotations, i)) return;
     o.style.transformOrigin = gauche === undefined ? '50% 50%' : `${p.sz/2 - gauche}px ${p.sz/2 - haut}px`;
-    o.style.transform = `rotate(${a}deg)`;
+    o.style.transform = _rotCSS(_angleInterieur(d.rotations, i));
   };
   // Les couches de marqueur (ML/, MS/…) se superposent au visage ; une
   // image de nationalité est une autre face du pion, pas une surimpression.
@@ -8078,7 +8180,7 @@ async function majApparence(p, d){
     e.style.color = t.couleur;
     if(t.fond) e.style.background = t.fond;
     e._label = t;
-    e._rotPion = _angleInterieur(d.rotations, t.i);
+    e._rotPion = _dansRotation(d.rotations, t.i) ? _angleInterieur(d.rotations, t.i) : null;
     couches.push(e);
   }
   if(gen !== p.gen) return;
@@ -8128,10 +8230,9 @@ async function imagesCouches(d, k, cote){
     }
     // Couche intérieure à un trait rotate : elle tourne autour du centre
     // du pion, décalage compris.
-    const a = _angleInterieur(d.rotations, c.i);
-    if(a){
+    if(_dansRotation(d.rotations, c.i)){
       o.style.transformOrigin = (w && h) ? `${w/2 - c.dx*k}px ${h/2 - c.dy*k}px` : '50% 50%';
-      o.style.transform = `rotate(${a}deg)`;
+      o.style.transform = _rotCSS(_angleInterieur(d.rotations, c.i));
     }
     o.dessous = iFace >= 0 && i > iFace;
     out.push(o);
@@ -8201,11 +8302,13 @@ function placerLabel(e, sz, k = SC){
   e.style.left = (sz/2 + x) + 'px';
   e.style.top = (sz/2 + y) + 'px';
   // Rotation propre du label, plus celle d'un trait rotate extérieur :
-  // toutes deux autour du centre du pion.
+  // toutes deux autour du centre du pion. Dans un trait rotate, le label
+  // suit aussi la vue tournée.
+  const dans = e._rotPion !== null && e._rotPion !== undefined;
   const a = (t.rotation || 0) + (e._rotPion || 0);
-  if(a){
+  if(a || dans){
     e.style.transformOrigin = `${-x}px ${-y}px`;
-    e.style.transform = `rotate(${a}deg)`;
+    e.style.transform = dans ? _rotCSS(a) : `rotate(${a}deg)`;
   }
 }
 
@@ -8223,22 +8326,33 @@ const metriques = () => (_bdd && _bdd.stackMetrics) || METRIQUES_DEFAUT;
 // pion se cale sur le bord de celui de dessous, décalé de dx vers la
 // droite et de dy vers le HAUT. Les pions de même taille sont donc
 // simplement décalés de (dx, −dy).
+// Vue tournée : la pile s'étale de même à l'écran ; les rectangles sont
+// calculés dans le repère de l'écran, autour du centre du premier pion,
+// puis ramenés dans celui de la carte.
+// Vue tournée : un pion reste droit à l'écran ; un overlay de terrain suit
+// la carte, comme une carte de scénario ou un panneau, dont les cases
+// portent des pions qui doivent y rester.
+const _droitALEcran = p => p.couche !== 'overlay' && p.couche !== 'carte';
 function rectsPile(s, deplie){
   const m = metriques();
   const dx = m.disabled ? 0 : (deplie ? m.exSepX : m.unexSepX) * SC;
   const dy = m.disabled ? 0 : (deplie ? m.exSepY : m.unexSepY) * SC;
+  const quart = _rotVue % 180 !== 0;
   const out = [];
   let prec = null;
   for(const p of s){
     const w = p.larg || p.sz, h = p.haut || p.sz;
-    let x = p.x * SC - w/2, y = p.y * SC - h/2;
+    // Taille du pion vu à l'écran : un quart de tour échange les côtés
+    // d'un pion resté droit.
+    const W = quart && _droitALEcran(p) ? h : w, H = quart && _droitALEcran(p) ? w : h;
+    let x = -W/2, y = -H/2;
     if(prec){
-      x = dx > 0 ? prec.x + dx : dx < 0 ? prec.x + prec.w - w + dx : prec.x + prec.w/2 - w/2;
-      y = dy > 0 ? prec.y + prec.h - h - dy : dy < 0 ? prec.y - dy : prec.y + prec.h/2 - h/2;
+      x = dx > 0 ? prec.x + dx : dx < 0 ? prec.x + prec.w - W + dx : prec.x + prec.w/2 - W/2;
+      y = dy > 0 ? prec.y + prec.h - H - dy : dy < 0 ? prec.y - dy : prec.y + prec.h/2 - H/2;
     }
-    const r = {x, y, w, h};
-    out.push(r);
-    prec = r;
+    prec = {x, y, w: W, h: H};
+    const c = _ecartVersCarte(x + W/2, y + H/2);
+    out.push({x: s[0].x * SC + c.x - w/2, y: s[0].y * SC + c.y - h/2, w, h});
   }
   return out;
 }
@@ -8268,6 +8382,7 @@ function rendrePile(k, tous){
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
     p.el.classList.toggle('verrou', p.affichageSeul || !COUCHES_SEL[p.couche || 'unite']);
+    p.el.classList.toggle('terrain', !_droitALEcran(p));
   });
   _decorPile(k, s, rects, deplie);
   if(_reperes.brises || _reperes.sniper) dessinerReperes();
@@ -8322,9 +8437,12 @@ function _decorPile(k, s, rects, deplie){
     if(!d.pastille){ d.pastille = document.createElement('div'); d.pastille.className = 'pastille'; mi.appendChild(d.pastille); }
     d.pastille.textContent = texte;
     d.pastille.classList.toggle('partielle', !!nSel);
+    // Au coin haut droit du pion du dessus, vu à l'écran.
     const haut = rects[rects.length - 1];
-    d.pastille.style.left = (haut.x + haut.w) + 'px';
-    d.pastille.style.top = haut.y + 'px';
+    const [W, H] = _rotVue % 180 && _droitALEcran(s[s.length - 1]) ? [haut.h, haut.w] : [haut.w, haut.h];
+    const c = _ecartVersCarte(W/2, -H/2);
+    d.pastille.style.left = (haut.x + haut.w/2 + c.x) + 'px';
+    d.pastille.style.top = (haut.y + haut.h/2 + c.y) + 'px';
   } else if(d.pastille){ d.pastille.remove(); d.pastille = null; }
 }
 function _viderDecors(){
@@ -8385,6 +8503,7 @@ function _etendreCarte(reduire){
     h = Math.max(h, t.y + t.h + Math.round(ECART_TABLES * SC));
   }
   if(reduire ? w !== _mapW || h !== _mapH : w > _mapW || h > _mapH) _setMapSize(w, h);
+  else if(_rotVue) _majScaler();    // tables sous la carte tournée
 }
 
 // ═══ IMPORT ═══
@@ -8465,9 +8584,9 @@ function importerPions(texte, label, annexes){
   rendreToutes();
   majBoutons();
   if(_etapes.length) chatLog(`🎬 .vlog : ${_etapes.length} coup(s) à relire — ▶ ou Page suivante pour avancer`);
-  // Le décompte des MF / MP des coups relus a besoin du terrain : la
-  // carte LOS se construit dès maintenant.
-  if(_etapes.length && typeof carteLOS === 'function') carteLOS();
+  // Le décompte des MF / MP, au premier déplacement comme aux coups
+  // relus, a besoin du terrain : la carte LOS se construit dès maintenant.
+  if(typeof carteLOS === 'function') carteLOS();
 }
 
 // ═══ ANNULER — le bouton Undo de BasicLogger ═══
@@ -8881,9 +9000,10 @@ function dessinerLiens(){
     const e = document.createElement('div');
     e.className = 'etiqLien';
     e.textContent = 'Range: ' + r;
-    e.style.left = (a.x * SC + 29 / zoom) + 'px';
-    e.style.top = (a.y * SC + (29 - LOS_POLICE + LOS_DESCENTE) / zoom) + 'px';
-    e.style.transform = `scale(${1 / zoom})`;
+    const c = _ecartVersCarte(29, 29 - LOS_POLICE + LOS_DESCENTE);
+    e.style.left = (a.x * SC + c.x / zoom) + 'px';
+    e.style.top = (a.y * SC + c.y / zoom) + 'px';
+    e.style.transform = `rotate(${-_rotVue}deg) scale(${1 / zoom})`;
     document.getElementById('mapInner').appendChild(e);
   }
 }
@@ -9212,11 +9332,15 @@ function cadrerSur(pts){
   const hv = hauteurVisibleCarte();
   // Le zoom « Ajuster » de la partie visible : une carte plus petite que la
   // vue ne défile pas, elle doit tenir au-dessus du chat.
-  const ajuste = Math.min(wrap.clientWidth / _mapW, hv / _mapH);
-  const z = Math.max(ajuste, Math.min(wrap.clientWidth / (2 * demiL * SC), hv / (2 * demiH * SC)));
+  const tv = _tailleVue();
+  const ajuste = Math.min(wrap.clientWidth / tv.w, hv / tv.h);
+  // Vue tournée d'un quart de tour : la largeur cadrée est montrée en hauteur.
+  const [eL, eH] = _rotVue % 180 ? [demiH, demiL] : [demiL, demiH];
+  const z = Math.max(ajuste, Math.min(wrap.clientWidth / (2 * eL * SC), hv / (2 * eH * SC)));
   setZoom(z);
-  wrap.scrollLeft = (x0 + x1) / 2 * SC * zoom - wrap.clientWidth / 2;
-  wrap.scrollTop  = (y0 + y1) / 2 * SC * zoom - hv / 2;
+  const v = _carteVersVue((x0 + x1) / 2 * SC, (y0 + y1) / 2 * SC);
+  wrap.scrollLeft = v.x * zoom - wrap.clientWidth / 2;
+  wrap.scrollTop  = v.y * zoom - hv / 2;
 }
 
 function majBarreLog(){ rafraichirActions(['relecture', 'relectureRail', 'relectureFin', ...ACTIONS.relecture.groupe]); majHautBas(); }
@@ -9406,7 +9530,7 @@ function fixerTrait(p, i, valeur){
 // ═══ DÉCOMPTE DES MF / MP — coût du terrain de chaque hexagone (TEC) ═══
 // Après chaque déplacement, le chat (et donc le log) reçoit, pour chaque
 // unité, le coût de l'hexagone entré et le cumul de la phase :
-//   « * 5-4-8 SSsq : +2 MF (cumul 3 MF) »
+//   « * 5-4-8 SSsq moves aA1 -> aA2 * 2MF/ 3MF »
 // Le coût vient de la table des terrains de l'extension VASL Tools, lue
 // sur la carte LOS : terrain du centre, dépression, côté franchi, niveau.
 // Un saut de plusieurs hexagones suit le chemin le moins cher. Undo
@@ -9433,6 +9557,10 @@ const _LIGNE_TEC = (() => {
   mettre('ETO:Road-Elevated', 'Elevated Road');
   mettre('ETO:Road-Sunken', 'Sunken Road');
   mettre('ETO:Runway', 'Runway');
+  mettre('ETO:Railroads-GLRR', 'Railroad, Ground Level');
+  mettre('ETO:Railroads-EmRR (D)', 'Railroad, Embankment');
+  mettre('ETO:Railroads-ElRR (D O)', 'Railroad, Elevated');
+  mettre('ETO:Railroads-SuRR (D S)', 'Railroad, Sunken');
   mettre('ETO:Brush (½)', 'Brush');
   mettre('ETO:Grain (½)', 'Grain', 'Light Grain');
   mettre('ETO:Orchard', 'Orchard', 'Orchard, Out of Season');
@@ -9547,7 +9675,10 @@ function natureMouvement(p){
 
 function _hexDe(m, x, y){
   const q = _versLOS({x, y});
-  return m.onMap(q.x, q.y) ? m.gridToHex(q.x, q.y) : null;
+  if(m.onMap(q.x, q.y)) return m.gridToHex(q.x, q.y);
+  // Centre d'un demi-hexagone du bord : sur la limite de la carte LOS.
+  const cx = Math.min(Math.max(q.x, 0), m.gridWidth - 1), cy = Math.min(Math.max(q.y, 0), m.gridHeight - 1);
+  return Math.hypot(cx - q.x, cy - q.y) <= 2 ? m.gridToHex(cx, cy) : null;
 }
 function _coteVers(m, a, b){
   for(let s = 0; s < 6; s++) if(m.getAdjacentHex(a, s) === b) return s;
@@ -9563,14 +9694,16 @@ const _cFaire = (a, b) => a === b ? a : {a, b};
 const _plus = (x, y) => _cFaire(_cMin(x) + _cMin(y), _cMax(x) + _cMax(y));
 const _fois = (x, k) => _cFaire(_cMin(x) * k, _cMax(x) * k);
 
-// Valeur d'une case du chart. ctx : {cot, mp, ruisseau (0 sec, 1 peu
-// profond, 2 profond), bu (véhicule boutonné)}. Les drapeaux (B, D, R,
-// *…) ne changent pas le coût ; « R » (coût de route par un côté de
-// route) est traité par l'appelant.
+// Valeur d'une case du chart. ctx : {cot, mp, depense, ruisseau (0 sec,
+// 1 peu profond, 2 profond), bu (véhicule boutonné)}. Les drapeaux (B, D,
+// R, *…) ne changent pas le coût ; « R » (coût de route par un côté de
+// route), « D » et « L » sont traités par l'appelant. « ALL » d'un
+// véhicule : le reste de ses MP, dépense de la phase déduite (B13.41,
+// D2.7) ; ctx.depense absent, toute l'allocation (chemin le moins cher).
 function _valeurTEC(txt, ctx){
   // « [BU:1] » : la valeur pour un véhicule boutonné (route : ½, BU 1).
   const bu = /\[BU:\s*([^\]]+)\]/.exec(String(txt || ''));
-  if(bu && ctx.bu) return _valeurTEC(bu[1], {cot: ctx.cot, mp: ctx.mp});
+  if(bu && ctx.bu) return _valeurTEC(bu[1], {cot: ctx.cot, mp: ctx.mp, depense: ctx.depense});
   let t = String(txt || '').replace(/\[[^\]]*\]|\{[^}]*\}/g, ' ').trim();
   if(!t) return null;
   // « 1 or 2* » : les deux options restent comptées.
@@ -9593,7 +9726,8 @@ function _valeurTEC(txt, ctx){
   const k = m[1], plus = m[2] ? ctx.cot : 0;
   let v;
   if(k === 'NA' || k === 'CLIMB') return 'NA';
-  if(k === 'ALL' || k === 'Y' || k === 'M') return ctx.mp || 'ALL';   // Y, M : mouvement minimum
+  if(k === 'ALL' || k === 'Y' || k === 'M')                            // Y, M : mouvement minimum
+    return !ctx.mp ? 'ALL' : ctx.depense != null ? Math.max(0, ctx.mp - ctx.depense) : ctx.mp;
   if(k === 'DOT' || k === 'COT') v = ctx.cot;
   else if(k === 'Z') v = ctx.mp ? ctx.mp / 2 : null;
   else if(k === 'z') v = ctx.mp ? ctx.mp / 3 : null;
@@ -9605,6 +9739,11 @@ function _valeurTEC(txt, ctx){
 }
 const _casesTEC = (ligne, col) => (TEC_MVT[ligne] || [])[_COL_MVT[col]];
 const _parRouteTEC = c => /(^|\s)R(\s|$)/.test(c || '');
+// Code « D » : pénalités d'épave / véhicule et de VCA doublées (motos
+// exceptées) ; « L » : +1 MP pour un demi-niveau plus haut. « DOT » n'est
+// pas un « D ». Notation du PTO : lettres accolées (« B*DR »).
+const _codeTEC = (c, k) => String(c || '').replace(/\[[^\]]*\]/g, ' ').split(/[\s\/]+/)
+  .some(t => /^[A-Za-z*]+$/.test(t) && !/^(DOT|COT|ALL|NA|CLIMB)$/.test(t) && t.replace(/\*/g, '').includes(k));
 
 // Terrain de l'hexagone pour le coût. Dans une dépression, la carte LOS
 // met la dépression au centre : l'autre terrain (bois d'un ravin-bois,
@@ -9660,7 +9799,13 @@ function _autreTerrainMvt(h){
 }
 const _coteDe = (h, s) => h.getHexsideLocation(s) && h.getHexsideLocation(s).getTerrain();
 
-// Coût d'entrée dans b depuis a, voisins : {cout, lib}.
+// Demi-niveau d'un remblai de voie ferrée (code « L ») : la carte LOS de
+// VASL le marque « Railroad, Embankment », isHalfLevelHeight.
+const _demiNiveau = h => { const c = h.getCenterLocation().getTerrain();
+                           return c && c.isHalfLevelHeight() && /Railroad, Embankment/.test(c.getName()) ? 0.5 : 0; };
+// Coût d'entrée dans b depuis a, voisins : {cout, lib, hex, route, d}.
+// n.depense : MP déjà dépensés dans la phase (« ALL » d'un véhicule).
+// d : code « D » de l'hexagone entré (pénalité d'épave / véhicule doublée).
 function coutEntree(m, a, b, n){
   const col = n.col, veh = n.unite === 'MP';
   if(!col) return {cout: null, lib: '?'};
@@ -9675,21 +9820,25 @@ function coutEntree(m, a, b, n){
   const cs = s >= 0 ? _coteDe(a, s) : null, cb = s >= 0 ? _coteDe(b, (s + 3) % 6) : null;
   const parRoute = s >= 0 && ((cs && cs.isRoad()) || (cb && cb.isRoad()));
   const routeB = _routeMvt(b) || parRoute;
-  const caseC = ligne && _casesTEC(ligne, col);
+  // Hexagone de route entré par un côté sans route : terrain ouvert (B3.2),
+  // le tarif de la route ne vaut qu'au franchissement d'un côté de route
+  // (B3.41). Routes encaissées et surélevées : leurs propres lignes.
+  const caseC = ligne && _casesTEC(ligne === 'ETO:Road' && !parRoute ? 'ETO:Open Ground' : ligne, col);
   const tarifRoute = parRoute && (routeB || _parRouteTEC(caseC));
   // Chemin (B13.6) : dans un bois ou des broussailles, entrer par un côté
   // de chemin coûte 1 MF (2 à cheval) au lieu de 2 (4) ; on reste dans le
   // bois.
   const parChemin = !tarifRoute && s >= 0 && ((cs && /Path/.test(cs.getName())) || (cb && /Path/.test(cb.getName())))
     && /^ETO:(Woods|Woods-Pine|Woods-Light|Brush \(½\))$/.test(ligne || '') && (col === 'inf' || col === 'cav');
-  const autreCout = caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp}) : null;
+  const autreCout = caseC != null ? _valeurTEC(caseC, {cot: 1, mp: n.mp, depense: n.depense}) : null;
   let cout = tarifRoute
-    ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu})
+    ? _valeurTEC(_casesTEC('ETO:Road', col), {cot: 1, mp: n.mp, bu: n.bu, depense: n.depense})
     : parChemin ? (col === 'inf' ? 1 : 2) : autreCout;
   if(tarifRoute && !veh && autre && _estNb(cout) && _estNb(autreCout) && _cMax(autreCout) > _cMax(cout))
     cout = _cFaire(_cMin(cout), _cMax(autreCout));
   if(parRoute && !(c && c.isRoad())) lib += routeB && b._pontMvt ? ' (pont)' : ' (route)';
   if(parChemin) lib += ' (chemin)';
+  if(ligne === 'ETO:Road' && !parRoute) lib += ' (hors route)';
   const cotHex = cout;
   // Dépression : le ravin, le ruisseau ou le wadi coûte en plus du
   // terrain de l'hexagone (« +COT »). À pied : ravin 2 MF (B19.4),
@@ -9701,7 +9850,7 @@ function coutEntree(m, a, b, n){
     const ld = _LIGNE_TEC[dep.getName()], cd = ld && _casesTEC(ld, col);
     if(cd != null){
       const nd = dep.getName();
-      const ctx = {cot: _estNb(cout) ? cout : 1, mp: n.mp,
+      const ctx = {cot: _estNb(cout) ? cout : 1, mp: n.mp, depense: n.depense,
                    ruisseau: /Dry/.test(nd) ? 0 : /Shallow/.test(nd) ? 1 : /Deep/.test(nd) ? 2 : null};
       cout = _valeurTEC(cd, ctx);
       if(!veh && /^(ETO:Gully|ETO:Stream|DTO:Wadi)$/.test(ld) && _estNb(cout) && lib !== 'Open Ground') cout = _plus(cout, ctx.cot);
@@ -9713,17 +9862,30 @@ function coutEntree(m, a, b, n){
     const r = _coteFranchi(a, b, s, col, n, cout);
     if(r){ cout = r.cout; lib += r.lib; }
   }
-  // Montée (B10.4) : h (infanterie) coût du terrain doublé par niveau ;
-  // H (véhicules) +4 MP par niveau, +2 par la route. Un ravin est au
+  // Changement d'élévation (B10.4, B10.51). Montée d'un niveau : h
+  // (infanterie) coût du terrain doublé ; H (véhicules) +4 MP, +2 par la
+  // route. Changement abrupt : chaque niveau intermédiaire coûte 2 MF / 4
+  // MP en montée, 1 MF / 2 MP en descente ; le dernier niveau, le coût de
+  // la montée d'un niveau, ou rien de plus en descente. Un ravin est au
   // niveau -1 : en sortir est une montée (B19.4). Un pont porte la route
   // au niveau du sol : pas de montée en le quittant par la route.
   const pont = parRoute && (a._pontMvt || b._pontMvt);
   const niv = pont ? 0 : b.getBaseLevelofHex() - a.getBaseLevelofHex();
-  if(niv >= 1 && _estNb(cout)){
-    cout = _plus(cout, veh ? niv * (parRoute ? 2 : 4) : _fois(_estNb(cotHex) ? cotHex : 1, niv));
-    lib += `, +${niv} niveau${niv > 1 ? 'x' : ''}`;
+  if(niv && _estNb(cout)){
+    const sup = niv >= 1 ? (veh ? niv * (parRoute ? 2 : 4) : _plus(_estNb(cotHex) ? cotHex : 1, 2 * (niv - 1)))
+              : niv <= -2 ? (veh ? 2 : 1) * (-niv - 1) : 0;
+    if(niv >= 1 || sup) lib += `, ${niv > 0 ? '+' : ''}${niv} niveau${Math.abs(niv) > 1 ? 'x' : ''}`;
+    cout = _plus(cout, sup);
   }
-  return {cout, lib, hex: b, route: tarifRoute};
+  // Code de la case : sur la route, celui de la route (un bois traversé par
+  // la route n'impose pas son « D » au véhicule qui reste sur la route).
+  const caseCode = tarifRoute && !/^ETO:Road/.test(ligne || '') ? _casesTEC('ETO:Road', col) : caseC;
+  // Code « L » : +1 MP pour entrer un demi-niveau plus haut (remblai).
+  if(veh && _codeTEC(caseCode, 'L') && _estNb(cout)
+     && b.getBaseLevelofHex() + _demiNiveau(b) - a.getBaseLevelofHex() - _demiNiveau(a) === 0.5){
+    cout = _plus(cout, 1); lib += ', +½ niveau (L)';
+  }
+  return {cout, lib, hex: b, route: tarifRoute, d: veh && col !== 'mc' && _codeTEC(caseCode, 'D')};
 }
 // Mur, haie, bocage sur le côté s de a (vers b) : nouveau coût, ou null.
 function _coteFranchi(a, b, s, col, n, cout){
@@ -9925,6 +10087,64 @@ function _vehiculesDans(m, h, groupe){
   }
   return k;
 }
+// Équivalent squad d'une unité (A5.1) : squad 1, HS ou équipage ½, SMC
+// rien. Les traits de VASL ne le disent pas de façon sûre (iCVP 2 pour un
+// équipage, aucun CounterType pour certains HS) ; l'image, oui : les
+// faces s'appellent <nation><FP><portée><moral>S|H|C (« ge548S »,
+// « ja238H », « ru228C »), les faces brisées <nation>s|h|c<moral>b
+// (« ges9b »).
+function _equivSquad(q){
+  const img = (lirePiece(q.seg).img || '').split('/').pop();
+  const m = /^[a-z]{2}\d{3}([SHC])/.exec(img) || /^[a-z]{2}([shc])\d/.exec(img);
+  return !m ? 0 : m[1].toLowerCase() === 's' ? 1 : 0.5;
+}
+// Camp d'un pion : la nation, dossier de son image (« ge/ », « ru/ »).
+const _nationPion = q => ((lirePiece(q.seg).img || '').match(/^([a-z]{2})\//) || [])[1] || null;
+// Surempilement de la Location de p (A5.11, A5.1) : équivalents squad du
+// même camp au même niveau au-delà de trois, arrondi au-dessus ; les
+// passagers d'un véhicule ne comptent pas (A5.3).
+function _surempilement(p){
+  const nat = _nationPion(p), niv = lieuDansPile(p).niveau || 0;
+  if(!nat) return 0;
+  let t = 0;
+  for(const q of pile(cle(p))){
+    if(q.deleted || _nationPion(q) !== nat || _estPassager(q)) continue;
+    const k = _equivSquad(q);
+    if(k && (lieuDansPile(q).niveau || 0) === niv) t += k;
+  }
+  return Math.ceil(Math.max(0, t - 3));
+}
+// Premier étage en décombres de l'hexagone h (B24.11), ou null : pion de
+// décombres posé sur un compteur d'étage de la pile s de l'hexagone, ou
+// terrain « Rubble Level n » de la carte LOS. Le pion de décombres ne
+// s'empile pas : il suffit qu'il soit dans l'hexagone ; il marque le plus
+// haut compteur d'étage de la pile, les niveaux au-dessus des décombres
+// en étant aussi. Sans compteur d'étage, l'hexagone entier est en
+// décombres : ce n'est plus un bâtiment (B24.1).
+function _niveauDecombres(h, s){
+  let r = null;
+  const garder = k => { if(k > 0 && (r === null || k < r)) r = k; };
+  const m = _losPrete;
+  if(m && h && vivants().some(q => /Rubble/i.test(lirePiece(q.seg).nomBase || q.nom || '') && _hexDe(m, q.x, q.y) === h)){
+    const niv = (s || []).map(_niveauCompteur).filter(v => typeof v === 'number');
+    if(niv.length) garder(Math.max(...niv));
+  }
+  let k = 1;
+  for(let l = h && h.getCenterLocation().getUpLocation(); l; l = l.getUpLocation(), k++){
+    const t = l.getTerrain();
+    if(t && /Rubble Level/.test(t.getName())){ garder(k); break; }
+  }
+  return r;
+}
+// Deux hexagones voisins du même bâtiment : bâtiment des deux côtés, et
+// le côté qui les sépare en est aussi.
+function _batimentRelie(m, a, b){
+  const s = _coteVers(m, a, b);
+  const ca = a.getCenterLocation().getTerrain(), cb = b.getCenterLocation().getTerrain();
+  if(s < 0 || !ca || !cb || !ca.isBuilding() || !cb.isBuilding()) return false;
+  const t1 = _coteDe(a, s), t2 = _coteDe(b, (s + 3) % 6);
+  return !!((t1 && t1.isBuilding()) || (t2 && t2.isBuilding()));
+}
 // Démarrage (D2.12) : 1 MP avant le premier hexagone ou le premier VCA
 // de la phase, sauf sous un marqueur Motion. Étape marquée « depart » :
 // Undo la retire avec le mouvement qui l'a provoquée.
@@ -9939,17 +10159,17 @@ function _demarrer(p, e, pos, vca, motion){
 // propre à un pion (« REV × # » au dos) n'est pas connu. Motos et
 // attelages : pas de marche arrière.
 const _MULT_RECUL = {ft: 4, ht: 4, tr: 3, ac: 2};
-// Cumul annoncé ; pour un véhicule sans Motion, avec l'arrêt (D2.13).
-function _texteCumul(p, n, motion){
-  const c = _mvtCumul(p);
-  const arret = n.unite === 'MP' && !motion && !/ALL|\?/.test(c)
-    && p.mvt && _etatMvt(p.mvt.etapes).etat === 'marche';
-  return `cumul ${c} ${n.unite}` + (arret ? `, ${_fmtCout(_plus(_mvtSomme(p), 1))} avec l'arrêt` : '');
+// Décompte : coût puis cumul, « 1MP/ 3MP (démarrage 1) », « 2MF/ 4MF ».
+function _texteCout(p, cout, unite, plus){
+  plus = (plus || []).filter(Boolean);
+  return `${cout}${unite}/ ${_mvtCumul(p)}${unite}` + (plus.length ? ` (${plus.join(', ')})` : '');
 }
+const _texteMP = (p, cout, plus) => _texteCout(p, cout, 'MP', plus);
+const _texteMF = (p, cout, plus) => _texteCout(p, cout, 'MF', plus);
 const _mvtSomme = p => p.mvt.etapes.slice(1).map(e => e.cout).filter(_estNb).reduce(_plus, 0);
 
 // Après deplacer() : coût de l'hexagone entré et cumul, au chat et au log.
-// Rend le texte du décompte (« 2 MF (cumul 3 MF) »), que l'appelant met au
+// Rend le texte du décompte (« 2MF/ 3MF »), que l'appelant met au
 // bout de la ligne du déplacement, et les alertes, pour le chat local
 // seulement. null si la carte LOS n'est pas prête.
 function compterMouvement(avant, portes, local){
@@ -9989,17 +10209,54 @@ function compterMouvement(avant, portes, local){
     const e = _mvtDepart(p, P.cle, vca);
     const ch = etapesDeplacement(m, P, Q, n, e);
     if(!ch.length) continue;
-    const demarrage = veh ? _demarrer(p, e, P.cle, vca, _enMotion(p, a.x, a.y, groupe)) : 0;
+    // Entrée depuis le hors-carte : en Motion, sans démarrage (D2.12, A2.52).
+    const demarrage = veh ? _demarrer(p, e, P.cle, vca, !P.hex || _enMotion(p, a.x, a.y, groupe)) : 0;
     // Épaves et véhicules dans l'hexagone entré : +1 MP chacun, +2 au
-    // tarif de la route (D2.14). Une moto n'en paie pas.
+    // tarif de la route (D2.14), doublé encore par le code « D » de
+    // l'hexagone (route encaissée, bois : B4.42, B13.41). Une moto n'en
+    // paie pas.
     if(veh && n.col !== 'mc') for(const r of ch){
       const k = r.hex ? _vehiculesDans(m, r.hex, groupe) : 0;
       if(!k || !_estNb(r.cout)) continue;
-      r.cout = _plus(r.cout, k * (r.route ? 2 : 1));
-      r.lib += ` + ${k} véhicule(s)/épave(s)`;
+      r.cout = _plus(r.cout, k * (r.route ? 2 : 1) * (r.d ? 2 : 1));
+      r.lib += ` + ${k} véhicule(s)/épave(s)` + (r.d ? ' (D)' : '');
+    }
+    // « ALL » d'un véhicule : le reste de ses MP, d'après ce que la phase
+    // a déjà coûté, démarrage et hexagones précédents compris (B13.41).
+    if(veh && n.mp){
+      let dep = _cMax(_mvtSomme(p));
+      ch.forEach((r, i) => {
+        const A = i ? ch[i - 1].hex : P.cote ? null : P.hex || r.hex;
+        if(r.hex && A && 'route' in r && (A === r.hex || _voisins(m, A, r.hex))){
+          const r2 = coutEntree(m, A, r.hex, Object.assign({}, n, {depense: dep}));
+          if(_estNb(r2.cout) && _estNb(r.cout) && _cMax(r2.cout) < _cMax(coutEntree(m, A, r.hex, n).cout)){
+            r.cout = r2.cout; r.all = true; r.lib += ' (ALL : reste des MP)';
+          }
+        }
+        if(_estNb(r.cout)) dep += _cMax(r.cout);
+      });
     }
     const d = _etatMvt(e), recul = veh && d.recul && _MULT_RECUL[n.col];
-    if(recul) for(const r of ch) if(_estNb(r.cout)){ r.cout = _fois(r.cout, recul); r.lib += ` (marche arrière ×${recul})`; }
+    if(recul) for(const r of ch) if(_estNb(r.cout) && !r.all){ r.cout = _fois(r.cout, recul); r.lib += ` (marche arrière ×${recul})`; }
+    // Surempilement (A5.11) à l'arrivée : +1 MF (MP) par équivalent squad
+    // au-delà de trois, l'unité qui entre comprise.
+    const der = ch[ch.length - 1], sur = Q.hex ? _surempilement(p) : 0;
+    if(sur && _estNb(der.cout) && !der.all){ der.cout = _plus(der.cout, sur); der.lib += ` + surempilement ${sur}`; }
+    // Étage en décombres (B24.2) : le rez-de-chaussée est couvert de
+    // décombres, 3 MF, sauf depuis un hexagone du même bâtiment (2 MF).
+    if(!veh && Q.hex && 'route' in der){
+      const A = ch.length > 1 ? ch[ch.length - 2].hex : P.cote ? null : P.hex;
+      const rd = A && A !== Q.hex && _voisins(m, A, Q.hex) && _niveauDecombres(Q.hex, pile(cle(p)));
+      if(rd){
+        const relie = _batimentRelie(m, A, Q.hex);
+        const bois = /Wooden/.test(Q.hex.getCenterLocation().getTerrain().getName());
+        const base = _valeurTEC(_casesTEC(!relie ? 'ETO:Rubble' : bois ? 'ETO:Building-Wooden' : 'ETO:Building-Stone', 'inf'), {cot: 1});
+        if(_estNb(base)){
+          der.cout = _plus(base, sur);
+          der.lib = (relie ? 'bâtiment relié' : 'décombres') + ` (étage ${rd} en décombres, B24.2)` + (sur ? ` + surempilement ${sur}` : '');
+        }
+      }
+    }
     ch.forEach((r, i) => e.push(Object.assign({pos: i === ch.length - 1 ? Q.cle : '·', vca,
       etat: d.etat, recul: d.recul}, r)));
     // Infanterie : sortie d'une fortification, étage d'arrivée (B23.4,
@@ -10018,9 +10275,7 @@ function compterMouvement(avant, portes, local){
     if(entree) Object.assign(e[e.length - 1], {entree});
     const pas = ch.map(r => _fmtCout(r.cout)).join('+');
     if(!veh){ pied.push({p, pas}); continue; }
-    const motion = _enMotion(p, p.x, p.y, groupe);
-    const txt = `${pas} ${n.unite}` + (recul ? ` en marche arrière (×${recul})` : '')
-      + (demarrage ? ', démarrage 1' : '') + ` (${_texteCumul(p, n, motion)})`;
+    const txt = _texteMP(p, pas, [recul && `marche arrière ×${recul}`, demarrage && 'démarrage 1']);
     if(!lignes.has(txt)) lignes.set(txt, []);
     lignes.get(txt).push(nomRapport(p));
   }
@@ -10032,7 +10287,7 @@ function compterMouvement(avant, portes, local){
                        return c.includes('ALL') ? Infinity : _cMax(_mvtSomme(x.p)); };
     const max = pied.reduce((a, x) => cle(x) > cle(a) ? x : a);
     const pas = [...new Set(pied.map(x => x.pas))].join(' / ');
-    segments.push({qui: pied.length > 1 ? 'Pile' : nomRapport(max.p), txt: `${pas} MF (cumul ${_mvtCumul(max.p)} MF)`});
+    segments.push({qui: pied.length > 1 ? 'Pile' : nomRapport(max.p), txt: `${pas}MF/ ${_mvtCumul(max.p)}MF`});
   }
   for(const [txt, noms] of lignes) segments.push({qui: noms.join(', '), txt});
   // Un seul groupe : le chiffre seul ; sinon chacun nommé.
@@ -10045,9 +10300,9 @@ const _nomsDeplaces = avant => avant.filter(a => !a.p.cache).map(a => nomRapport
 function _completerLigneMouvement(texte, avant){
   const j = document.getElementById('journal');
   const l = j && [...j.querySelectorAll('.rap')].reverse().find(x => / moves /.test(x.textContent));
-  // Ligne écrite ici avec son décompte (« … * 2 MF (cumul 4 MF) ») :
-  // elle le porte déjà, il n'est pas répété.
-  if(l && !l.dataset.mvt && /\(cumul [^)]*\)\s*$/.test(l.textContent)){ l.dataset.mvt = '1'; return; }
+  // Ligne écrite ici avec son décompte (« … * 2MF/ 4MF ») : elle le
+  // porte déjà, il n'est pas répété.
+  if(l && !l.dataset.mvt && /M[FP]\/ /.test(l.textContent)){ l.dataset.mvt = '1'; return; }
   if(l && !l.dataset.mvt){
     l.dataset.mvt = '1';
     l.appendChild(document.createTextNode(' ' + texte));
@@ -10067,14 +10322,23 @@ function compterVCA(p, T, S0, S1){
   const m = _losPrete;
   const P = m ? _posMvt(m, p.x, p.y) : {cle: lieu(p.x, p.y), hex: null, cote: null};
   const c = P.hex && !P.cote && P.hex.getCenterLocation().getTerrain();
-  const dedans = !!c && (_obstacleMvt(P.hex) || /Rubble/.test(c.getName()));
+  const e0 = p.mvt && p.mvt.etapes;
+  // Sur la route d'un hexagone de bois ou de bâtiment, le véhicule n'y est
+  // pas (D2.11, B13.41) : sa dernière entrée s'est faite au tarif de la
+  // route ; sans entrée dans la phase, la route au centre de l'hexagone.
+  const entre = e0 && [...e0].reverse().find(x => x.hex && x.pos === P.cle);
+  const surRoute = entre ? !!entre.route : !!c && c.isRoad();
+  const dedans = !!c && !surRoute && (_obstacleMvt(P.hex) || /Rubble/.test(c.getName()));
+  // Code « D » de l'hexagone occupé : VCA doublé, motos exceptées.
+  const ligne = c && (surRoute ? (_LIGNE_TEC[c.getName()] || 'ETO:Road') : _ligneTerrain(_autreTerrainMvt(P.hex) || _terrainMvt(P.hex)));
+  const codeD = !!c && n.col !== 'mc' && _codeTEC(ligne && _casesTEC(ligne, n.col), 'D');
   const e = _mvtDepart(p, P.cle, a);
   const motion = _enMotion(p, p.x, p.y, [p]);
   const demarrage = _demarrer(p, e, P.cle, a, motion);
   const d = _etatMvt(e);
-  e.push({pos: P.cle, vca: b, cout: pas * (dedans ? 2 : 1), lib: 'VCA', byp: d.byp, etat: d.etat, recul: d.recul});
-  rapport(`${nomRapport(p)} : VCA ${pas * (dedans ? 2 : 1)} MP` + (demarrage ? ', démarrage 1' : '')
-        + ` (${_texteCumul(p, n, motion)})`);
+  const cout = pas * (dedans || codeD ? 2 : 1);
+  e.push({pos: P.cle, vca: b, cout, lib: 'VCA', byp: d.byp, etat: d.etat, recul: d.recul});
+  rapport(`${nomRapport(p)} : VCA ${_texteMP(p, cout, [demarrage && 'démarrage 1'])}`);
 }
 
 // ── Start, Stop, Reverse : commandes du menu des véhicules, avant le
@@ -10091,26 +10355,27 @@ function commandeVehicule(p, quoi){
   const e = _mvtDepart(p, P.cle, vca), n0 = e.length;
   const d = _etatMvt(e);
   const ajout = (cout, lib, etat, recul) => e.push({pos: P.cle, vca, cout, lib, byp: d.byp, etat, recul});
-  const morceaux = [];
+  let quoiTxt = null, cout = 0, plus = [];
   if(quoi === 'start' && d.etat !== 'marche'){
     ajout(1, 'démarrage', 'marche', d.recul);
-    morceaux.push('Start 1 MP' + (d.recul ? ' en marche arrière' : ''));
+    quoiTxt = 'Start'; cout = 1; plus = [d.recul && 'marche arrière'];
   } else if(quoi === 'stop' && d.etat === 'marche'){
     ajout(1, 'arrêt', 'arret', d.recul);
-    morceaux.push('Stop 1 MP');
+    quoiTxt = 'Stop'; cout = 1;
   } else if(quoi === 'reverse'){
     const vers = !d.recul;
+    quoiTxt = vers ? 'Reverse' : 'Marche avant';
     if(d.etat === 'marche'){
       ajout(1, 'arrêt', 'arret', d.recul);
       ajout(1, 'démarrage', 'marche', vers);
-      morceaux.push(`${vers ? 'Reverse' : 'Marche avant'} : arrêt 1, démarrage 1 MP`);
+      cout = 2; plus = ['arrêt 1, démarrage 1'];
     } else {
       ajout(0, vers ? 'marche arrière' : 'marche avant', 'arret', vers);
-      morceaux.push(vers ? 'Reverse déclaré' : 'Marche avant déclarée');
+      plus = [vers ? 'déclaré' : 'déclarée'];
     }
   }
-  if(!morceaux.length){ if(!avait && e.length === 1) delete p.mvt; return; }
-  rapport(`${nomRapport(p)} : ${morceaux.join(', ')} (${_texteCumul(p, n, _enMotion(p, p.x, p.y, [p]))})`);
+  if(!quoiTxt){ if(!avait && e.length === 1) delete p.mvt; return; }
+  rapport(`${nomRapport(p)} : ${quoiTxt} ${_texteMP(p, cout, plus)}`);
   const etapes = e;
   _histoJs(() => {
     if(p.mvt && p.mvt.etapes === etapes) etapes.length = n0;
@@ -10182,11 +10447,11 @@ function commandeTransport(p, quoi){
   const ajoutV = (cout, lib) => eV.push({pos: posDe(v), vca: _vcaPion(v), cout, lib, byp: dV.byp, etat: dV.etat, recul: dV.recul});
   const alertes = [];
   if(dV.etat === 'marche') alertes.push('véhicule en marche');
-  let txtP, txtV = null;
+  let txtP, txtV = null, coutP, plusP = [], coutV = 0, plusV = [];
   if(quoi === 'load'){
     if(eV.some((x, i) => i > 0 && x.pos !== eV[0].pos)) alertes.push('véhicule déjà déplacé');
     eP.push({pos: posDe(p), vca: null, cout: 1, lib: 'embarquement', etat: 'arret'});
-    txtP = `Load 1 MF`;
+    txtP = 'Load'; coutP = 1;
     // Rang : juste au-dessus du véhicule.
     if(s.indexOf(p) < s.indexOf(v)) deplacerDansPile(p, s.indexOf(v));
     if(nv.mp){
@@ -10194,26 +10459,27 @@ function commandeTransport(p, quoi){
       const garde = Math.min(nv.mp, _quartMP(nv.mp) * reste);
       const deja = eV.filter(x => x.lib === 'chargement').reduce((t, x) => t + x.cout, 0);
       const cout = Math.max(0, nv.mp - garde - deja);
-      if(cout){ ajoutV(cout, 'chargement'); txtV = `chargement ${_fmtMF(cout)} MP, ${_fmtMF(garde)} MP gardés`; }
-    } else txtV = 'chargement : MP du véhicule inconnus';
+      if(cout){ ajoutV(cout, 'chargement'); txtV = 'chargement'; coutV = _fmtMF(cout); plusV = [`${_fmtMF(garde)} MP gardés`]; }
+    } else { txtV = 'chargement'; plusV = ['MP du véhicule inconnus']; }
   } else {
     const depV = _cMax(_mvtSomme(v));
     if(nv.mp && depV > nv.mp * 3 / 4) alertes.push('plus des 3/4 des MP dépensés');
     // Un quart des MP par pile qui descend : une fois par coup.
     if(nv.mp && v._dechargeNo !== _actionNo){
       ajoutV(_quartMP(nv.mp), 'déchargement');
-      txtV = `déchargement ${_quartMP(nv.mp)} MP`;
+      txtV = 'déchargement'; coutV = _quartMP(nv.mp);
     }
     const quarts = nv.mp ? Math.ceil(depV / (nv.mp / 4)) : 0;
     const avant = _mfDepenses(p), cible = Math.max(avant, quarts) + 1;
     eP.push({pos: posDe(p), vca: null, cout: cible - avant, lib: 'débarquement', etat: 'arret'});
-    txtP = `Unload ${_fmtMF(cible - avant)} MF` + (quarts > avant ? ` (dont ${quarts - avant} pour le trajet en véhicule)` : '');
+    txtP = 'Unload'; coutP = _fmtMF(cible - avant);
+    plusP = [quarts > avant && `dont ${quarts - avant} pour le trajet en véhicule`];
     // Rang : sous le véhicule, à pied.
     deplacerDansPile(p, pile(cle(p)).indexOf(v));
   }
-  rapport(`${nomRapport(p)} : ${txtP} (cumul ${_mvtCumul(p)} MF)`);
+  rapport(`${nomRapport(p)} : ${txtP} ${_texteMF(p, coutP, plusP)}`);
   if(alertes.length) chatLog(`⚠️ ${nomRapport(p)} : ${alertes.join(', ')} (D6.${quoi === 'load' ? 4 : 5})`);
-  if(txtV) rapport(`${nomRapport(v)} : ${txtV} (${_texteCumul(v, nv, _enMotion(v, v.x, v.y, [v]))})`);
+  if(txtV) rapport(`${nomRapport(v)} : ${txtV} ${_texteMP(v, coutV, plusV)}`);
   if(quoi === 'unload') v._dechargeNo = _actionNo;
   const etP = eP, etV = eV;
   _histoJs(() => {
@@ -10349,12 +10615,16 @@ function _decrireChangement(l1, l2){
 // Un marqueur de niveau 3 (SSR) donne un escalier inhérent (B23.24). Une
 // usine n'a pas d'étage : son toit coûte 2 MF (1½ niveau) ou 3 MF (2½),
 // par un escalier imprimé ou un côté de route (B23.74, B23.87).
+// Vers ou depuis un étage en décombres (B24.4) : 3 MF au lieu de 1.
 // Rend {cout, alerte} ; le coût est compté même quand l'alerte est levée.
 function _coutNiveaux(h, l1, l2, s){
   const n1 = l1.niveau || 0, n2 = l2.niveau || 0;
   if(n1 === n2) return {cout: 0, alerte: ''};
   const dn = Math.abs(n2 - n1), bas = Math.min(n1, n2), hautN = Math.max(n1, n2);
   if(!h) return {cout: dn, alerte: ''};
+  const rd = _niveauDecombres(h, s);
+  let esc = 0;
+  for(let k = bas; k < hautN; k++) esc += rd !== null && k + 1 >= rd ? 3 : 1;
   const c = _terrainMvt(h);
   const nomBat = c ? c.getName() : '';
   const etages = [];
@@ -10366,17 +10636,17 @@ function _coutNiveaux(h, l1, l2, s){
     return {cout: /2\.5/.test(nomBat) ? 3 : 2,
             alerte: h.hasStairway() || route ? '' : "toit d'usine : par un escalier imprimé ou un côté de route (B23.87)"};
   }
-  if(!c || !c.isBuilding()) return {cout: dn, alerte: "pas de bâtiment dans l'hexagone"};
-  if(!nbEtages && !niveau3 && hautN > 0) return {cout: dn, alerte: "pas d'étage dans ce bâtiment (B23.21)"};
+  if(!c || !c.isBuilding()) return {cout: esc, alerte: "pas de bâtiment dans l'hexagone"};
+  if(!nbEtages && !niveau3 && hautN > 0) return {cout: esc, alerte: "pas d'étage dans ce bâtiment (B23.21)"};
   const sommet = niveau3 ? Math.max(nbEtages, 3) : nbEtages;
-  if((l1.toit || l2.toit) && !toit) return {cout: dn, alerte: "pas de toit praticable ici (B23.8)"};
+  if((l1.toit || l2.toit) && !toit) return {cout: esc, alerte: "pas de toit praticable ici (B23.8)"};
   const etageMax = Math.max(l1.toit ? 0 : n1, l2.toit ? 0 : n2);
-  if(etageMax > sommet) return {cout: dn, alerte: `le niveau ${etageMax} n'existe pas ici`};
+  if(etageMax > sommet) return {cout: esc, alerte: `le niveau ${etageMax} n'existe pas ici`};
   for(let k = Math.max(bas, 0); k < hautN; k++){
     const versToit = toit && k + 1 === sommet + 1 && (l1.toit || l2.toit);
-    if(!versToit && !h.hasStairway() && !niveau3) return {cout: dn, alerte: "pas d'escalier dans cet hexagone (B23.23)"};
+    if(!versToit && !h.hasStairway() && !niveau3) return {cout: esc, alerte: "pas d'escalier dans cet hexagone (B23.23)"};
   }
-  return {cout: dn, alerte: ''};
+  return {cout: esc, alerte: ''};
 }
 // Changement d'emplacement sur place : étages (ci-dessus), +1 MF pour
 // sortir d'une fortification, +1 MF pour y entrer (B27.4).
@@ -10433,20 +10703,20 @@ function compterLieux(avant, local){
       der.entree.p = p;
       const c = _coutEntreeLieu(m, der.entree);
       der.cout = c.cout;
-      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : l'hexagone coûte ${_fmtCout(c.cout)} MF${c.lib.includes('tranchées') ? ' (tranchées reliées)' : ''}`;
+      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : hexagone ${_texteMF(p, _fmtCout(c.cout), [c.lib.includes('tranchées') && 'tranchées reliées'])}`;
       if(c.alerte) chatLog(`⚠️ ${nomRapport(p)} : ${c.alerte}`);
       if(!local) _histoJs(() => { der.cout = garde.cout; der.lib = garde.lib; der.entree.lieuArr = garde.lieuArr; });
     } else {
       const c = _coutLieu(l1, l2, m ? _hexDe(m, p.x, p.y) : null, pile(cle(p)));
       e.push({pos, vca: null, cout: c.cout, lib: _decrireChangement(l1, l2), etat: 'arret'});
-      txt = `${_decrireChangement(l1, l2)} : ${c.cout} MF`;
+      txt = `${_decrireChangement(l1, l2)} : ${_texteMF(p, c.cout)}`;
       if(c.alerte) chatLog(`⚠️ ${nomRapport(p)} : ${c.alerte}`);
       if(!local){
         const et = e;
         _histoJs(() => { if(p.mvt && p.mvt.etapes === et) et.length = n0; if(!avait && p.mvt && p.mvt.etapes.length <= 1) delete p.mvt; });
       }
     }
-    emettre(`${nomRapport(p)} : ${txt} (cumul ${_mvtCumul(p)} MF)`);
+    emettre(`${nomRapport(p)} : ${txt}`);
   }
 }
 
@@ -12153,6 +12423,12 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
   // Un hexagone à côtés plats en haut et en bas : 2/√3 fois plus large que haut.
   const cote = hexSeul ? hex * 2 / Math.sqrt(3) * 1.04 : 2 * LOUPE_RAYON_HEX * hex;
   const x0 = px - cote / 2, y0 = py - cote / 2, k = cv.width / cote;
+  // Repère de la carte dans la loupe, tourné comme la vue autour du centre.
+  const repere = () => {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.translate(cv.width / 2, cv.height / 2); g.rotate(_rotVue * Math.PI / 180); g.translate(-cv.width / 2, -cv.height / 2);
+    g.transform(k, 0, 0, k, -x0 * k, -y0 * k);
+  };
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, cv.width, cv.height);
   const contourHex = () => {
@@ -12162,9 +12438,9 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
       .forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo'](px + x, py + y));
     g.closePath();
   };
-  g.setTransform(k, 0, 0, k, -x0 * k, -y0 * k);
+  repere();
   if(hexSeul){ g.save(); contourHex(); g.clip(); }
-  else { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height); g.setTransform(k, 0, 0, k, -x0 * k, -y0 * k); }
+  else { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#222'; g.fillRect(0, 0, cv.width, cv.height); repere(); }
   for(const b of document.querySelectorAll('#mapInner canvas.boardLayer')){
     const L = parseFloat(b.style.left), T = parseFloat(b.style.top), W = parseFloat(b.style.width), H = parseFloat(b.style.height);
     if(L > x0 + cote || T > y0 + cote || L + W < x0 || T + H < y0) continue;
@@ -12174,7 +12450,11 @@ function dessinerLoupe(cx, cy, a, rects, hexSeul, surcouche){
     if(p.deleted || p.cache || !p.face.src || p.face.style.display === 'none') continue;
     const L = parseFloat(p.el.style.left), T = parseFloat(p.el.style.top), W = parseFloat(p.el.style.width) || p.sz;
     if(L > x0 + cote || T > y0 + cote || L + W < x0 || T + W < y0) continue;
-    try { g.drawImage(p.face, L, T, W, W); } catch(e){}
+    // Droit à l'écran, comme sur la carte.
+    try {
+      g.save(); g.translate(L + W / 2, T + W / 2); g.rotate(-_rotVue * Math.PI / 180);
+      g.drawImage(p.face, -W / 2, -W / 2, W, W);
+    } catch(e){} finally { g.restore(); }
   }
   if(hexSeul){
     if(surcouche) surcouche(g, k);
@@ -12221,11 +12501,17 @@ const _rectsCarte = () => ({wrap: document.getElementById('mapWrap').getBounding
 function clientVersCarte(cx, cy, rects, libre){
   const {wrap: wr, inner: mr} = rects || _rectsCarte();
   if(cx < wr.left || cx > wr.right || cy < wr.top || cy > wr.bottom) return null;
+  // Tables QRDC hors de la carte tournée : ce n'est pas la carte.
+  if(_rotVue && _tablesEl && _tablesEl.isConnected){
+    const t = _tablesEl.getBoundingClientRect();
+    if(cx >= t.left && cx <= t.right && cy >= t.top && cy <= t.bottom) return null;
+  }
   if(!libre){
     const el = document.elementFromPoint(cx, cy);
     if(el && !document.getElementById('mapWrap').contains(el)) return null;
   }
-  return {x: (cx - mr.left) / zoom / SC, y: (cy - mr.top) / zoom / SC};
+  const c = _vueVersCarte((cx - mr.left) / zoom, (cy - mr.top) / zoom);
+  return {x: c.x / SC, y: c.y / SC};
 }
 
 // ── Panneau de la pile sélectionnée, du sommet vers le fond.
@@ -13429,16 +13715,28 @@ async function poserTables(){
     if(p.cache || p.y * SC < bas) continue;
     bas = Math.max(bas, Math.ceil(p.y * SC + (p.haut || p.sz || 48 * SC) / 2 + (p.decY || 0) * SC));
   }
-  el.style.left = _empriseBoards.x + 'px';
-  el.style.top = Math.round(bas + ECART_TABLES * SC) + 'px';
+  el._place = {left: _empriseBoards.x + 'px', top: Math.round(bas + ECART_TABLES * SC) + 'px'};
   _tablesEl = el;
   _dessinerTables();
-  document.getElementById('mapInner').appendChild(el);
+  _placerTables();
   // Les images arrivent après coup : la carte s'agrandit à leur mesure.
   if(window.ResizeObserver) new ResizeObserver(() => {
     if(_tablesEl === el) _etendreCarte(true);
   }).observe(el);
   _etendreCarte();
+}
+
+// Carte non tournée : les tables sont dans #mapInner, sous les boards.
+// Vue tournée : elles en sortent pour rester droites, et _majScaler les
+// pose sous la carte affichée, au zoom de la carte.
+function _placerTables(){
+  const el = _tablesEl;
+  if(!el) return;
+  if(_rotVue) document.getElementById('mapScaler').appendChild(el);
+  else {
+    Object.assign(el.style, el._place, {transform: '', transformOrigin: ''});
+    document.getElementById('mapInner').appendChild(el);
+  }
 }
 
 // Sur la carte, à l'échelle des boards ; dans la fenêtre, à la taille de
@@ -13496,10 +13794,11 @@ function rendreTable(n, boite, k){
   boite.appendChild(z);
 }
 
-// Rectangle des tables, en pixels de #mapInner, ou null sans tables.
+// Rectangle des tables, en pixels de #mapInner, ou null sans tables (ou
+// hors de la carte, vue tournée).
 function rectTables(){
   const e = _tablesEl;
-  if(!e || !e.isConnected) return null;
+  if(!e || !e.isConnected || _rotVue) return null;
   return {x: e.offsetLeft, y: e.offsetTop, w: e.offsetWidth, h: e.offsetHeight};
 }
 
@@ -15370,6 +15669,14 @@ const ACTIONS = {
   zoomTxt:  {etiquette: () => Math.round(zoom * 100) + ' %', classe: 'zoom'},
   ajuster:  {lib: 'Ajuster la carte à la vue', court: 'Ajuster', ico: '⤢', faire: zoomFit},
   zoom100:  {lib: 'Zoom 100 %', court: '100 %', ico: '1:1', faire: () => setZoom(1)},
+  // Rotation de l'affichage de la carte seulement : les pions restent droits.
+  rotDroite:{lib: 'Tourner la carte de 90° (sens horaire)', court: '90° ⟳', ico: '⟳', faire: () => tournerVue(90),
+             allume: () => _rotVue !== 0},
+  rotGauche:{lib: 'Tourner la carte de 90° (sens antihoraire)', court: '90° ⟲', ico: '⟲', faire: () => tournerVue(-90),
+             allume: () => _rotVue !== 0},
+  rot180:   {lib: 'Tourner la carte de 180°', court: '180°', ico: '⇅', faire: () => tournerVue(180),
+             allume: () => _rotVue !== 0},
+  rot0:     {lib: 'Carte non tournée', court: '0°', ico: '⬆', coche: () => _rotVue === 0, faire: () => tournerVue(-_rotVue)},
   reseau:   {lib: () => 'Partie à distance — ' + _texteReseau(), court: _texteReseau, ico: '🌐', classe: 'reseau',
              texteBarre: true, faire: ouvrirReseau, allume: () => !!_net},
   utilisateur: {lib: () => `Utilisateur : ${_nomUtilisateur()} — changer ou gérer les utilisateurs`,
@@ -15644,14 +15951,14 @@ const DISPOSITIONS = {
       'Partie':    ['undo', '-', 'unmoved', 'all', '-', 'brises', 'sniper', '-', 'infoScenario'],
       // Masqués à la demande : sélection des cartes et panneaux, effectif
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
-      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
+      'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'rotDroite', 'rotGauche', 'rot180', 'rot0', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
                     'couche_overlay', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
       'Outils':    ['los', 'losMuet'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
       'Aide':      ['raccourcis']
     },
-    barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster',
+    barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster', 'rotGauche', 'rotDroite',
             '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', '|', 'reseau', 'utilisateur'],
     // Les dés restent à portée, en boutons sous la barre d'icônes.
     barreDes: [...DES.filter(d => d.id.startsWith('DR_')).map(d => d.id), '|', ...DES.filter(d => d.id.startsWith('dr_')).map(d => d.id)],
@@ -15865,7 +16172,7 @@ function placerColonne(c){
 // PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
 // La sélection des overlays reste : sans elle, un overlay posé ne pourrait
 // plus être ni déplacé ni retiré au doigt.
-const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'couche_overlay', '-', 'reseau', 'utilisateur', '-',
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'couche_overlay', '-', 'rotDroite', 'rot180', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
