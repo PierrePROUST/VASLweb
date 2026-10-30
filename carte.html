@@ -7286,7 +7286,25 @@ function _pieceVaslTools(ts){
     if(m) return {genre: m[1] === 'notePanel' ? 'notes' : 'carte', champs: _vtChamps(ts.eta[i])};
     if(VT_OUTILS.test(ts.typ[i])) return {genre: 'outil'};
   }
+  // « Scenario Info Card » des versions récentes : plus de trait propre,
+  // un Marker sans clé dont l'état porte « id;nom;date;lieu », et le
+  // gpid « VASLTablesPiece » dans l'état du BasicPiece.
+  const bp = ts.eta[ts.eta.length - 1] || '', nom = ts.typ[ts.typ.length - 1] || '';
+  if(/^[^;]*;-?\d+;-?\d+;VASLTablesPiece;/.test(bp) || /^piece;[^;]*;[^;]*;[^;]*;Scenario Info Card$/.test(nom)){
+    const i = ts.typ.findIndex(t => /^mark;\\*$/.test(t));
+    if(i >= 0) return {genre: 'bandeau', champs: _vtChamps(ts.eta[i]).map(_vtUtf8)};
+  }
   return null;
+}
+
+// Texte encodé deux fois en UTF-8 par l'extension (« VerdalsÃ¶ra ») :
+// on défait l'encodage en trop tant qu'il redonne un UTF-8 valide.
+function _vtUtf8(s){
+  for(let n = 0; n < 3 && /[\u00c2-\u00f4][\u0080-\u00bf]/.test(s) && !/[^\u0000-\u00ff]/.test(s); n++){
+    try { s = new TextDecoder('utf-8', {fatal: true}).decode(Uint8Array.from(s, c => c.charCodeAt(0))); }
+    catch(e){ break; }
+  }
+  return s;
 }
 
 // Les champs viennent du fichier ou d'un autre joueur : échappés aussi
@@ -7519,6 +7537,29 @@ async function _vtElementCarte(champs){
 
 // Panneau de notes (NotePanel.draw) : bandeau de la couleur du camp,
 // corps teinté à mi-chemin du blanc, texte enroulé au fil de la largeur.
+// Barre de la « Scenario Info Card » : une rangée de cases comme celles
+// de la carte de scénario (60 px CSS, 1,3 px à l'écran sous Swing) — la
+// boussole, la direction du vent, puis l'identifiant et le nom du
+// scénario. Les compteurs que l'extension y a posés servent au calage.
+function _vtElementBandeau(c){
+  const [id, nom, date, lieu] = c;
+  const k = 1.3, px = n => Math.round(n * k) + 'px';
+  const e = document.createElement('div');
+  e.className = 'vtc';
+  e.title = [id, nom, date, lieu].filter(Boolean).join(' \u2014 ');
+  const td = `height:${px(60)};width:${px(60)};min-width:${px(60)};border:2px solid #666;border-radius:${px(5)};`
+    + `box-sizing:border-box;text-align:center;vertical-align:middle;padding:0;`;
+  const jeton = (nom, role) => `<td data-case="${role}" style="${td}background:#fff;color:#999;font:bold ${px(8)} Arial">${nom}</td>`;
+  e.innerHTML = `<table style="border-collapse:separate;border-spacing:2px;border:0;background:#fff"><tr>`
+    + jeton('Compass', 'Compass') + jeton('Wind Dir', 'WindDir')
+    + `<td style="${td}width:auto;background:#000;color:#fff;font:600 ${px(14)} Verdana,Arial,sans-serif;`
+    + `padding:0 ${px(8)};white-space:nowrap;line-height:1.2">`
+    + `<span style="color:#ffad2d">${_vtEsc(id)}</span> ${_vtEsc(nom)}`
+    + `<br><span style="font-size:${px(10)};font-weight:normal">${_vtEsc([date, lieu].filter(Boolean).join(' \u00b7 '))}</span>`
+    + '</td></tr></table>';
+  return e;
+}
+
 function _vtElementNotes(c){
   const titre = c[0] || '', corps = c[1] || '';
   const coul = /^#[0-9a-f]{6}$/i.test(c[2] || '') ? c[2] : '#333333';
@@ -7975,7 +8016,8 @@ async function _majPieceVaslTools(p, d, gen){
     p.cache = p.outil = true;
     return;
   }
-  const e = d.vt.genre === 'carte' ? await _vtElementCarte(d.vt.champs) : _vtElementNotes(d.vt.champs);
+  const e = d.vt.genre === 'carte' ? await _vtElementCarte(d.vt.champs)
+    : d.vt.genre === 'bandeau' ? _vtElementBandeau(d.vt.champs) : _vtElementNotes(d.vt.champs);
   await _majPieceFond(p, d, gen, e, SC);
 }
 
@@ -8002,7 +8044,7 @@ async function _majPieceFond(p, d, gen, e, ech){
   p.fond = true;
   p.larg = Math.round(e.offsetWidth * ech);
   p.haut = Math.round(e.offsetHeight * ech);
-  if(d.vt && d.vt.genre === 'carte') _vtCaler(p, e);
+  if(d.vt && (d.vt.genre === 'carte' || d.vt.genre === 'bandeau')) _vtCaler(p, e);
   _etendreCarte();
   p.sz = Math.max(p.larg, p.haut);
   rendrePile(cle(p));
