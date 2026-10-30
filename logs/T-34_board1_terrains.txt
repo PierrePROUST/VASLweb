@@ -1,0 +1,35 @@
+T-34 M40 vca3 tca3 CE moves 01CC9 -> 01CC8 * 1MP/ 2MP (démarrage 1)
+T-34 M40 vca2 tca2 CE : VCA 1MP/ 3MP
+01CC8: T-34 M40 vca2 tca2 CE *
+T-34 M40 vca2 tca2 CE moves 01CC8 -> 01BB7 * 1MP/ 4MP
+T-34 M40 vca3 tca3 CE : VCA 1MP/ 5MP
+01BB7: T-34 M40 vca3 tca3 CE *
+T-34 M40 vca3 tca3 CE moves 01BB7 -> 01BB6 * ½MP/ 5½MP
+T-34 M40 vca2 tca2 CE : VCA 1MP/ 6½MP
+01BB6: T-34 M40 vca2 tca2 CE *
+T-34 M40 vca2 tca2 CE moves 01BB6 -> 01AA6 * ½MP/ 7MP
+T-34 M40 vca2 tca2 CE moves 01AA6 -> 01Z5 * ½MP/ 7½MP
+T-34 M40 vca3 tca3 CE : VCA 1MP/ 8½MP
+01Z5: T-34 M40 vca3 tca3 CE *
+T-34 M40 vca3 tca3 CE moves 01Z5 -> 01Z4 * ½MP/ 9MP
+T-34 M40 vca3 tca3 CE moves 01Z4 -> 01Z3 * ½MP/ 9½MP
+T-34 M40 vca3 tca3 CE moves 01Z3 -> 01Z2 * ½MP/ 10MP
+T-34 M40 vca4 tca4 CE : VCA 1MP/ 11MP
+01Z2: T-34 M40 vca4 tca4 CE *
+T-34 M40 vca5 tca5 CE : VCA 1MP/ 12MP
+01Z2: T-34 M40 vca5 tca5 CE *
+T-34 M40 vca5 tca5 CE moves 01Z2 -> 01AA3 * ½MP/ 12½MP
+T-34 M40 vca5 tca5 CE moves 01AA3 -> 01BB3 * ½MP/ 13MP
+T-34 M40 vca5 tca5 CE moves 01BB3 -> 01CC4 * ½MP/ 13½MP
+T-34 M40 vca5 tca5 CE moves 01CC4 -> 01DD4 * ½MP/ 14MP
+T-34 M40 vca5 tca5 CE moves 01DD4 -> 01EE5 * ½MP/ 14½MP
+T-34 M40 vca5 tca5 CE moves 01EE5 -> 01FF5 * ½MP/ 15MP
+T-34 M40 vca5 tca5 CE : Stop 1MP/ 16MP
+Mark unmoved : MF et MP remis à zéro
+— phase 2 —
+T-34 M40 vca4 tca4 CE : VCA 1MP/ 2MP (démarrage 1)
+01FF5: T-34 M40 vca4 tca4 CE *
+T-34 M40 vca3 tca3 CE : VCA 1MP/ 3MP
+01FF5: T-34 M40 vca3 tca3 CE *
+T-34 M40 vca3 tca3 CE moves 01FF5 -> 01FF4 * 1MP/ 4MP
+T-34 M40 vca3 tca3 CE : Stop 1MP/ 5MP
