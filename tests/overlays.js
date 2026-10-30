@@ -71,7 +71,8 @@ const ST3 = "+/1790710308542/hide;79,130;Opaque;;player:;0.5;;false\timmob;c;I;R
   // Sauvegarde et relecture : les overlays reviennent sur leur couche.
   // S'y ajoute un ruisseau St3 de l'extension VASL Overlays, tel qu'une
   // partie VASL l'écrit : son image « ovrst3c.gif » est l'orientation e
-  // de l'archive ovrST, recadrée sur ses pixels opaques (422×744).
+  // de l'archive ovrST, recadrée sur ses pixels opaques (422×744) ; elle
+  // donne la pose de l'overlay st3 dans le board.
   const r2 = await pg.evaluate(async st3 => {
     const att = (n = 800) => new Promise(f => setTimeout(f, n));
     const sav = etatPartie();
@@ -88,8 +89,24 @@ const ST3 = "+/1790710308542/hide;79,130;Opaque;;player:;0.5;;false\timmob;c;I;R
             st3Sel: (() => { basculerCouche('overlay'); selectionner([s]); const n = _sel.size; basculerCouche('overlay'); return n; })(),
             st3Verrou: s.el.classList.contains('verrou'),
             // Sauvegarde : le segment de la pièce repart tel que VASL l'a écrit.
-            st3Sauve: etatPartie().includes(st3)};
+            st3Sauve: etatPartie().includes(st3),
+            // À sa place, l'overlay st3 du dépôt, posé dans le board comme par
+            // « Add overlays » : pièce cachée, overlay dans l'image et la LOS.
+            st3Pose: [s.ovrExtPose, s.el.style.display],
+            st3Board: _losBoards.flatMap(b => (b.overlaysExt || []).map(o => `${b.name} ${o.nom} ${o.hex1}-${o.hex2}`)).join(','),
+            st3LOS: _losBoards.flatMap(b => (b.ovrLOS || []).map(o => o.archive)).join(',')};
   }, ST3);
+  // La pièce bouge d'un hexagone vers le bas, puis disparaît : le board est
+  // recomposé à chaque fois.
+  r2.st3Deplace = await pg.evaluate(async () => {
+    const s = vivants().find(p => p.nom === 'St3');
+    const att = (n = 1500) => new Promise(f => setTimeout(f, n));
+    const ext = () => _losBoards.flatMap(b => (b.overlaysExt || []).map(o => `${o.hex1}-${o.hex2}`)).join(',') || '∅';
+    s.y += 64.5; rendreToutes(); await att();
+    const apres = ext();
+    s.deleted = true; rendreToutes(); await att();
+    return [apres, ext(), _losBoards.flatMap(b => (b.ovrLOS || []).map(o => o.archive)).join(',') || '∅'];
+  });
   Object.assign(r, r2);
   delete r.pts;
   await pg.screenshot({path: nav.fichier('tests/sortie/overlays.png')}).catch(() => {});

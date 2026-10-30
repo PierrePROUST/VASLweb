@@ -1804,7 +1804,10 @@ async function composerBoard(b, img){
   cv.width = sw; cv.height = sh;
   cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
   const voulues = new Set(b.ssrList || []);
-  const overlays = b.overlays || [];
+  // Ceux de la sauvegarde (Add overlays), puis ceux des pièces de
+  // l'extension VASL Overlays, posés de la même façon.
+  const overlays = [...(b.overlays || []), ...(b.overlaysExt || [])];
+  b.ovrLOS = [];
   if(!voulues.size && !overlays.length) return cv;
   let tbl = LOS_SSR, couleurs = [];
   if(voulues.size){
@@ -1833,14 +1836,14 @@ async function composerBoard(b, img){
     }
   }
   // Overlays d'hexagones, dans l'ordre de la sauvegarde, sur les SSR.
-  b.ovrLOS = [];
   for(const o of overlays){
     try {
       const ov = await preparerOverlay(b, o);
       const img = await dessinerOverlay(b, cv, ov, tbl, voulues, sx, sy);
       b.ovrLOS.push(Object.assign(_pixelsOverlay(o.nom, img, ov.x, ov.y), {archive: ov.archive}));
       ov.image.close();
-      chatLog(`🧱 bd${b.name} : overlay ${o.nom} en ${o.hex1}-${o.hex2} (${ov.archive}, orientation ${ov.orientation})`);
+      chatLog(`🧱 bd${b.name} : overlay ${o.nom} en ${o.hex1}-${o.hex2} (${ov.archive}, orientation ${ov.orientation})`
+        + (o.piece ? ` — pièce ${o.piece} de l'extension VASL Overlays` : ''));
     } catch(e){
       chatLog(`⚠️ bd${b.name} : overlay ${o.nom} non posé — ${e.message}`);
     }
@@ -1909,22 +1912,17 @@ async function _renderBoards(boards){
     const x = Math.round(b.px * SC) + M, y = Math.round(b.py * SC) + M;
     const w = Math.round(b.dispW * SC), hgt = Math.round(b.dispH * SC);
     try {
-      const url = await _fetchBoardImage(b.name);
       // Le recadrage et le miroir imposent un canvas plutôt qu'un <img>.
       const cv = document.createElement('canvas');
       cv.className = 'boardLayer';
-      const kb = _sizeCanvasSafely(cv, b.dispW, b.dispH);
+      b._kb = _sizeCanvasSafely(cv, b.dispW, b.dispH);
       cv.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${hgt}px;`;
-      let im = new Image();
-      await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = url; });
-      const comp = await composerBoard(b, im);
-      const g = cv.getContext('2d');
-      if(kb !== 1) g.scale(kb, kb);
-      if(b.reversed){ g.translate(b.dispW, b.dispH); g.scale(-1, -1); }
-      g.drawImage(comp, 0, 0, b.dispW, b.dispH);
+      b._cv = cv;
+      await _peindreBoard(b);
       mi.appendChild(cv);
       ok++;
     } catch(err){
+      b._cv = null;
       fail.push(b.name + (err && err.message ? ' (' + err.message + ')' : ''));
       const ph = document.createElement('div');
       ph.className = 'boardLayer';
@@ -1936,6 +1934,20 @@ async function _renderBoards(boards){
   if(ok) chatLog(`🗺️ ${ok} board(s) — composition ${totalW}×${totalH} px`);
   if(fail.length) chatLog('⚠️ Board(s) non chargé(s) : ' + fail.join(', '));
   zoomFit();
+}
+
+// Compose un board et le peint dans son canvas : au chargement, puis à
+// nouveau quand ses overlays de l'extension changent.
+async function _peindreBoard(b){
+  const im = new Image();
+  await new Promise((res, rej) => { im.onload = res; im.onerror = rej; _fetchBoardImage(b.name).then(u => im.src = u, rej); });
+  const comp = await composerBoard(b, im);
+  const cv = b._cv, g = cv.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, cv.width, cv.height);
+  if(b._kb !== 1) g.scale(b._kb, b._kb);
+  if(b.reversed){ g.translate(b.dispW, b.dispH); g.scale(-1, -1); }
+  g.drawImage(comp, 0, 0, b.dispW, b.dispH);
 }
 
 function _setMapSize(w, h){
@@ -6143,7 +6155,7 @@ function metaPions(){
 function _piecesLOS(){
   const piles = new Map(), out = [];
   for(const p of vivants()){
-    if(p.cache || p.outil) continue;
+    if(p.cache || p.outil || p.ovrExtPose) continue;
     if(p.masqueProprio && !voitMasque(p.masqueProprio)) continue;
     if(p._losSeg !== p.seg){
       const ts = _developperPrototypes(_splitTypeState(p.seg), 0), pr = _proprietes(ts);
@@ -6577,7 +6589,7 @@ function _zonesOverlay(){
     }
   }
   for(const p of vivants()){
-    if(p.cache) continue;
+    if(p.cache || p.ovrExtPose) continue;
     if(p._overlay === undefined) p._overlay = 'overlay' in _proprietes(_developperPrototypes(_splitTypeState(p.seg), 0));
     if(!p._overlay) continue;
     const w = (p.larg || p.sz) / SC / _losZoom(), h = (p.haut || p.sz) / SC / _losZoom(), c = _versLOS(p);
@@ -7727,34 +7739,54 @@ async function _chargerImage(path){
   }
 }
 
-// Image d'un overlay déplaçable de l'extension « VASL Overlays » : les
-// pièces y nomment l'image d'un overlay d'hexagones (« ovrst3c.gif » :
-// overlay st3, orientation c), absente des images du module. On la prend
-// dans l'archive de l'overlay (boards/bdFiles/overlays/ovrST), avec deux
-// différences relevées sur une partie VASL (St3, niveau c) :
-// - l'extension recadre ses images sur leurs pixels opaques, et VASSAL
-//   centre l'image sur la pièce : l'image de l'archive, avec ses marges,
-//   tombait jusqu'à un demi-hexagone à côté ;
-// - ses six orientations commencent deux crans plus loin que celles de
-//   l'archive (c de l'extension = e de l'archive), dans le même sens.
-// La variante enneigée de l'extension (« ovrst3c-s.png ») n'est pas dans
-// l'archive : l'image ordinaire la remplace.
-async function _imageArchiveOverlay(path){
-  const m = /^ovr([a-z0-9]+)([a-f])(-s)?\.(gif|png)$/i.exec(path.split('/').pop());
+// ═══ OVERLAYS DE L'EXTENSION « VASL OVERLAYS » ═══
+// Une pièce de l'extension nomme l'image d'un overlay d'hexagones
+// (« ovrst3c.gif » : overlay st3, orientation c). La page ne la dessine
+// pas comme un pion : elle pose à sa place l'overlay du dépôt VASL
+// (boards/bdFiles/overlays), comme s'il avait été posé par « Add
+// overlays », dans l'image du board et dans la LOS. La pièce reste dans
+// la partie, cachée et jamais sélectionnable : son segment repart tel quel
+// dans la sauvegarde, et VASL avec l'extension la dessine comme avant.
+//
+// Table de correspondance : overlay de l'extension → overlay du dépôt.
+// Sans entrée, l'overlay garde son nom, et ses six orientations
+// commencent deux crans plus loin que celles de l'archive (relevé sur
+// une partie VASL : St3, c de l'extension = e de l'archive). Une entrée
+// donne {nom, crans} quand ce n'est pas le cas.
+const CORRESP_OVR_EXT = {};
+const _OVR_EXT = /^ovr([a-z0-9]+)([a-f])(-s)?\.(gif|png)$/i;
+const _LETTRES_OVR = 'abcdef';
+
+// Overlay du dépôt pour l'image d'une pièce : {nom, c (orientation de
+// l'archive), a (archive), octets}, ou null. Sur un board retourné, la
+// pièce reste droite alors que l'overlay tourne avec le board : trois
+// crans de plus. La variante enneigée de l'extension (« ovrst3c-s.png »)
+// n'est pas dans l'archive : l'image ordinaire la remplace.
+async function _overlayDuDepot(img, retourne){
+  const m = _OVR_EXT.exec((img || '').split('/').pop());
   if(!m) return null;
-  try {
-    const nom = m[1].toLowerCase();
-    const a = await chargerArchiveOverlay(archiveOverlay(nom));
-    const LETTRES = 'abcdef';
-    const six = [...LETTRES].every(l => _fichier(a.files, imageOverlay(nom + l)));
-    const l = six ? LETTRES[(LETTRES.indexOf(m[2].toLowerCase()) + 2) % 6] : m[2].toLowerCase();
-    const f = _fichier(a.files, imageOverlay(nom + l));
-    if(!f) return null;
-    const bmp = await createImageBitmap(new Blob([f], {type: 'image/gif'}));
+  const ext = m[1].toLowerCase(), cor = CORRESP_OVR_EXT[ext] || {};
+  const nom = cor.nom || ext;
+  const a = await chargerArchiveOverlay(archiveOverlay(nom));
+  const six = [..._LETTRES_OVR].every(l => _fichier(a.files, imageOverlay(nom + l)));
+  const c = six ? _LETTRES_OVR[(_LETTRES_OVR.indexOf(m[2].toLowerCase()) + (cor.crans ?? 2) + (retourne ? 3 : 0)) % 6]
+                : m[2].toLowerCase();
+  const octets = _fichier(a.files, imageOverlay(nom + c));
+  return octets ? {nom, c, a, octets} : null;
+}
+
+// Image d'une archive recadrée sur ses pixels opaques : {canvas, x0, y0}.
+// L'extension recadre ses images ainsi, et VASSAL les centre sur la pièce.
+const _ovrRecadres = new Map();         // archive/orientation → Promise
+function _ovrRecadre(o){
+  const k = archiveOverlay(o.nom) + '/' + o.nom + o.c;
+  if(!_ovrRecadres.has(k)) _ovrRecadres.set(k, (async () => {
+    const bmp = await createImageBitmap(new Blob([o.octets], {type: 'image/gif'}));
     const cv = document.createElement('canvas');
     cv.width = bmp.width; cv.height = bmp.height;
-    const g = cv.getContext('2d');
+    const g = cv.getContext('2d', {willReadFrequently: true});
     g.drawImage(bmp, 0, 0);
+    bmp.close();
     const px = g.getImageData(0, 0, cv.width, cv.height).data;
     let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1;
     for(let y = 0; y < cv.height; y++) for(let x = 0; x < cv.width; x++)
@@ -7763,10 +7795,116 @@ async function _imageArchiveOverlay(path){
     const out = document.createElement('canvas');
     out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
     out.getContext('2d').drawImage(cv, -x0, -y0);
-    const blob = await new Promise(f => out.toBlob(f, 'image/png'));
+    return {canvas: out, x0, y0};
+  })());
+  return _ovrRecadres.get(k);
+}
+
+// Image de la pièce, quand elle n'est pas posée dans un board (hors des
+// boards, ou overlay introuvable) : l'image de l'archive, recadrée.
+async function _imageArchiveOverlay(path){
+  try {
+    const o = await _overlayDuDepot(path, false);
+    const r = o && await _ovrRecadre(o);
+    if(!r) return null;
+    const blob = await new Promise(f => r.canvas.toBlob(f, 'image/png'));
     return blob ? URL.createObjectURL(blob) : null;
   } catch(e){
     return null;
+  }
+}
+
+// Pose « Add overlays » d'une pièce de l'extension : {b, nom, hex1, hex2}.
+// L'image de la pièce est centrée sur elle ; posé par VASL, l'overlay a
+// son coin en centre(hex1) − centre(origine). Le hex1 retenu est celui
+// qui met le centre de l'image au plus près de la pièce : l'overlay
+// retombe ainsi sur la grille, comme s'il avait été posé par VASL.
+async function _poseOverlayExt(p, img){
+  const X = p.x - BOARD_MARGIN, Y = p.y - BOARD_MARGIN;
+  const b = (_losBoards || []).find(b => b._cv && X >= b.px && X < b.px + b.dispW && Y >= b.py && Y < b.py + b.dispH);
+  if(!b) throw new Error('hors des boards');
+  const g = geoBoard(b), z = b.zoom || 1;
+  let lx = X - b.px, ly = Y - b.py;
+  if(b.reversed){ lx = b.dispW - lx; ly = b.dispH - ly; }
+  const P = {x: lx / z + (b.crop ? b.crop.x || 0 : 0), y: ly / z + (b.crop ? b.crop.y || 0 : 0)};
+  const o = await _overlayDuDepot(img, b.reversed);
+  if(!o) throw new Error(img + ' sans overlay dans le dépôt VASL');
+  const r = await _ovrRecadre(o);
+  const d = _lireDataOverlay(o.a.data, o.nom);
+  const unHex = !!_fichier(o.a.files, imageOverlay(o.nom + 'a')) && !_fichier(o.a.files, imageOverlay(o.nom + 'd'));
+  const c = unHex ? 'a' : o.c;
+  const nomOrigine = _origine(d.origines, c, b.name), po = nomOrigine && centreHex(g, nomOrigine);
+  if(!po) throw new Error(`orientation « ${c} » sans origine`);
+  const T = {x: P.x - (r.x0 + r.canvas.width / 2) + po.x, y: P.y - (r.y0 + r.canvas.height / 2) + po.y};
+  let h1 = null;
+  for(let i = 0; i <= g.cols + 1; i++) for(let k = -1; k <= g.rows + 2; k++){
+    const q = centreHex(g, hexrow(i) + k), e = Math.hypot(q.x - T.x, q.y - T.y);
+    if(!h1 || e < h1.e) h1 = {nom: hexrow(i) + k, i, k, e, q};
+  }
+  let hex2 = h1.nom;
+  if(!unHex){
+    // Voisin de hex1 dans la direction de l'orientation (_orientation).
+    hex2 = null;
+    for(let i = Math.max(0, h1.i - 1); i <= h1.i + 1 && !hex2; i++) for(let k = h1.k - 1; k <= h1.k + 1; k++){
+      const n = hexrow(i) + k, q = centreHex(g, n);
+      if(n === h1.nom || Math.abs(q.x - h1.q.x) > 1.1 * g.hw || Math.abs(q.y - h1.q.y) > 1.1 * g.hh) continue;
+      if(_orientation(g, h1.nom, n) === c){ hex2 = n; break; }
+    }
+    if(!hex2) throw new Error('pas de voisin de ' + h1.nom + ' en orientation ' + c);
+  }
+  return {b, nom: o.nom, hex1: h1.nom, hex2, ecart: Math.round(h1.e)};
+}
+
+// Remet les overlays de l'extension dans les boards quand une pièce
+// apparaît, bouge, change d'orientation ou disparaît. Seuls les boards
+// dont la liste change sont recomposés, puis la LOS est reconstruite.
+let _ovrExtMinuteur = null, _ovrExtEnCours = false, _ovrExtRelance = false;
+let _ovrExtSig = null, _ovrExtBoards = null;
+function planifierOverlaysExt(){
+  clearTimeout(_ovrExtMinuteur);
+  _ovrExtMinuteur = setTimeout(majOverlaysExt, 60);
+}
+async function majOverlaysExt(){
+  if(_ovrExtEnCours){ _ovrExtRelance = true; return; }
+  // Seulement une fois tous les boards dessinés (_cv posé, null si
+  // échec) : pendant le chargement d'une partie, les pions sont encore
+  // ceux de la précédente.
+  const boards = _losBoards;
+  if(!boards || !boards.every(b => b._cv !== undefined)) return;
+  const exts = vivants().filter(p => p.affichageSeul).map(p => ({p, img: lirePiece(p.seg).img}));
+  const sig = exts.map(e => `${e.p.uid}:${e.p.x},${e.p.y}:${e.img}`).join('|');
+  if(sig === _ovrExtSig && boards === _ovrExtBoards) return;
+  _ovrExtEnCours = true;
+  try {
+    const parBoard = new Map(boards.map(b => [b, []]));
+    for(const {p, img} of exts){
+      try {
+        const o = await _poseOverlayExt(p, img);
+        parBoard.get(o.b).push({nom: o.nom, hex1: o.hex1, hex2: o.hex2, piece: p.nom, uid: p.uid});
+      } catch(e){
+        if(p.ovrExtPose !== false) chatLog(`⚠️ ${p.nom} (extension VASL Overlays) : ${e.message} — pièce affichée seule`);
+        p.ovrExtPose = false;
+      }
+    }
+    let change = false;
+    for(const [b, l] of parBoard){
+      const s = JSON.stringify(l.map(o => [o.nom, o.hex1, o.hex2]));
+      if(s === (b._ovrExtSig || '[]')) continue;
+      b.overlaysExt = l;
+      b._ovrExtSig = s;
+      if(b._cv) await _peindreBoard(b);
+      change = true;
+    }
+    const poses = new Set([...parBoard.values()].flat().map(o => o.uid));
+    for(const {p} of exts){
+      if(poses.has(p.uid)) p.ovrExtPose = true;
+      p.el.style.display = p.ovrExtPose || p.cache ? 'none' : '';
+    }
+    if(change) oublierCarteLOS(boards);
+    _ovrExtSig = sig; _ovrExtBoards = boards;
+  } finally {
+    _ovrExtEnCours = false;
+    if(_ovrExtRelance){ _ovrExtRelance = false; planifierOverlaysExt(); }
   }
 }
 
@@ -8065,15 +8203,15 @@ async function majApparence(p, d){
   // HIP : invisible de l'adversaire ; son joueur et l'administrateur le
   // voient en transparence, comme Hideable de VASSAL.
   const voitHip = d.hip && voitMasque(d.hipProprio);
-  p.el.style.display = d.hip && !voitHip ? 'none' : '';
+  p.el.style.display = (d.hip && !voitHip) || p.ovrExtPose ? 'none' : '';
   p.el.style.opacity = voitHip ? '.55' : '';
   p.cache = d.hip && !voitHip;
   p.couche = coucheDe(d);
-  // Overlay de l'extension VASL Overlays (image « ovr… » prise dans
-  // l'archive de l'overlay) : affiché seulement, jamais sélectionnable,
-  // même case « Overlays » cochée. Son segment repart tel quel dans la
-  // sauvegarde, et VASL avec l'extension le dessine comme avant.
+  // Pièce de l'extension VASL Overlays (image « ovr… ») : jamais
+  // sélectionnable, même case « Overlays » cochée ; l'overlay du dépôt
+  // VASL est posé à sa place dans le board (majOverlaysExt).
   p.affichageSeul = /^ovr/i.test(d.img) && !/^(DO|DD)\//.test(d.img);
+  if(p.affichageSeul) planifierOverlaysExt();
   if(d.vt || d.page){ await _majPieceVaslTools(p, d, gen); return; }
   const imgFace = voile || d.img;
   const url = voile === '?' ? _pionInconnu() : await chargerImage(imgFace);
@@ -8358,6 +8496,7 @@ function rectsPile(s, deplie){
 }
 
 function rendrePile(k, tous){
+  planifierOverlaysExt();
   const s = (tous || pile(k)).filter(p => !p.cache);
   const deplie = _depliees.has(k) && s.length > 1;
   if(!deplie) _depliees.delete(k);
