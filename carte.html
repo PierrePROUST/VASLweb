@@ -8511,7 +8511,11 @@ function importerPions(texte, label, annexes){
     if(c.d.carte !== _carteJeu) continue;     // autres fenêtres : réécrites telles quelles
     // Hors de toute pile : une pièce qui ne s'empile pas est dessinée
     // sous les piles (DefaultPieceCollection, couche 0), les autres dessus.
-    const q = creerPion(c.seg, rangs.has(c.d.uid) ? rangs.get(c.d.uid) : 1000 + c.i);
+    // La contre-oblique finale échappe l'ESC qui suit le segment, elle
+    // n'est pas à l'état : gardée, elle finirait les D/ de ce pion
+    // (« …;OldMap;Main Map\/ancien ») et VASSAL, y voyant un « / »
+    // échappé, collerait l'ancien état au nouveau.
+    const q = creerPion(c.seg.replace(/\\+$/, ''), rangs.has(c.d.uid) ? rangs.get(c.d.uid) : 1000 + c.i);
     if(!rangs.has(c.d.uid) && neSEmpilePas(q)) q.ordre = -1000 + c.i;
     n++;
   }
@@ -8684,10 +8688,11 @@ function annuler(){
 function _decoupeCmd(s){
   return _decoupeBrut(s).map(t => t.length > 1 && t[0] === "'" && t[t.length - 1] === "'" ? t.slice(1, -1) : t);
 }
-// Champs d'un D/. L'état d'un pion VASL se termine souvent par une
-// contre-oblique (« …;OldMap;Main Map\ ») : VASSAL l'écrit telle quelle
-// devant le « / » qui sépare le nouvel état de l'ancien, et ce « \/ »
-// passe pour un « / » échappé. Les deux états ont autant de traits : la
+// Champs d'un D/. Les .vlog des versions précédentes d'ASLweb (et ceux
+// que VASSAL en a réécrits) finissent l'état d'un pion de la sauvegarde
+// par une contre-oblique (« …;OldMap;Main Map\ ») devant le « / » qui
+// sépare le nouvel état de l'ancien, et ce « \/ » passe pour un « / »
+// échappé. Les deux états ont autant de traits : la
 // coupure est le « \/ » qui les équilibre, la contre-oblique restant au
 // nouvel état. brut : apostrophes gardées, comme _decoupeBrut.
 function _champsD(s, brut){
