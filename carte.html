@@ -7688,7 +7688,11 @@ async function _chargerImage(path){
       r = await fetch(url ? e : VASL_IMAGES_URL + e);
       if(r.ok){ path = e; break; }
     }
-    if(!r.ok) throw new Error('HTTP ' + r.status);
+    if(!r.ok){
+      const ovr = await _imageArchiveOverlay(path);
+      if(ovr) return ovr;
+      throw new Error('HTTP ' + r.status);
+    }
     if(!/\.svg$/i.test(path)){
       const mime = /\.gif$/i.test(path) ? 'image/gif' : /\.png$/i.test(path) ? 'image/png' : 'image/jpeg';
       return URL.createObjectURL(new Blob([await r.arrayBuffer()], {type: mime}));
@@ -7718,6 +7722,49 @@ async function _chargerImage(path){
       }
     }
     return URL.createObjectURL(new Blob([_ensureViewBox(svg)], {type: 'image/svg+xml'}));
+  } catch(e){
+    return null;
+  }
+}
+
+// Image d'un overlay déplaçable de l'extension « VASL Overlays » : les
+// pièces y nomment l'image d'un overlay d'hexagones (« ovrst3c.gif » :
+// overlay st3, orientation c), absente des images du module. On la prend
+// dans l'archive de l'overlay (boards/bdFiles/overlays/ovrST), avec deux
+// différences relevées sur une partie VASL (St3, niveau c) :
+// - l'extension recadre ses images sur leurs pixels opaques, et VASSAL
+//   centre l'image sur la pièce : l'image de l'archive, avec ses marges,
+//   tombait jusqu'à un demi-hexagone à côté ;
+// - ses six orientations commencent deux crans plus loin que celles de
+//   l'archive (c de l'extension = e de l'archive), dans le même sens.
+// La variante enneigée de l'extension (« ovrst3c-s.png ») n'est pas dans
+// l'archive : l'image ordinaire la remplace.
+async function _imageArchiveOverlay(path){
+  const m = /^ovr([a-z0-9]+)([a-f])(-s)?\.(gif|png)$/i.exec(path.split('/').pop());
+  if(!m) return null;
+  try {
+    const nom = m[1].toLowerCase();
+    const a = await chargerArchiveOverlay(archiveOverlay(nom));
+    const LETTRES = 'abcdef';
+    const six = [...LETTRES].every(l => _fichier(a.files, imageOverlay(nom + l)));
+    const l = six ? LETTRES[(LETTRES.indexOf(m[2].toLowerCase()) + 2) % 6] : m[2].toLowerCase();
+    const f = _fichier(a.files, imageOverlay(nom + l));
+    if(!f) return null;
+    const bmp = await createImageBitmap(new Blob([f], {type: 'image/gif'}));
+    const cv = document.createElement('canvas');
+    cv.width = bmp.width; cv.height = bmp.height;
+    const g = cv.getContext('2d');
+    g.drawImage(bmp, 0, 0);
+    const px = g.getImageData(0, 0, cv.width, cv.height).data;
+    let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1;
+    for(let y = 0; y < cv.height; y++) for(let x = 0; x < cv.width; x++)
+      if(px[(y * cv.width + x) * 4 + 3]){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+    if(x1 < 0) return null;
+    const out = document.createElement('canvas');
+    out.width = x1 - x0 + 1; out.height = y1 - y0 + 1;
+    out.getContext('2d').drawImage(cv, -x0, -y0);
+    const blob = await new Promise(f => out.toBlob(f, 'image/png'));
+    return blob ? URL.createObjectURL(blob) : null;
   } catch(e){
     return null;
   }
@@ -7775,8 +7822,9 @@ function indexerPiles(){
 // viser un seul.
 let _sel = new Set();          // pions sélectionnés
 let _depliees = new Set();     // clés des piles dépliées
-// Ni un pion HIP de l'adversaire, ni une carte ou un panneau de VASL Tools.
-const selectionnable = p => !!p && !p.deleted && !p.cache && !p.fond;
+// Ni un pion HIP de l'adversaire, ni une carte ou un panneau de VASL Tools,
+// ni un overlay de l'extension VASL Overlays.
+const selectionnable = p => !!p && !p.deleted && !p.cache && !p.fond && !p.affichageSeul;
 const selDans = k => pile(k).filter(p => _sel.has(p));
 const pileEntiereSel = k => { const s = pile(k).filter(selectionnable); return s.length > 0 && s.every(p => _sel.has(p)); };
 // Fonctions appelées après chaque changement de sélection (panneau, éventail…).
@@ -8021,6 +8069,11 @@ async function majApparence(p, d){
   p.el.style.opacity = voitHip ? '.55' : '';
   p.cache = d.hip && !voitHip;
   p.couche = coucheDe(d);
+  // Overlay de l'extension VASL Overlays (image « ovr… » prise dans
+  // l'archive de l'overlay) : affiché seulement, jamais sélectionnable,
+  // même case « Overlays » cochée. Son segment repart tel quel dans la
+  // sauvegarde, et VASL avec l'extension le dessine comme avant.
+  p.affichageSeul = /^ovr/i.test(d.img) && !/^(DO|DD)\//.test(d.img);
   if(d.vt || d.page){ await _majPieceVaslTools(p, d, gen); return; }
   const imgFace = voile || d.img;
   const url = voile === '?' ? _pionInconnu() : await chargerImage(imgFace);
@@ -8328,7 +8381,7 @@ function rendrePile(k, tous){
     p.el.style.zIndex = p.fond ? 2 + i : p.couche === 'overlay' ? 6 : p.seul ? 10 + _hauteurSous(p) : (deplie ? 5000 : 10) + i;
     p.el.classList.toggle('sel', _sel.has(p));
     p.el.classList.toggle('deplie', deplie);
-    p.el.classList.toggle('verrou', !COUCHES_SEL[p.couche || 'unite']);
+    p.el.classList.toggle('verrou', p.affichageSeul || !COUCHES_SEL[p.couche || 'unite']);
     p.el.classList.toggle('terrain', !_droitALEcran(p));
   });
   _decorPile(k, s, rects, deplie);
@@ -8414,8 +8467,10 @@ function coucheDe(d){
   // Le « ? » de dissimulation voyage avec les unités qu'il couvre.
   if(d.masque || /qmark/i.test(d.img)) return 'unite';
   const dir = d.img.includes('/') ? d.img.split('/')[0] : '';
-  // Images des fenêtres Draggable Overlays (DO) et Deluxe Draggable (DD).
-  if(/^(DO|DD)$/.test(dir)) return 'overlay';
+  // Images des fenêtres Draggable Overlays (DO) et Deluxe Draggable (DD),
+  // et pièces de l'extension VASL Overlays (propriété « overlay », image
+  // d'un overlay d'hexagones « ovr… »).
+  if(/^(DO|DD)$/.test(dir) || d.overlay || /^ovr/i.test(d.img)) return 'overlay';
   return !dir || /^(MS|ML|MC|sh|tables|CIDs)$/.test(dir) ? 'marqueur' : 'unite';
 }
 
