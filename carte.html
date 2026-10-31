@@ -363,7 +363,9 @@ body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
   margin:0 0 .6em;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 .fenQRDC .oba .obaModule{box-shadow:none}
 .oba .obaTete{display:flex;align-items:center;gap:.5em;margin-bottom:.45em}
-.oba .obaTitre{font-weight:700;color:var(--accent);flex:1}
+.oba .obaTitre{font-weight:700;color:var(--accent)}
+.oba .obaNomLu{font-weight:700}
+.oba .obaSuppr,.oba .obaVerrou{margin-left:auto}
 .oba input.obaNom{font:inherit;width:9em;padding:.15em .4em;background:#1b1b1b;color:#eee;
   border:1px solid var(--bord);border-radius:.3em}
 .oba .obaCompte{display:flex;flex-wrap:wrap;align-items:center;gap:.4em 1.2em;margin-bottom:.55em}
@@ -673,7 +675,7 @@ const EN = {
   'Ajouter une pioche OBA (8 noires, 3 rouges)': 'Add an OBA draw pile (8 black, 3 red)',
   'Nom du module': 'Module name', 'Retirer ce module': 'Remove this module',
   'Retirer ce module OBA ?': 'Remove this OBA module?', 'Module d\'un autre joueur': 'Another player\'s module',
-  'Noires': 'Black', 'Rouges': 'Red', 'Noire': 'Black', 'Rouge': 'Red',
+  'Nom du module :': 'Module name:', 'Noire': 'Black', 'Rouge': 'Red',
   'Une carte noire de moins': 'One less black card', 'Une carte noire de plus': 'One more black card',
   'Une carte rouge de moins': 'One less red card', 'Une carte rouge de plus': 'One more red card',
   'Tirer': 'Draw', 'Tirer une carte': 'Draw a card', 'Pioche': 'Draw pile', 'Pioche vide': 'Empty draw pile',
@@ -13954,19 +13956,18 @@ function _rendreModuleOBA(m, i){
     if(f) b.addEventListener('click', f); else b.disabled = true;
     return b;
   };
-  // Nom du module.
+  // Nom du module (« Module Name » de VASL).
   const tete = document.createElement('div');
   tete.className = 'obaTete';
   const titre = document.createElement('span');
   titre.className = 'obaTitre';
-  titre.textContent = 'OBA';
+  titre.textContent = 'Nom du module :';
   tete.appendChild(titre);
   if(moi){
     const inp = document.createElement('input');
     inp.className = 'obaNom';
     inp.dataset.i = i;
     inp.value = m.label;
-    inp.placeholder = 'Nom du module';
     inp.setAttribute('aria-label', 'Nom du module');
     inp.autocomplete = 'off';
     inp.addEventListener('change', () => obaRegler(i, {label: inp.value}));
@@ -13976,14 +13977,15 @@ function _rendreModuleOBA(m, i){
   } else {
     const nom = document.createElement('span');
     nom.className = 'obaNomLu';
-    nom.textContent = m.label;
+    nom.textContent = m.label || '—';
     const v = document.createElement('span');
+    v.className = 'obaVerrou';
     v.textContent = '🔒';
     v.title = 'Module d\'un autre joueur';
     tete.append(nom, v);
   }
   d.appendChild(tete);
-  // Pioche : noires et rouges.
+  // Pioche : B (noires) et R (rouges), comme « Draw Pile (B/R) » de VASL.
   const compte = document.createElement('div');
   compte.className = 'obaCompte';
   const reglage = (lib, cls, cle, moins, plus) => {
@@ -13999,8 +14001,8 @@ function _rendreModuleOBA(m, i){
     } else st.append(l, v);
     return st;
   };
-  compte.append(reglage('Noires', 'obaNoir', 'black', 'Une carte noire de moins', 'Une carte noire de plus'),
-                reglage('Rouges', 'obaRouge', 'red', 'Une carte rouge de moins', 'Une carte rouge de plus'));
+  compte.append(reglage('B', 'obaNoir', 'black', 'Une carte noire de moins', 'Une carte noire de plus'),
+                reglage('R', 'obaRouge', 'red', 'Une carte rouge de moins', 'Une carte rouge de plus'));
   d.appendChild(compte);
   // Cartes tirées, puis la pioche.
   const cartes = document.createElement('div');
