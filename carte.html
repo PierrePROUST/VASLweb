@@ -165,6 +165,13 @@ body[data-terminal=tactile]{--cible:44px}
 .croixFermer{flex:none;width:30px;height:30px;min-width:30px;padding:0;border-radius:50%;background:#c0392b;color:#fff;
   border:2px solid #fff;font:700 15px/26px system-ui,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.6)}
 .eventail .croixFermer{position:absolute;right:-12px;top:-12px;z-index:2}
+/* Poignée des fenêtres flottantes (éventail de pile, panneau LOS) : on
+   la glisse, à la souris ou au doigt, pour dégager la carte. */
+.poigneeVolant{flex:none;display:flex;align-items:center;justify-content:center;min-width:28px;min-height:28px;
+  color:var(--doux);font-size:16px;line-height:1;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.poigneeVolant:active{cursor:grabbing;color:var(--accent)}
+.eventail .poigneeVolant{margin:-4px 22px 4px;border-bottom:1px solid var(--bord)}
+.panneauFil .poigneeVolant{align-self:stretch;min-height:40px}
 .barrePile .croixFermer{position:sticky;right:0;margin-left:auto}
 .actionsEv{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--bord)}
 /* Commandes rapides en tête du panneau Pile (PC) ; commandes d'état
@@ -625,6 +632,7 @@ const EN = {
   'pour afficher la carte du scénario.': 'to display the scenario map.',
   'Glisser pour régler la largeur du panneau': 'Drag to resize the panel',
   'Glisser pour régler la hauteur du journal': 'Drag to resize the chat log',
+  'Glisser pour déplacer la fenêtre (double clic : la remettre à sa place)': 'Drag to move the window (double-click: put it back)',
   'Pion dissimulé': 'Concealed counter',
   // Panneau : Pile, Palette, Dés
   'Couches que le clic peut sélectionner ; les autres laissent passer le clic':
@@ -6454,7 +6462,9 @@ function panneauFil(f){
     b.addEventListener('pointerdown', e => e.stopPropagation());
     document.getElementById('corps').appendChild(b);
   }
-  b.replaceChildren();
+  b.replaceChildren(_poigneeVolant(() => ({x: b.offsetLeft, y: b.offsetTop}),
+    (x, y) => { _posPanneauFil = {x, y}; _placerPanneauFil(); },
+    () => { _posPanneauFil = null; _placerPanneauFil(); }));
   const pret = !!(f.m && f.src);
   const niveau = (loc, sens) => {
     if(!pret) return;
@@ -6486,9 +6496,22 @@ function panneauFil(f){
   }, pret);
   bt('✓ Valider', 'Valider : rapport « Checked LOS » au chat', () => terminerFil(f), pret && f.compte > 0, 'prim');
   bt('✕', 'Annuler la ligne de vue, sans rapport', () => desarmerFil(), true, 'danger');
+  _placerPanneauFil();
+}
+// En haut à gauche de la carte, ou là où sa poignée l'a mis : il y reste
+// pour les lignes de vue suivantes, sans sortir de la carte.
+let _posPanneauFil = null;       // {x, y} dans #corps, une fois déplacé
+function _placerPanneauFil(){
+  const b = document.getElementById('panneauFil');
+  if(!b) return;
   const w = document.getElementById('mapWrap');
-  b.style.left = (w.offsetLeft + 8) + 'px';
   b.style.maxWidth = (w.clientWidth - 16) + 'px';
+  let x = w.offsetLeft + 8, y = w.offsetTop + 8;
+  if(_posPanneauFil){
+    x = Math.max(w.offsetLeft, Math.min(_posPanneauFil.x, w.offsetLeft + w.clientWidth - b.offsetWidth));
+    y = Math.max(w.offsetTop, Math.min(_posPanneauFil.y, w.offsetTop + w.clientHeight - b.offsetHeight));
+  }
+  b.style.left = x + 'px'; b.style.top = y + 'px';
 }
 function _fermerPanneauFil(){ const b = document.getElementById('panneauFil'); if(b) b.remove(); }
 
@@ -13418,10 +13441,40 @@ function _copiePion(p, cote){
   return boite;
 }
 
+// ── Poignée d'une fenêtre flottante : glissée (souris ou doigt), elle
+// déplace la fenêtre ; un double clic (double appui) la rend à sa place.
+// depart() donne la position de la fenêtre, bouger(x, y) la change.
+function _poigneeVolant(depart, bouger, revenir){
+  const h = document.createElement('div');
+  h.className = 'poigneeVolant';
+  h.textContent = '⠿';
+  const titre = 'Glisser pour déplacer la fenêtre (double clic : la remettre à sa place)';
+  h.title = titre; h.setAttribute('aria-label', titre);
+  h.addEventListener('pointerdown', e => {
+    if(e.button > 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const id = e.pointerId, o = depart(), x0 = e.clientX, y0 = e.clientY;
+    try { h.setPointerCapture(id); } catch(err){}
+    const bouge = ev => { if(ev.pointerId === id){ ev.preventDefault(); bouger(o.x + ev.clientX - x0, o.y + ev.clientY - y0); } };
+    const fin = ev => {
+      if(ev.pointerId !== id) return;
+      h.removeEventListener('pointermove', bouge);
+      h.removeEventListener('pointerup', fin);
+      h.removeEventListener('pointercancel', fin);
+    };
+    h.addEventListener('pointermove', bouge);
+    h.addEventListener('pointerup', fin);
+    h.addEventListener('pointercancel', fin);
+  });
+  h.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); revenir(); });
+  return h;
+}
+
 // ── Éventail de pile : au doigt, viser un pion décalé de 4 px est
 // impossible ; une bande flottante montre la pile en grand, du fond
 // (à gauche) vers le sommet, au-dessus de la pile.
 let _eventail = null;            // {k, el}
+let _posEventail = null;         // {x, y} à l'écran, une fois déplacé
 const EVENTAIL_COTE = 60, EVENTAIL_PAR_RANG = 6;
 function ouvrirEventail(k){
   if(_filArme) return;
@@ -13471,7 +13524,10 @@ function majEventail(){
   const actions = document.createElement('div');
   actions.className = 'actionsEv';
   _rangeeCommandes(actions, false);
-  el.append(_croixFermer('Fermer la pile'), bande, actions);
+  const poignee = _poigneeVolant(() => ({x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0}),
+    (x, y) => { _posEventail = {x, y}; placerEventail(); },
+    () => { _posEventail = null; placerEventail(); });
+  el.append(_croixFermer('Fermer la pile'), poignee, bande, actions);
   document.body.appendChild(el);
   bande.scrollTop = defil;
   placerEventail();
@@ -13488,6 +13544,8 @@ function placerEventail(){
   let x = (r.left + r.right) / 2 - L / 2;
   let y = Math.min(r.top, bas.top) - H - 10;
   if(y < w.top + 4) y = Math.max(r.bottom, bas.bottom) + 10;
+  // Déplacé par sa poignée : il reste où on l'a mis, d'une pile à l'autre.
+  if(_posEventail){ x = _posEventail.x; y = _posEventail.y; }
   x = Math.max(w.left + 8, Math.min(x, w.right - L - 8));
   y = Math.max(w.top + 4, Math.min(y, w.bottom - H - 4));
   el.style.left = x + 'px'; el.style.top = y + 'px';
@@ -13573,7 +13631,7 @@ function _vignetteEventail(p, k, bande, marque){
 }
 
 // L'éventail et la barre suivent la sélection, la pile et la vue.
-_apresRedimension.push(() => { placerEventail(); _placerBarrePile(); if(_fil) dessinerFil(); });
+_apresRedimension.push(() => { placerEventail(); _placerBarrePile(); _placerPanneauFil(); if(_fil) dessinerFil(); });
 _apresProfil.push(() => { fermerEventail(); majBarrePile(); });
 document.addEventListener('pointerdown', e => {
   if(_eventail && !e.target.closest('#eventail, .feuille, .voile, #barrePile')) {
