@@ -675,7 +675,7 @@ const EN = {
   'Ajouter une pioche OBA (8 noires, 3 rouges)': 'Add an OBA draw pile (8 black, 3 red)',
   'Nom du module': 'Module name', 'Retirer ce module': 'Remove this module',
   'Retirer ce module OBA ?': 'Remove this OBA module?', 'Module d\'un autre joueur': 'Another player\'s module',
-  'Nom du module :': 'Module name:', 'Noire': 'Black', 'Rouge': 'Red',
+  'Noire': 'Black', 'Rouge': 'Red',
   'Une carte noire de moins': 'One less black card', 'Une carte noire de plus': 'One more black card',
   'Une carte rouge de moins': 'One less red card', 'Une carte rouge de plus': 'One more red card',
   'Tirer': 'Draw', 'Tirer une carte': 'Draw a card', 'Pioche': 'Draw pile', 'Pioche vide': 'Empty draw pile',
@@ -13961,14 +13961,14 @@ function _rendreModuleOBA(m, i){
   tete.className = 'obaTete';
   const titre = document.createElement('span');
   titre.className = 'obaTitre';
-  titre.textContent = 'Nom du module :';
+  titre.textContent = 'Module Name:';
   tete.appendChild(titre);
   if(moi){
     const inp = document.createElement('input');
     inp.className = 'obaNom';
     inp.dataset.i = i;
     inp.value = m.label;
-    inp.setAttribute('aria-label', 'Nom du module');
+    inp.setAttribute('aria-label', 'Module Name');
     inp.autocomplete = 'off';
     inp.addEventListener('change', () => obaRegler(i, {label: inp.value}));
     inp.addEventListener('keydown', e => { if(e.key === 'Enter') inp.blur(); });
@@ -14001,7 +14001,10 @@ function _rendreModuleOBA(m, i){
     } else st.append(l, v);
     return st;
   };
-  compte.append(reglage('B', 'obaNoir', 'black', 'Une carte noire de moins', 'Une carte noire de plus'),
+  const pioche = document.createElement('span');
+  pioche.className = 'obaTitre';
+  pioche.textContent = 'Draw Pile (B/R):';
+  compte.append(pioche, reglage('B', 'obaNoir', 'black', 'Une carte noire de moins', 'Une carte noire de plus'),
                 reglage('R', 'obaRouge', 'red', 'Une carte rouge de moins', 'Une carte rouge de plus'));
   d.appendChild(compte);
   // Cartes tirées, puis la pioche.
