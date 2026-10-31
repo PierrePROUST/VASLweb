@@ -152,8 +152,7 @@ body[data-terminal=tactile]{--cible:44px}
 .eventail{position:fixed;z-index:9550;background:rgba(28,28,28,.97);border:1px solid var(--accent);border-radius:8px;
   box-shadow:0 6px 22px rgba(0,0,0,.65);padding:6px;max-width:calc(100vw - 16px)}
 .bandeEv{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-height:45vh;overflow:auto}
-.bandeEv .tout{flex:none;align-self:stretch;min-width:44px}
-.sommetEv{font-size:11px;color:var(--doux);flex:none}
+.bandeEv .tout,.bandeEv .aucun{flex:none;align-self:stretch;min-width:44px}
 .vigEv{position:relative;flex:none;padding:2px;border:2px solid transparent;border-radius:5px;touch-action:none}
 .vigEv.sel{border-color:var(--accent);background:rgba(217,164,65,.18)}
 .vigEv.horsCouche{opacity:.35}
@@ -662,7 +661,7 @@ const EN = {
   'Retirer de la carte': 'Delete from map',
   'Pions de la pile': 'Counters in stack',
   'Tout': 'All', 'Sélectionner toute la pile': 'Select the whole stack',
-  'sommet ▸': 'top ▸',
+  'Aucun': 'None', 'Désélectionner tous les pions de la pile': 'Deselect all counters of the stack',
   'Retirer de la sélection': 'Remove from selection', 'Ajouter à la sélection': 'Add to selection',
   'poses multiples': 'multiple placements', 'Annuler': 'Cancel',
   // Ligne de vue
@@ -13517,10 +13516,18 @@ function majEventail(){
   marque.className = 'inserEv';
   marque.hidden = true;
   for(const p of s) bande.appendChild(_vignetteEventail(p, ev.k, bande, marque));
-  const som = document.createElement('span');
-  som.className = 'sommetEv';
-  som.textContent = 'sommet ▸';
-  bande.append(som, marque);
+  // Aucun : la pile reste ouverte, sans pion sélectionné.
+  const aucun = document.createElement('button');
+  aucun.type = 'button'; aucun.className = 'act bouton aucun';
+  aucun.textContent = 'Aucun';
+  aucun.title = 'Désélectionner tous les pions de la pile';
+  aucun.addEventListener('click', () => {
+    selectionner([]);
+    _pileSel = ev.k;
+    afficherPile();
+    vibrer();
+  });
+  bande.append(aucun, marque);
   const actions = document.createElement('div');
   actions.className = 'actionsEv';
   _rangeeCommandes(actions, false);

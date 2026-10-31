@@ -13,6 +13,9 @@ const {ouvrir} = require('./commun.js');
       if(doigt){
         await touche('touchStart', [[x, y, 1]]);
         for(let i = 1; i <= 8; i++) await touche('touchMove', [[x + (tx-x)*i/8, y + (ty-y)*i/8, 1]]);
+        // Doigt arrêté avant d'être levé : sinon Chrome lance un « fling »
+        // et l'appui suivant ne sert qu'à l'arrêter.
+        await pg.waitForTimeout(100);
         await touche('touchEnd', []);
       } else {
         await pg.mouse.move(x, y); await pg.mouse.down();
@@ -35,6 +38,12 @@ const {ouvrir} = require('./commun.js');
     // Reconstruit (sélection d'un pion) : il reste où on l'a mis.
     await pg.evaluate(() => majEventail());
     o.ev2 = await pos('#eventail');
+    // « Aucun » : plus de pion sélectionné, l'éventail reste ouvert ; « Tout » les reprend.
+    const bouton = c => pg.evaluate(c => { const r = document.querySelector('#eventail .' + c).getBoundingClientRect(); return [r.left + r.width/2, r.top + r.height/2]; }, c);
+    [x, y] = await bouton('aucun'); await tap(x, y);
+    o.aucun = await pg.evaluate(() => [_sel.size, !!_eventail, _pileSel, document.querySelectorAll('#eventail .vigEv.sel').length]);
+    [x, y] = await bouton('tout'); await tap(x, y);
+    o.tout = await pg.evaluate(() => [_sel.size, document.querySelectorAll('#eventail .vigEv.sel').length]);
     // Panneau LOS : fil ancré au doigt.
     await pg.evaluate(() => fermerPile());
     await pg.evaluate(() => armerFil('L'));
