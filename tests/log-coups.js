@@ -1,8 +1,9 @@
-// Coups d'un .vlog écrit ici : le D/ « moved » d'un pion VASL finit par
-// une contre-oblique (« …;OldMap;Main Map\ »). Dernier de son coup, il
+// Coups d'un .vlog écrit ici : si le D/ « moved » d'un pion finit par
+// une contre-oblique (« …;OldMap;Main Map\ »), dernier de son coup, il
 // doit être mis entre apostrophes (SequenceEncoder.append), sans quoi
 // cette contre-oblique échappe l'ESC qui le suit et, relus, deux
-// déplacements ne font plus qu'un coup.
+// déplacements ne font plus qu'un coup. (Celle que VASSAL met après
+// chaque pièce de la sauvegarde est retirée à l'import : log-etat-depart.js.)
 const nav = require('./navigateur.js');
 (async () => {
   const b = await nav.lancer();

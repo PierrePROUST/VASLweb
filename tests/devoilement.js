@@ -3,7 +3,8 @@
 // adversaires de démasquer mes unités ». Le .vlog porte alors la commande
 // UNMASK avec son identifiant. Rouvert par Bob, l'unité reste voilée
 // (« ? ») et ses commandes refusées, sauf Conceal, qui la démasque ;
-// sans la case, Conceal lui est refusé aussi.
+// sans la case, Conceal lui est refusé aussi. Un observateur peut cocher
+// la case : elle s'applique quand il s'identifie.
 const nav = require('./navigateur.js');
 (async () => {
   const b = await nav.lancer();
@@ -45,7 +46,24 @@ const nav = require('./navigateur.js');
       commander([p], _cmdDemasque(p).touche); await att();
       return {unmask, titre, refuse, menu, demasque: !lirePiece(p.seg).masque};
     };
-    return {avec: await relire(await ecrire(true)), sans: await relire(await ecrire(false))};
+    // Observateur : la case se coche ; elle vaut dès qu'il s'identifie,
+    // pendant le log, et l'état de départ du .vlog porte son identifiant.
+    const observateur = async () => {
+      try { localStorage.removeItem('aslweb.OpponentUnmaskable'); } catch(e){}
+      await chargerPartie(partie, 'd.vsav', new Map()); await att(); fermer();
+      seConnecter(null, false);
+      commencerLog();
+      const c = document.getElementById('lgDevoile');
+      const libre = !c.disabled;
+      c.click();
+      document.getElementById('lgOk').click();
+      seConnecter({nom: 'Alice', mdp: 'secretA'}, false);
+      fixerMasque(parUid('T1'), idJoueur()); await att();
+      deplacer([parUid('T2')], 1260, 700); await att();
+      terminerLog(); await att();
+      return {libre, coche: c.checked, unmask: texte.split('\x1b').find(s => s.startsWith('UNMASK\t'))};
+    };
+    return {avec: await relire(await ecrire(true)), sans: await relire(await ecrire(false)), observateur: await observateur()};
   });
   console.log(JSON.stringify(r), errs.length ? errs : 'sans erreur');
   await b.close();
