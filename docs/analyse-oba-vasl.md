@@ -72,11 +72,12 @@ l'ESC est précédé d'une contre-oblique dans le `.vsav`.
   distance ; Undo et la relecture (avant, arrière) les suivent.
 - Le propriétaire est `idJoueur()` (le mot de passe de l'utilisateur, comme
   pour les masques) ; l'administrateur commande tous les modules.
-- Au PC : une fenêtre flottante « OBA Modules » (bouton OBA de la barre,
-  menu Outils, F6).
-- En tactile : bouton OBA dans la colonne d'icônes ; les modules sont posés
-  sous les boards, au-dessus des tables QRDC, comme elles ; nombres réglés
-  par − / +, tirage et remise d'un appui ; texte et cartes gardent une
-  taille touchable quand la carte s'éloigne.
+- Les modules sont un **onglet « OBA » des tables QRDC**, ajouté après les
+  onglets du module (IFT, CC, Ordnance TH, Vehicle TK, Concealment) : sous
+  les boards en tactile, dans la fenêtre QRDC au PC. Le bouton OBA
+  (colonne d'icônes, barre, menu Outils, F6) ouvre les tables sur cet
+  onglet ; un second appui les referme.
+- En tactile : nombres réglés par − / +, tirage et remise d'un appui ;
+  texte et cartes gardent une taille touchable quand la carte s'éloigne.
 - Les champs OBO sont lus et réécrits tels quels, mais pas proposés : la
   LOS de la page ne connaît pas l'observateur hors carte.

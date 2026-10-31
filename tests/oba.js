@@ -1,5 +1,5 @@
-// OBA (VASL.build.module.OBA). En tactile : bouton OBA de la colonne
-// d'icônes, pioches posées sous les boards au-dessus des tables QRDC ;
+// OBA (VASL.build.module.OBA), onglet des tables QRDC. En tactile : bouton
+// OBA de la colonne d'icônes, tables sous les boards ouvertes sur l'onglet ;
 // ajout d'un module (8 noires, 3 rouges), tirage au doigt et message
 // « Battery Access Draw », carte remise, Undo, nombres changés (cartes
 // tirées écartées), module d'un autre joueur en lecture seule ; commandes
@@ -35,35 +35,34 @@ const {ouvrir} = require('./commun.js');
     return [e.left + e.width/2, e.top + e.height/2];
   });
   await touche('touchStart', [[ox, oy, 1]]); await touche('touchEnd', []);
-  await pg.waitForSelector('#zoneOBA');
+  await pg.waitForSelector('#tablesQRDC .ongletOBA');
   const pl = await pg.evaluate(() => {
-    const z = document.getElementById('zoneOBA'), t = document.getElementById('tablesQRDC'), e = _empriseBoards;
-    const r = rectTables();
-    return {ecart: Math.round((r.y - (e.y + e.h)) / SC), dessus: z.offsetTop + z.offsetHeight <= t.offsetTop,
-            meme: z.parentElement === t.parentElement, coche: obaOuvert()};
+    const o = [...document.querySelectorAll('#tablesQRDC .qOnglets')][0];
+    return {onglets: [...o.querySelectorAll('button')].map(b => (b.classList.contains('actif') ? '*' : '') + b.textContent).join(' | '),
+            images: document.querySelectorAll('#tablesQRDC img').length, coche: obaOuvert()};
   });
-  console.log('Zone OBA sous les boards (px natifs) :', pl.ecart, '; au-dessus des tables QRDC :', pl.dessus && pl.meme, '; coché :', pl.coche);
+  console.log('Onglets :', pl.onglets, '; images de tables montrées :', pl.images, '; coché :', pl.coche);
 
-  await tap('#zoneOBA .obaAjout');
+  await tap('#tablesQRDC .ongletOBA .obaAjout');
   console.log('Module ajouté :', await etat(), '—', (await derniers(1)).join(' '));
-  await tap('#zoneOBA .obaPioche');
+  await tap('#tablesQRDC .ongletOBA .obaPioche');
   const t1 = await pg.evaluate(() => ({cmds: _histo.flatMap(e => e.cmds).slice(-2),
     chat: [...document.querySelectorAll('#journal .obaJet')].map(l => l.textContent).pop()}));
   console.log('Tirage au doigt :', await etat(), '— commandes :', t1.cmds.join(' | '), '— chat :', t1.chat);
-  await tap('#zoneOBA .obaCarte');
+  await tap('#tablesQRDC .ongletOBA .obaCarte');
   console.log('Carte remise :', await etat(), '—', (await derniers(1)).join(' '));
-  for(let i = 0; i < 3; i++) await tap('#zoneOBA .obaPioche');
+  for(let i = 0; i < 3; i++) await tap('#tablesQRDC .ongletOBA .obaPioche');
   const avant = await etat();
   await pg.evaluate(() => annuler());
   console.log('3 tirages :', avant, '; Undo :', await etat(), '—', (await derniers(1)).join(' '));
-  await tap('#zoneOBA .obaNoir button:has-text("+")');
+  await tap('#tablesQRDC .ongletOBA .obaNoir button:has-text("+")');
   console.log('Une noire de plus (cartes tirées écartées) :', await etat());
   await pg.screenshot({path: __dirname + '/sortie/oba_tactile.png'});
 
   // Le module d'un autre joueur : visible, sans commande.
   const autre = await pg.evaluate(() => {
     _utilisateur = {nom: 'Marc', mdp: 'pw2'}; _dessinerOBA();
-    const z = document.getElementById('zoneOBA');
+    const z = document.querySelector('#tablesQRDC .ongletOBA');
     const r = {pioche: z.querySelector('.obaPioche').disabled, saisie: !!z.querySelector('input.obaNom'),
                tire: obaTirer(0), plus: z.querySelectorAll('.obaSt button').length};
     _utilisateur = {nom: 'Pierre', mdp: 'pw1'}; _dessinerOBA();
@@ -73,8 +72,8 @@ const {ouvrir} = require('./commun.js');
               '; tirage refusé :', autre.tire === false, '; boutons ± :', autre.plus);
 
   // Nom du module, saisi au clavier.
-  await pg.fill('#zoneOBA input.obaNom', 'Div 105');
-  await pg.press('#zoneOBA input.obaNom', 'Enter');
+  await pg.fill('#tablesQRDC .ongletOBA input.obaNom', 'Div 105');
+  await pg.press('#tablesQRDC .ongletOBA input.obaNom', 'Enter');
   await pg.waitForTimeout(100);
   console.log('Nom :', await etat(), '—', (await derniers(1)).join(' '));
 
@@ -122,20 +121,26 @@ const {ouvrir} = require('./commun.js');
   console.log('Relu :', lg.relus.join(' → '), `(${lg.etapes} coups)`, '; deux coups en arrière :', lg.recul);
 
   // Masqué par la commande : la zone disparaît, les tables restent.
-  const m = await pg.evaluate(async () => { await basculerOBA(); return {zone: !!document.getElementById('zoneOBA'),
-    tables: !!document.getElementById('tablesQRDC')}; });
-  console.log('Masquée — zone :', m.zone, '; tables :', m.tables);
+  // Onglet IFT puis OBA au doigt ; le bouton OBA referme les tables.
+  await pg.evaluate(() => document.querySelectorAll('.fenetre').forEach(f => f.remove()));
+  await tap('#tablesQRDC .qOnglets button:has-text("IFT")');
+  const ift = await pg.evaluate(() => ({oba: !!document.querySelector('.ongletOBA'), coche: obaOuvert()}));
+  await tap('#tablesQRDC .qOnglets button:has-text("OBA")');
+  const m = await pg.evaluate(async () => { const a = obaOuvert(); await basculerOBA();
+    return {a, tables: !!document.getElementById('tablesQRDC'), coche: obaOuvert()}; });
+  console.log('Onglet IFT — OBA montré :', ift.oba, '; coché :', ift.coche, '— onglet OBA au doigt :', m.a,
+              '— bouton OBA : tables fermées :', !m.tables, '; décoché :', !m.coche);
 
-  // PC : fenêtre « OBA Modules », tirage à la souris, F6 la ferme.
+  // PC : fenêtre QRDC sur l'onglet OBA, tirage à la souris, F6 la ferme.
   await pg.evaluate(() => { choisirProfil('pc'); basculerOBA(); });
-  await pg.waitForSelector('#fenOBA');
+  await pg.waitForSelector('#fenQRDC .ongletOBA');
   const n0 = await pg.evaluate(() => _oba.reduce((s, m) => s + m.showing.length, 0));
-  await pg.click('#fenOBA .obaModule.moi .obaPioche');
+  await pg.click('#fenQRDC .obaModule.moi .obaPioche');
   const n1 = await pg.evaluate(() => _oba.reduce((s, m) => s + m.showing.length, 0));
-  console.log('PC — fenêtre :', await pg.$eval('#fenOBA .qTitre', e => e.textContent.trim()), '; tirage au clic :', n1 === n0 + 1);
+  console.log('PC — fenêtre :', await pg.$eval('#fenQRDC .qTitre', e => e.textContent.trim()), '; tirage au clic :', n1 === n0 + 1);
   await pg.screenshot({path: __dirname + '/sortie/oba_pc.png'});
   await pg.keyboard.press('F6');
-  console.log('F6 ferme la fenêtre :', !(await pg.$('#fenOBA')));
+  console.log('F6 ferme la fenêtre :', !(await pg.$('#fenQRDC')));
   console.log(errs.length ? errs.join('\n') : 'Aucune erreur');
   await b.close();
 })();

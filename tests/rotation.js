@@ -90,7 +90,7 @@ const {ouvrir} = require('./commun.js');
     const el = document.getElementById('tablesQRDC'), m = document.getElementById('mapInner').getBoundingClientRect();
     if(!el) return null;
     const r = el.getBoundingClientRect();
-    return {horsCarte: (el.closest('.sousCarte') || el).parentElement.id, sous: r.top >= m.bottom, vise: clientVersCarte(r.left + 20, r.top + 20, null, true)};
+    return {horsCarte: el.parentElement.id, sous: r.top >= m.bottom, vise: clientVersCarte(r.left + 20, r.top + 20, null, true)};
   });
   console.log(JSON.stringify(out), errs, t.errs);
   await t.b.close();

@@ -330,9 +330,7 @@ body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
 .boardLayer{position:absolute;pointer-events:none}
 /* Tables QRDC sous la zone de la carte : au-dessus des boards, sous les
    pions. Les onglets gardent une taille lisible quand la carte s'éloigne. */
-/* Sous les boards, en tactile : les pioches OBA, puis les tables QRDC. */
-.sousCarte{position:absolute;z-index:1;cursor:default;display:flex;flex-direction:column;align-items:flex-start}
-.tablesQRDC{cursor:default}
+.tablesQRDC{position:absolute;z-index:1;cursor:default}
 .tablesQRDC .qOnglets{display:flex;flex-wrap:wrap;gap:.25em;margin:.4em 0;font-size:calc(13px * max(1, var(--zinv, 1)))}
 .tablesQRDC .qOnglets button{font:inherit;padding:.25em .8em;background:#262626;color:#ccc;
   border:1px solid var(--bord);border-radius:.3em;cursor:pointer}
@@ -356,15 +354,14 @@ body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
 .fenQRDC .qPanneau{display:flex;align-items:flex-start;gap:8px}
 .fenQRDC .qPanneau.vert{flex-direction:column}
 .fenQRDC img{display:block;max-width:none}
-/* OBA : les pioches de cartes de VASL (fenêtre « OBA Modules »). Sur la
-   carte, le texte et les cartes gardent une taille lisible et touchable
-   quand la carte s'éloigne ; au PC, une fenêtre flottante. */
-.zoneOBA{font-size:calc(15px * max(1, var(--zinv, 1)))}
-.fenOBA{left:140px;top:150px;width:min(92vw,480px);height:auto;max-height:80vh;min-height:0}
-.oba{color:#ddd}
+/* OBA : les pioches de cartes de VASL (fenêtre « OBA Modules »), en
+   onglet des tables QRDC. Sur la carte, le texte et les cartes gardent une
+   taille lisible et touchable quand la carte s'éloigne. */
+.tablesQRDC .oba{font-size:calc(15px * max(1, var(--zinv, 1)))}
+.oba{color:#ddd;max-width:32em}
 .oba .obaModule{background:rgba(20,20,20,.9);border:1px solid var(--bord);border-radius:.4em;padding:.5em .7em;
   margin:0 0 .6em;box-shadow:0 2px 8px rgba(0,0,0,.5)}
-.fenOBA .oba .obaModule{margin-top:.6em;box-shadow:none}
+.fenQRDC .oba .obaModule{box-shadow:none}
 .oba .obaTete{display:flex;align-items:center;gap:.5em;margin-bottom:.45em}
 .oba .obaTitre{font-weight:700;color:var(--accent);flex:1}
 .oba input.obaNom{font:inherit;width:9em;padding:.15em .4em;background:#1b1b1b;color:#eee;
@@ -671,8 +668,7 @@ const EN = {
   'Unités': 'Units', 'Marqueurs': 'Markers', 'Cartes et panneaux': 'Maps and panels',
   'Tables QRDC sous la carte': 'QRDC charts below the map', 'Tables QRDC (fenêtre)': 'QRDC charts (window)',
   'Tables QRDC indisponibles.': 'QRDC charts unavailable.',
-  'OBA — pioches de cartes sous la carte': 'OBA — draw piles below the map',
-  'OBA — pioches de cartes (fenêtre)': 'OBA — draw piles (window)',
+  'OBA — pioches de cartes (onglet des tables QRDC)': 'OBA — draw piles (QRDC charts tab)',
   'Aucun module OBA.': 'No OBA module.', '+ Module OBA': '+ OBA module',
   'Ajouter une pioche OBA (8 noires, 3 rouges)': 'Add an OBA draw pile (8 black, 3 red)',
   'Nom du module': 'Module name', 'Retirer ce module': 'Remove this module',
@@ -13380,6 +13376,13 @@ async function _chargerBDD(){
   const fenCharts = [...mod.children].filter(w => w.tagName.endsWith('.ChartWindow'));
   const cw = fenCharts.find(w => w.getAttribute('name') === 'QRDC') || fenCharts[0];
   const qrdc = cw ? lireTables(cw) : null;
+  // Les pioches OBA : un onglet de plus, après ceux du module.
+  const premierOnglets = n => n.t === 'TabWidget' ? n : n.enfants.reduce((r, e) => r || premierOnglets(e), null);
+  const ongletsQRDC = qrdc && premierOnglets(qrdc);
+  if(ongletsQRDC){
+    ongletsQRDC.enfants.push({id: qid++, t: 'OBA', nom: 'OBA', enfants: []});
+    qrdc.oba = {onglets: ongletsQRDC.id, rang: ongletsQRDC.enfants.length - 1};
+  }
   _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, version: mod.getAttribute('version')};
   rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
@@ -13539,11 +13542,9 @@ function remplirGrille(liste){
 // log, et aucun pion ne peut s'y poser. Les pièces déjà posées sous les
 // boards (carte de scénario, unités hors carte) gardent leur place : les
 // tables passent sous elles.
-// Les pioches OBA, quand elles sont montrées, viennent au même endroit,
-// juste au-dessus des tables : un seul bloc (_tablesEl) sous la carte.
+// Les pioches OBA y sont un onglet de plus, après ceux du module.
 // ═══════════════════════════════════════════════════════════════
 const ECART_TABLES = 3 * 48;          // trois petits pions, pixels natifs
-const ECART_OBA = 48;                 // un petit pion entre OBA et tables
 let _empriseBoards = null;            // {x, y, w, h} en pixels de #mapInner
 let _mapBase = null;                  // taille de la carte sans les tables
 let _tablesEl = null;
@@ -13559,34 +13560,15 @@ function _oublierTables(){
 
 async function poserTables(){
   _oublierTables();
-  if(!_empriseBoards || !_telLike() || !(_tablesVisibles || _obaVisible)) return;
-  let bdd = null;
-  if(_tablesVisibles) try { bdd = await chargerBDD(); } catch(e){}
-  if(_tablesEl || !_empriseBoards || !_telLike()) return;
-  const qrdc = _tablesVisibles && bdd && bdd.qrdc;
-  if(!qrdc && !_obaVisible) return;
+  if(!_empriseBoards || !_tablesVisibles || !_telLike()) return;
+  let bdd;
+  try { bdd = await chargerBDD(); } catch(e){ return; }
+  if(!bdd.qrdc || _tablesEl || !_empriseBoards || !_tablesVisibles || !_telLike()) return;
   const el = document.createElement('div');
-  el.id = 'sousCarte';
-  el.className = 'sousCarte';
-  el.style.gap = Math.round(ECART_OBA * SC) + 'px';
-  if(_obaVisible){
-    const z = document.createElement('div');
-    z.id = 'zoneOBA';
-    z.className = 'zoneOBA oba';
-    z.setAttribute('role', 'region');
-    z.setAttribute('aria-label', 'OBA');
-    _brancherOBA(z);
-    _rendreOBA(z);
-    el.appendChild(z);
-  }
-  if(qrdc){
-    const t = document.createElement('div');
-    t.id = 'tablesQRDC';
-    t.className = 'tablesQRDC';
-    t.setAttribute('role', 'region');
-    t.setAttribute('aria-label', 'Tables QRDC');
-    el.appendChild(t);
-  }
+  el.id = 'tablesQRDC';
+  el.className = 'tablesQRDC';
+  el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', 'Tables QRDC');
   // Sous l'emprise des boards, et sous les pièces déjà posées plus bas.
   let bas = _empriseBoards.y + _empriseBoards.h;
   for(const p of vivants()){
@@ -13621,8 +13603,7 @@ function _placerTables(){
 // VASL (un pixel de l'image pour un pixel de l'écran).
 function _dessinerTables(){
   if(!_bdd || !_bdd.qrdc) return;
-  const t = _tablesEl && _tablesEl.querySelector('.tablesQRDC');
-  if(t){ t.replaceChildren(); rendreTable(_bdd.qrdc, t, SC); }
+  if(_tablesEl){ _tablesEl.replaceChildren(); rendreTable(_bdd.qrdc, _tablesEl, SC); }
   const f = document.querySelector('#fenQRDC .qCorps');
   if(f){ f.replaceChildren(); rendreTable(_bdd.qrdc, f, 1); }
 }
@@ -13630,6 +13611,14 @@ function _dessinerTables(){
 // Comme les widgets de la palette : seule la branche choisie est dessinée,
 // et le choix de chaque onglet est retenu d'une visite à l'autre.
 function rendreTable(n, boite, k){
+  if(n.t === 'OBA'){
+    const z = document.createElement('div');
+    z.className = 'oba ongletOBA';
+    _brancherOBA(z);
+    _rendreOBA(z);
+    boite.appendChild(z);
+    return;
+  }
   if(n.t === 'Chart'){
     const im = document.createElement('img');
     im.alt = im.title = n.nom;
@@ -13657,6 +13646,7 @@ function rendreTable(n, boite, k){
         _tablesSel.set(n.id, i);
         try { localStorage.setItem('qrdcSel', JSON.stringify([..._tablesSel])); } catch(e){}
         _dessinerTables();
+        rafraichirActions(['oba']);
       });
       o.appendChild(b);
     });
@@ -13731,20 +13721,15 @@ async function ouvrirFenetreTables(){
 }
 function fermerFenetreTables(){
   const w = document.getElementById('fenQRDC');
-  if(w){ w.remove(); rafraichirActions(['tables']); }
+  if(w){ w.remove(); rafraichirActions(['tables', 'oba']); }
 }
 
 // Changement de profil : la fenêtre au PC, la couche de la carte en tactile.
 _apresProfil.push(() => {
-  if(_telLike()){ fermerFenetreTables(); fermerFenetreOBA(); if(!_tablesEl) poserTables(); }
+  if(_telLike()){ fermerFenetreTables(); if(!_tablesEl) poserTables(); }
   else if(_tablesEl){ _oublierTables(); _etendreCarte(true); }
 });
 
-// Le bloc sous la carte est refait : une partie montrée ou cachée.
-async function _reposerSousCarte(){
-  await poserTables();
-  if(!_tablesEl) _etendreCarte(true);
-}
 
 function basculerTables(){
   if(!_telLike()){
@@ -13753,8 +13738,12 @@ function basculerTables(){
   }
   _tablesVisibles = !_tablesVisibles;
   try { localStorage.setItem('aslweb.tables', _tablesVisibles ? '1' : '0'); } catch(e){}
-  _reposerSousCarte();
-  rafraichirActions(['tables']);
+  if(_tablesVisibles) poserTables();
+  else {
+    _oublierTables();
+    _etendreCarte(true);
+  }
+  rafraichirActions(['tables', 'oba']);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -13780,11 +13769,10 @@ function basculerTables(){
 // « tirées » : une lettre par carte tirée, « b » noire, « r » rouge.
 // L'observateur hors carte (OBO) est gardé tel quel mais pas proposé :
 // la LOS de cette page ne le prend pas en compte.
-// En tactile, les modules sont posés sous les boards, au-dessus des
-// tables QRDC ; au PC, ils s'ouvrent dans une fenêtre flottante.
+// Ils sont un onglet des tables QRDC : sous les boards en tactile, dans la
+// fenêtre QRDC au PC. Le bouton OBA (F6) ouvre les tables sur cet onglet.
 // ═══════════════════════════════════════════════════════════════
 let _oba = [];                        // {owner, label, red, black, showing, obohex, obolevel}
-let _obaVisible = _lirePref('aslweb.oba') === '1';   // en tactile
 const _obaInv = new Map();            // commande appliquée → ses inverses (Undo)
 
 // SequenceEncoder.append : délimiteur précédé d'une contre-oblique ;
@@ -13912,9 +13900,9 @@ function obaRetirer(i){
   return true;
 }
 
-// ── Affichage : la même liste sur la carte (tactile) et dans la fenêtre.
+// ── Affichage : l'onglet OBA, sur la carte (tactile) ou dans la fenêtre.
 function _dessinerOBA(){
-  for(const b of document.querySelectorAll('#zoneOBA, #fenOBA .qCorps')) _rendreOBA(b);
+  for(const b of document.querySelectorAll('.ongletOBA')) _rendreOBA(b);
 }
 function _majOBA(){
   _dessinerOBA();
@@ -14032,35 +14020,29 @@ function _rendreModuleOBA(m, i){
   return d;
 }
 
-// ── Fenêtre du PC, comme celle de VASL ; en tactile, la zone sous les
-// boards (ou la fenêtre, tant qu'aucune partie n'est ouverte).
-function ouvrirFenetreOBA(){
-  if(document.getElementById('fenOBA')) return;
-  const w = _fenetreFlottante('fenOBA', 'fenQRDC fenOBA', 'OBA Modules', '', fermerFenetreOBA);
-  const c = w.querySelector('.qCorps');
-  c.classList.add('oba');
-  _brancherOBA(c);
-  _rendreOBA(c);
-  rafraichirActions(['oba']);
-}
-function fermerFenetreOBA(){
-  const w = document.getElementById('fenOBA');
-  if(w){ w.remove(); rafraichirActions(['oba']); }
-}
-const obaOuvert = () => _telLike() && _empriseBoards ? _obaVisible : !!document.getElementById('fenOBA');
+// ── Bouton OBA (F6) : les tables QRDC, ouvertes sur l'onglet OBA ; un
+// second appui les referme. Sans partie ouverte, en tactile, la fenêtre.
+const _ongletOBA = () => _bdd && _bdd.qrdc && _bdd.qrdc.oba;
+const _surOngletOBA = () => { const o = _ongletOBA(); return !!o && (_tablesSel.get(o.onglets) || 0) === o.rang; };
+const _tablesOuvertes = () => _telLike() && _empriseBoards ? !!_tablesEl : !!document.getElementById('fenQRDC');
+const obaOuvert = () => _tablesOuvertes() && _surOngletOBA();
 
 async function basculerOBA(){
-  if(!_telLike() || !_empriseBoards){
-    if(document.getElementById('fenOBA')) fermerFenetreOBA(); else ouvrirFenetreOBA();
-    return;
-  }
-  _obaVisible = !_obaVisible;
-  try { localStorage.setItem('aslweb.oba', _obaVisible ? '1' : '0'); } catch(e){}
-  rafraichirActions(['oba']);
-  await _reposerSousCarte();
-  // La zone est sous les boards : la vue y descend.
-  const z = _obaVisible && document.getElementById('zoneOBA');
-  if(z) z.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'smooth'});
+  if(obaOuvert()){ _telLike() && _empriseBoards ? basculerTables() : fermerFenetreTables(); return; }
+  try { await chargerBDD(); } catch(e){}
+  const o = _ongletOBA();
+  if(!o){ chatLog('⚠️ Tables QRDC indisponibles : pas d\'onglet OBA.'); return; }
+  _tablesSel.set(o.onglets, o.rang);
+  try { localStorage.setItem('qrdcSel', JSON.stringify([..._tablesSel])); } catch(e){}
+  if(_telLike() && _empriseBoards){
+    if(!_tablesEl) basculerTables(); else _dessinerTables();
+    // Les tables sont sous les boards : la vue y descend.
+    for(let n = 0; n < 40 && !document.querySelector('#tablesQRDC .ongletOBA'); n++) await new Promise(r => setTimeout(r, 50));
+    const z = document.querySelector('#tablesQRDC .qOnglets');
+    if(z) z.scrollIntoView({block: 'start', inline: 'nearest', behavior: 'smooth'});
+  } else if(document.getElementById('fenQRDC')) _dessinerTables();
+  else await ouvrirFenetreTables();
+  rafraichirActions(['oba', 'tables']);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -15908,7 +15890,7 @@ const ACTIONS = {
   tables:   {img: 'QRDC.gif', lib: () => _telLike() ? 'Tables QRDC sous la carte' : 'Tables QRDC (fenêtre)', court: 'QRDC',
              coche: () => _telLike() ? _tablesVisibles : !!document.getElementById('fenQRDC'), faire: basculerTables},
   // Bouton « OBA » de VASL (F6) : les pioches de cartes Battery Access.
-  oba:      {lib: () => _telLike() && _empriseBoards ? 'OBA — pioches de cartes sous la carte' : 'OBA — pioches de cartes (fenêtre)',
+  oba:      {lib: 'OBA — pioches de cartes (onglet des tables QRDC)',
              court: 'OBA', ico: 'OBA', classe: 'sigle', touche: 'F6', coche: obaOuvert, faire: basculerOBA},
   effectif: {ico: '🔢', lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
