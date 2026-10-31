@@ -19,6 +19,7 @@ compare(){   # nom, commande sur la référence, commande sur la version courant
 echo "— Syntaxe"
 awk '/^<script>$/{f=1;next}/^<\/script>$/{f=0}f' "$CARTE" > script.js && node --check script.js && echo "✔ node --check" || echecs=$((echecs+1))
 node "$ICI/erreurs.js" "$CARTE"
+node "$ICI/accrochage.js" "$CARTE" || echecs=$((echecs+1))
 echo "— Non-régression contre $REF"
 node "$ICI/banc.js" ref.html export_ref.json >/dev/null; node "$ICI/banc.js" "$CARTE" export.json >/dev/null
 if cmp -s export_ref.json export.json; then echo "✔ export .vsav sans jouer : segments identiques"; else echo "✘ export .vsav : segments différents"; echecs=$((echecs+1)); fi

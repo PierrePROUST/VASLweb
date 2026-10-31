@@ -1292,6 +1292,32 @@ function centreHex(g, nom){
   return {x: Math.trunc(g.hw * col + .5) + g.x0, y: y + g.y0};
 }
 
+// ── Point d'accrochage VASSAL d'un hexagone (HexGrid.hexPoint et
+// sideX/sideY, repère local du board). centreHex suit getLocation, qui
+// arrondit ; l'accrochage d'un pion lâché, lui, tronque :
+//   x = (int)(dx·nx + x0)
+//   y = (int)(dy·ny + y0)              colonne paire
+//     = (int)(dy·ny + (int)(dy/2) + y0)  colonne impaire
+// (G4 du board 8 : 337, 193 et non 338, 194). Une pile posée au pixel
+// arrondi ne se fond pas, chez VASL, avec un pion qu'on y lâche ensuite.
+// Côtés : grille au demi-pas, (int)(dx/2·sx + x0) et (int)(dy/2·sy + y0),
+// ou (int)(dy/2·sy + (int)(dy/4) + y0) entre deux colonnes.
+// Rend le centre et ses six côtés (1 = N … 6 = NO).
+function accrocheHex(g, i, rang){
+  const dx = g.hw, dy = g.hh, x0 = g.x0, y0 = g.y0;
+  const impaire = i % 2 !== 0;
+  const ny = impaire && g.alt ? rang - 2 : rang - 1;
+  const cx = Math.trunc(dx * i + x0);
+  const cy = impaire ? Math.trunc(dy * ny + Math.trunc(dy / 2) + y0) : Math.trunc(dy * ny + y0);
+  const c = impaire ? 2 * ny + 1 : 2 * ny;          // centre, en demi-pas dy/2
+  const sxG = Math.trunc(dx / 2 * (2 * i - 1) + x0), sxD = Math.trunc(dx / 2 * (2 * i + 1) + x0);
+  const yCol = sy => Math.trunc(dy / 2 * sy + y0);
+  const yEntre = sy => Math.trunc(dy / 2 * sy + Math.trunc(dy / 4) + y0);
+  return {x: cx, y: cy, cotes: [null,
+    {x: cx,  y: yCol(c - 1)}, {x: sxD, y: yEntre(c - 1)}, {x: sxD, y: yEntre(c)},
+    {x: cx,  y: yCol(c + 1)}, {x: sxG, y: yEntre(c)},     {x: sxG, y: yEntre(c - 1)}]};
+}
+
 // ── Règles SSR d'un fichier de métadonnées (SharedBoardMetadata.xml ou
 // BoardMetadata.xml d'un board), dans l'ordre du fichier :
 //   colors    : [[nom, 0xRRGGBB]]
@@ -2353,8 +2379,7 @@ function _setupPanZoom(){
 const C26 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const HEX_HY = 32.25;          // centre → milieu du côté haut/bas
 const HEX_HX = 28.125;         // composante x des côtés obliques
-const COTES = [null, [0,-HEX_HY], [HEX_HX,-HEX_HY/2], [HEX_HX,HEX_HY/2],
-               [0,HEX_HY], [-HEX_HX,HEX_HY/2], [-HEX_HX,-HEX_HY/2]];
+// Les milieux des côtés sont ceux de l'accrochage VASSAL (accrocheHex).
 const SNAP_COTE = 0.45;        // le côté ne gagne que tout près de son milieu
 let _hexTable = [];
 // Les hexagones rangés par cases de GRILLE_HEX pixels : la recherche de
@@ -2389,10 +2414,20 @@ function _buildHexTable(boards){
         const lx = (c.x - cropX) * z, ly = (c.y - cropY) * z;
         if(ly < -g.hh*z/2 || ly > dispH + g.hh*z/2) continue;
         if(lx < -g.hw*z/2 || lx > dispW + g.hw*z/2) continue;
-        const px = b.reversed ? dispW - lx : lx;
-        const py = b.reversed ? dispH - ly : ly;
-        _hexTable.push({name: b.name + col + r,
-          x: (b.px || 0) + px + BOARD_MARGIN, y: (b.py || 0) + py + BOARD_MARGIN});
+        // Le point posé est celui de l'accrochage de VASSAL (tronqué), passé
+        // par le même globalCoordinates (Math.round après grossissement).
+        const a = accrocheHex(g, i, r);
+        const versCarte = q => {
+          const qx = z === 1 ? q.x - cropX : Math.round((q.x - cropX) * z);
+          const qy = z === 1 ? q.y - cropY : Math.round((q.y - cropY) * z);
+          return {x: (b.px || 0) + (b.reversed ? dispW - qx : qx) + BOARD_MARGIN,
+                  y: (b.py || 0) + (b.reversed ? dispH - qy : qy) + BOARD_MARGIN};
+        };
+        const p = versCarte(a);
+        // Board retourné : le côté N local devient le côté S de la carte.
+        const cotes = [null];
+        for(let s = 1; s <= 6; s++) cotes.push(versCarte(a.cotes[b.reversed ? (s + 2) % 6 + 1 : s]));
+        _hexTable.push({name: b.name + col + r, x: p.x, y: p.y, cotes});
       }
     }
   }
@@ -2402,7 +2437,7 @@ function _buildHexTable(boards){
   for(const h of _hexTable){
     _hexParNom.set(h.name, {x: h.x, y: h.y});
     for(let c = 1; c <= 6; c++)
-      _hexParNom.set(h.name + '/' + ['', 'N', 'NE', 'SE', 'S', 'SO', 'NO'][c], {x: h.x + COTES[c][0], y: h.y + COTES[c][1]});
+      _hexParNom.set(h.name + '/' + ['', 'N', 'NE', 'SE', 'S', 'SO', 'NO'][c], {x: h.cotes[c].x, y: h.cotes[c].y});
   }
   _grilleHex = new Map();
   for(const h of _hexTable){
@@ -2426,15 +2461,15 @@ function ancragePlusProche(x, y){
   if(!hex || dh > 75*75) return null;
   let side = 0, ds = Infinity;
   for(let s = 1; s <= 6; s++){
-    const mx = hex.x + COTES[s][0], my = hex.y + COTES[s][1];
+    const mx = hex.cotes[s].x, my = hex.cotes[s].y;
     const d = (mx-x)*(mx-x) + (my-y)*(my-y);
     if(d < ds){ ds = d; side = s; }
   }
   const rayon = HEX_HY * SNAP_COTE;
   if(!(ds < rayon*rayon && ds < dh)) side = 0;
   return {
-    x: Math.round(hex.x + (side ? COTES[side][0] : 0)),
-    y: Math.round(hex.y + (side ? COTES[side][1] : 0)),
+    x: side ? hex.cotes[side].x : hex.x,
+    y: side ? hex.cotes[side].y : hex.y,
     label: hex.name + (side ? '/' + ['','N','NE','SE','S','SO','NO'][side] : '')
   };
 }

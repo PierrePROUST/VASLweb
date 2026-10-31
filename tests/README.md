@@ -30,6 +30,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | Script | Ce qu'il montre |
 |---|---|
 | `erreurs.js` | Aucune erreur au chargement de la page |
+| `accrochage.js` | Centres et côtés d'hexagone posés au pixel près de VASL (accrochage tronqué de VASSAL `HexGrid.hexPoint`, relevé dans le log J036_Pascal_Pierre_001) ; sans navigateur |
 | `pince.js` | Un pincement qui commence sur un pion zoome et ne déplace rien |
 | `doigt.js` | Appui court, appui long (menu), glissé au doigt, lâcher sur le panneau |
 | `pc.js` | Double-clic, clic dans une pile dépliée, Ctrl+clic, ↑, glissé de la sélection, Échap, Maj+rectangle, clic dans le vide |
