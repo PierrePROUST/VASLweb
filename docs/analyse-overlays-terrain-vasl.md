@@ -416,6 +416,29 @@ Dans `carte.html`, ils passent déjà par le rendu des pions. Il reste
 seulement à les placer **sous** les autres pions et à les garder visibles
 quand on masque les pions.
 
+**Extension *VASL Overlays*.** Ses pièces nomment l'image d'un overlay
+d'hexagones (`ovrst3c.gif`). `carte.html` ne les dessine pas comme des
+pions : il pose à leur place l'overlay du dépôt VASL, comme « Add
+overlays » (nom, hex1, hex2), dans l'image du board et dans la LOS
+(`majOverlaysExt`). La pièce reste cachée, jamais sélectionnable, et son
+segment repart tel quel dans la sauvegarde.
+
+Les images de l'extension ne sont pas celles du dépôt : leurs marges
+diffèrent, et leurs orientations ne suivent pas toujours celles de
+l'archive (St3 : `c` de l'extension = `e` de l'archive ; St4 : `b` et
+`c` donnent `d` et `e`, mais `a` donne aussi `d`). La table
+`TABLE_OVR_EXT_TEXTE` donne, pour chaque image de l'extension 2.12,
+l'orientation de l'archive et le cadre de l'image dans celle-ci, puis le
+cadre de l'image tournée de 180° pour un board retourné (la pièce reste
+droite, l'overlay tourne avec le board). Elle est produite par
+`outils/table_overlays_ext.py` à partir du `.vmdx` : 989 images sur
+1 020. Posées au centre d'un hexagone ou au milieu d'un côté, comme les
+accroche l'extension, 904 d'entre elles retombent sur la grille à 4 px
+près, 66 à 12 px près (plages). Au-delà de 16 px (grands océans ou
+overlays BFP près d'un bord), la pose est refusée. Ces pièces-là, et
+celles hors de la table (BFP, YASL, `hd6`, `e1`, variantes de règles
+`-dj`, `-pto`…), restent des pièces seules, signalées au journal.
+
 ---
 
 ## 7. Plan d'intégration proposé
