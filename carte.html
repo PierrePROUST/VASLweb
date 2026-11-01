@@ -8629,6 +8629,9 @@ function _histoCmd(c){
 const _aAnnuler = () => {
   for(let i = _histo.length - 1; i >= 0; i--){
     const e = _histo[i];
+    // Un coup relu d'un .vlog n'est pas annulé par Undo : seul ◀ le
+    // recule. Undo ne touche qu'aux coups joués ici (ou reçus).
+    if(e.etape) continue;
     if(e.annulable && !e.annule && (e.inv.length || (e.js && e.js.length))) return e;
   }
   return null;
@@ -8647,9 +8650,8 @@ function annuler(){
   const e = _aAnnuler();
   if(!e) return false;
   fermerMenu();
-  // Le dernier coup relu d'un .vlog : comme BasicLogger, Undo recule
-  // alors la relecture d'un coup.
-  if(e.etape && e === _histo[_histo.length - 1] && _logPos > 0) return reculerLog();
+  // Undo ne recule jamais la relecture d'un .vlog (c'est le rôle de ◀) :
+  // reculer ici tronquerait le log en cours d'enregistrement.
   _avantAction();
   const photo = _photo();
   e.annule = true;
@@ -15506,9 +15508,9 @@ const ACTIONS = {
   profil_tactile:  {ico: '📱', lib: 'Affichage : tactile', coche: () => _profilChoisi === 'tactile', faire: () => choisirProfil('tactile')},
   // Relecture d'un .vlog : visible seulement s'il reste des coups.
   relecture:{groupe: ['lgDebut', 'lgArr', 'logPos', 'lgAv', 'lgFin'], visible: _enRelecture},
-  // Colonne d'icônes du tactile : sans ⏮ ni ◀ ; ⏭ sous l'icône Unmoved,
-  // la position et ▶ tout en bas.
-  relectureRail: {groupe: ['logPos', 'lgAv'], visible: _enRelecture},
+  // Colonne d'icônes du tactile : sans ⏮ ; ⏭ sous l'icône Unmoved,
+  // ◀, la position et ▶ tout en bas.
+  relectureRail: {groupe: ['lgArr', 'logPos', 'lgAv'], visible: _enRelecture},
   relectureFin:  {groupe: ['lgFin'], visible: _enRelecture},
   lgDebut:  {lib: 'Début du log', ico: '⏮', faire: () => allerLog(0), actif: () => _logPos > _logPlancher},
   lgArr:    {lib: () => _logPlancher > 0 && _logPos <= _logPlancher
@@ -16017,8 +16019,8 @@ DISPOSITIONS.tactile = {
     // les dés (DR, IFT, TH, TK, MC, Rally, CC, TC, dr, SA, RS) ; puis toutes
     // les actions de la feuille « Plus », chacune par son icône, ⏭ (fin du
     // log) juste sous Unmoved ; le côté de la colonne (⇄, à droite ou à
-    // gauche de l'écran) ; Plus ; tout en bas, la position et ▶. ⏭ et ▶
-    // ne sont présents que pendant une relecture.
+    // gauche de l'écran) ; Plus ; tout en bas, ◀, la position et ▶. ⏭, ◀
+    // et ▶ ne sont présents que pendant une relecture.
     const premieres = ['vueCarte', 'masquer', 'vuePions', 'all', 'vueJournal', 'undo', ...DES.map(d => d.id)];
     const ids = [...premieres, ...PLUS.filter(x => x !== '-' && !premieres.includes(x) && !PLUS_SANS_ICONE.includes(x))
                    .flatMap(x => x === 'unmoved' ? [x, 'relectureFin'] : [x]),

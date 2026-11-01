@@ -26,7 +26,7 @@ compare "gestes à la souris (M/)" "node '$ICI/jeu.js' ref.html jeu_ref.json" "n
 compare "raccourci sur une pile (D/)" "node '$ICI/touche.js' ref.html" "node '$ICI/touche.js' '$CARTE'"
 compare "segment CHAT au PC" "node '$ICI/chat1.js' ref.html" "node '$ICI/chat1.js' '$CARTE'"
 echo "— Scénarios (résultats à lire)"
-for t in pince doigt pc pile-arrivee p4 ui pcchat desbarre alerte alt log500 p3 l3 etat p5 vues chat0 chat2 chat3 chat4 cote qmark mf mf-ravin mf-contournement mf-cumul mf-start mf-transport mf-horscarte mf-relecture mf-route mf-niveaux mf-escaliers mov-relecture log-coups devoilement precadrage couches-noms munitions page-html insignes svg-webkit liens qrdc overlays rotation; do
+for t in pince doigt pc pile-arrivee p4 ui pcchat desbarre alerte alt log500 p3 l3 etat p5 vues chat0 chat2 chat3 chat4 cote qmark mf mf-ravin mf-contournement mf-cumul mf-start mf-transport mf-horscarte mf-relecture mf-route mf-niveaux mf-escaliers mov-relecture undo-relecture log-coups devoilement precadrage couches-noms munitions page-html insignes svg-webkit liens qrdc overlays rotation; do
   echo "· $t"; node "$ICI/$t.js" "$CARTE" 2>&1 | tr -d '\n' | cut -c1-600; echo
 done
 echo "· chat1 (téléphone)"; node "$ICI/chat1.js" "$CARTE" tactile
