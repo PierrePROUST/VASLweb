@@ -46,6 +46,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `l3.js` | Tablette : fil LOS ancré, mode pose, feuille de commandes |
 | `volants.js` | Éventail de pile et panneau LOS déplacés par leur poignée, au doigt (tactile) et à la souris (PC) : ils restent où on les a mis quand ils se refont ; « Aucun » de l’éventail désélectionne la pile sans la fermer, « Tout » la reprend |
 | `etat.js` | Commandes d'état en tête des barres rapides (panneau Pile au PC, barre de pile au doigt : `node etat.js carte.html tactile`) : Prep Fire, First Fire, Break, Pin, Conceal ; un seul Prep Fire pour la pile, retiré au second appui (une action) ; Pin à moitié puis sur chaque unité ; Break et Conceal basculés |
+| `camp.js` | Camp choisi à l'identification (Axe / Alliés / Les deux), gardé sur le poste et hors du `.vsav` : glissé d'un pion adverse à la souris et au doigt → confirmation, refusée rien ne bouge ; pion de son camp et marqueur sans question ; « Les deux », administrateur et observateur jamais interrogés |
 | `qmark.js` | Unités dissimulées sorties d'une pile : « ? » neuf si l'ancien coiffe encore d'autres unités, sinon l'ancien suit |
 | `mf.js` | Décompte des MF / MP (table des terrains de VASL Tools) : coût de l'hexagone et cumul au chat et au log — bois, mur, pile avec chef, saut, montée, Undo, T-34 sur route (1 MP boutonné, ½ CE) et en bois (Z), Mark unmoved |
 | `mf-ravin.js` | Board 5 : ravin 2 MF, ravin-bois 4 MF (B19.4), sortie de ravin à coût doublé (B10.4), pont sur le ravin par la route (B3.4) |
