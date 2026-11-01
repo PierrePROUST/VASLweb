@@ -5,12 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
 <meta name="theme-color" content="#2b2b2b">
 <title>VASL — Carte</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icons/favicon-32.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="VASLweb">
+<script src="pwa.js" defer></script>
 <style>
 :root{
   --fond:#2b2b2b; --barre:#1e1e1e; --texte:#e6e6e6; --doux:#9a9a9a;
@@ -15593,25 +15588,6 @@ function reevaluerProfil(){
   _reevaluation = setTimeout(() => { if(enSaisie()) return; const p = detecterProfil(); if(p !== _profil) appliquerProfil(p); }, 200);
 }
 
-// ═══ APPLICATION INSTALLABLE (PWA) ═══
-// Servie en HTTPS (GitHub Pages), la page s'installe comme une
-// application : sw.js la garde hors ligne avec les boards déjà vus.
-// Ouverte en file://, rien de tout cela : la page marche comme avant.
-function _installerPwa(){
-  if(location.protocol === 'file:') return;
-  if('serviceWorker' in navigator)
-    navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker :', err));
-  // Installée, elle demande que ses données (localStorage, cache des
-  // boards) ne soient pas effacées quand le disque manque de place.
-  if(navigator.storage && navigator.storage.persist && matchMedia('(display-mode: standalone)').matches)
-    navigator.storage.persist().catch(() => {});
-  // Double-clic sur un .vsav ou un .vlog : l'application l'ouvre.
-  if('launchQueue' in window)
-    window.launchQueue.setConsumer(async p => {
-      if(p.files && p.files.length) openGameFile(await p.files[0].getFile());
-    });
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   _brancherLangue();
   _setupDropZone();
@@ -15651,7 +15627,6 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('pagehide', () => { _garderLog(); if(_net) netQuitter(); });
   document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') _garderLog(); });
   setTimeout(_reprendreLogGarde, 0);
-  _installerPwa();
   // Comme VASSAL à la fermeture : des coups enregistrés et pas encore
   // écrits ne partent pas sans avertissement.
   window.addEventListener('beforeunload', e => {

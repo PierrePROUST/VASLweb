@@ -20,7 +20,8 @@ const APP = [
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
-  './icons/favicon-32.png'
+  './icons/favicon-32.png',
+  './pwa.js'
 ];
 const HOTES_VASL = ['raw.githubusercontent.com', 'unpkg.com'];
 
