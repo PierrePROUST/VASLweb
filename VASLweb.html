@@ -16445,7 +16445,7 @@ function etatPartie(){
 
 // Comme VASSAL, les entrées de l'archive sont comprimées : le savedGame
 // obfusqué (hexadécimal) y perd plus de 90 % de sa taille.
-async function _archive(texte, annexes = _annexes){
+async function _archiveVsav(texte, annexes = _annexes){
   const files = new Map([['savedGame', await _deflate(_vcskEncode(texte))]]);
   for(const [n, d] of annexes) files.set(n, await _deflate(d));
   return _zipWrite(files);
@@ -16520,7 +16520,7 @@ function _proposerPartage(f, blob, nom){
 }
 
 async function _telecharger(texte, nom, annexes = _annexes){
-  return _enregistrer(await _archive(texte, annexes), nom);
+  return _enregistrer(await _archiveVsav(texte, annexes), nom);
 }
 
 // Nom du fichier saisi : caractères interdits remplacés, extension ajoutée.
@@ -16544,7 +16544,7 @@ function _nomExport(ext){
 function ecrireVsav(){
   if(!_source) return false;
   const nb = vivants().length, carte = _carteJeu;
-  const prete = _archive(etatPartie().join('\x1b'));
+  const prete = _archiveVsav(etatPartie().join('\x1b'));
   let blob = null;
   prete.then(b => { blob = b; }, () => {});
   _fenetreLog('Exporter la partie', `
