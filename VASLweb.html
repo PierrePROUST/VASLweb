@@ -836,6 +836,12 @@ const EN = {
   'salle injoignable': 'room unreachable', 'code de salle invalide': 'invalid room code',
   // Fichier de log
   'Nom du fichier': 'File name', 'Commencer': 'Begin',
+  'Exporter la partie': 'Save Game', 'Enregistrer': 'Save', 'Fichier prêt': 'File ready',
+  'Fichier prêt :': 'File ready:', 'Partager / Enregistrer': 'Share / Save',
+  'Puis « Enregistrer dans Fichiers » pour choisir le dossier, ou Mail, Messages, AirDrop pour l\'envoyer.':
+    'Then “Save to Files” to choose the folder, or Mail, Messages, AirDrop to send it.',
+  '« Enregistrer dans Fichiers » choisit le dossier ; Mail, Messages ou AirDrop envoient la partie.':
+    '“Save to Files” chooses the folder; Mail, Messages or AirDrop send the game.',
   'Permettre à mes adversaires de démasquer mes unités': 'Allow opponents to unmask my units',
   'Vous êtes observateur : la case s\'appliquera à vos unités dès que vous vous identifierez (Utilisateur).':
     'You are an observer: the box will apply to your units as soon as you log in (User).',
@@ -16283,9 +16289,8 @@ function commencerLog(){
         enregistrés ; « Log » à nouveau termine le fichier et l'écrit.</p>`, w => {
     const inp = w.querySelector('#lgNom');
     const ok = () => {
-      let nom = inp.value.trim().replace(/[\\/:*?"<>|]/g, '_');
+      const nom = _nomPropre(inp.value, 'vlog');
       if(!nom) return;
-      if(!/\.vlog$/i.test(nom)) nom += '.vlog';
       w.remove();
       _logNom = nom;
       _logEnr = []; _logGroupes = [];
@@ -16440,28 +16445,129 @@ function etatPartie(){
 
 // Comme VASSAL, les entrées de l'archive sont comprimées : le savedGame
 // obfusqué (hexadécimal) y perd plus de 90 % de sa taille.
-async function _telecharger(texte, nom, annexes = _annexes){
+async function _archive(texte, annexes = _annexes){
   const files = new Map([['savedGame', await _deflate(_vcskEncode(texte))]]);
   for(const [n, d] of annexes) files.set(n, await _deflate(d));
+  return _zipWrite(files);
+}
+
+// iPhone et iPad (iPadOS se présente en « Macintosh », mais tactile).
+function _surIOS(){
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+// Sur iOS, un téléchargement finit dans Fichiers > Téléchargements, sans
+// dire où, et ne marche guère dans l'application installée. La feuille de
+// partage, elle, propose « Enregistrer dans Fichiers » (on choisit le
+// dossier), Mail, Messages, AirDrop… Ailleurs : téléchargement.
+function _fichierPartageable(blob, nom){
+  if(!_surIOS() || !navigator.share || !navigator.canShare) return null;
+  // octet-stream : iOS garde l'extension .vsav / .vlog telle quelle.
+  const f = new File([blob], nom, {type: 'application/octet-stream'});
+  try { return navigator.canShare({files: [f]}) ? f : null; } catch(e){ return null; }
+}
+
+function _telechargerBlob(blob, nom){
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(_zipWrite(files));
+  a.href = URL.createObjectURL(blob);
   a.download = nom;
   document.body.appendChild(a); a.click(); a.remove();
-  // Safari iOS demande d'abord s'il faut télécharger : l'URL doit vivre
-  // le temps qu'on réponde.
+  // Safari demande d'abord s'il faut télécharger : l'URL doit vivre le
+  // temps qu'on réponde.
   setTimeout(() => URL.revokeObjectURL(a.href), 120000);
 }
 
-function _nomExport(ext){
-  const d = new Date();
-  const j = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
-  return `${_nomFichier}_${j}.${ext}`;
+// navigator.share exige un geste de l'utilisateur encore « frais » : refusé
+// (NotAllowedError), on le redemande par un bouton.
+function _partager(f){
+  return navigator.share({files: [f]}).then(() => 'partage', e => e && e.name);
 }
 
+// Enregistre (ou partage) le fichier ; résout en 'partage', 'telecharge'
+// ou 'annule'. À appeler, si possible, dans le geste de l'utilisateur.
+async function _enregistrer(blob, nom){
+  const f = _fichierPartageable(blob, nom);
+  if(!f){ _telechargerBlob(blob, nom); return 'telecharge'; }
+  const r = await _partager(f);
+  if(r === 'partage') return r;
+  if(r === 'AbortError') return 'annule';
+  if(r === 'NotAllowedError') return _proposerPartage(f, blob, nom);
+  _telechargerBlob(blob, nom);
+  return 'telecharge';
+}
+
+function _proposerPartage(f, blob, nom){
+  return new Promise(fin => {
+    _fenetreLog('Fichier prêt', `
+      <p>Fichier prêt : <b>${_esc(nom)}</b></p>
+      <div class="fb"><button id="ptOk" class="prim">Partager / Enregistrer</button><button id="ptAnnul">Annuler</button></div>
+      <p class="fnote">« Enregistrer dans Fichiers » choisit le dossier ; Mail, Messages ou AirDrop envoient la partie.</p>`, w => {
+      const ok = w.querySelector('#ptOk');
+      ok.onclick = () => {
+        // Appel direct dans le clic : le geste est frais.
+        _partager(f).then(r => {
+          if(r === 'AbortError') return;          // feuille fermée : on peut réessayer
+          w.remove();
+          if(r === 'partage') fin(r);
+          else { _telechargerBlob(blob, nom); fin('telecharge'); }
+        });
+      };
+      w.querySelector('#ptAnnul').onclick = () => { w.remove(); fin('annule'); };
+      ok.focus();
+    });
+  });
+}
+
+async function _telecharger(texte, nom, annexes = _annexes){
+  return _enregistrer(await _archive(texte, annexes), nom);
+}
+
+// Nom du fichier saisi : caractères interdits remplacés, extension ajoutée.
+function _nomPropre(v, ext){
+  const nom = String(v || '').trim().replace(/[\\/:*?"<>|]/g, '_');
+  if(!nom) return '';
+  return new RegExp('\\.' + ext + '$', 'i').test(nom) ? nom : nom + '.' + ext;
+}
+
+// « partie_20261102-1430.vsav » : unique à la minute, sans empiler les
+// dates d'un fichier déjà exporté.
+function _nomExport(ext){
+  const d = new Date(), z = n => String(n).padStart(2, '0');
+  const j = d.getFullYear() + z(d.getMonth()+1) + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes());
+  const base = _nomFichier.replace(/_\d{8}(?:-\d{4})?$/, '') || 'partie';
+  return `${base}_${j}.${ext}`;
+}
+
+// Comme le log : le nom d'abord. L'état est figé et l'archive préparée
+// pendant qu'on le saisit, pour que le partage parte dans le clic.
 function ecrireVsav(){
   if(!_source) return false;
-  _telecharger(etatPartie().join('\x1b'), _nomExport('vsav'));
-  chatLog(`💾 .vsav écrit : ${vivants().length} pion(s) sur « ${_carteJeu} »`);
+  const nb = vivants().length, carte = _carteJeu;
+  const prete = _archive(etatPartie().join('\x1b'));
+  let blob = null;
+  prete.then(b => { blob = b; }, () => {});
+  _fenetreLog('Exporter la partie', `
+      <label>Nom du fichier<input id="svNom" autocomplete="off" value="${_esc(_nomExport('vsav'))}"></label>
+      <div class="fb"><button id="svOk" class="prim">Enregistrer</button><button id="svAnnul">Annuler</button></div>${_surIOS() ? `
+      <p class="fnote">Puis « Enregistrer dans Fichiers » pour choisir le dossier, ou Mail, Messages, AirDrop pour l'envoyer.</p>` : ''}`, w => {
+    const inp = w.querySelector('#svNom');
+    const ok = async () => {
+      const nom = _nomPropre(inp.value, 'vsav');
+      if(!nom) return;
+      w.remove();
+      const r = await _enregistrer(blob || await prete, nom);
+      if(r === 'annule') chatLog(`💾 Export de ${nom} annulé`);
+      else chatLog(`💾 .vsav écrit : ${nom} — ${nb} pion(s) sur « ${carte} »`);
+    };
+    w.querySelector('#svOk').onclick = ok;
+    w.querySelector('#svAnnul').onclick = () => w.remove();
+    inp.addEventListener('keydown', e => { if(e.key === 'Enter') ok(); if(e.key === 'Escape') w.remove(); });
+    inp.focus();
+    // Le nom seul, sans l'extension : c'est lui qu'on change.
+    const v = inp.value, p = v.lastIndexOf('.');
+    inp.setSelectionRange(0, p > 0 ? p : v.length);
+  });
   return true;
 }
 
@@ -16488,8 +16594,11 @@ function ecrireVlog(log = {enr: _logEnr, groupes: _logGroupes, depart: _logDepar
     else entrees.push([c]);
   });
   const lignes = entrees.map(l => jeton(l.map(c => jeton('LOG\t' + c)).join('\x1b')));
-  _telecharger([...log.depart, ...lignes].join('\x1b'), log.nom || _nomExport('vlog'), log.annexes);
-  chatLog(`📼 Log écrit : ${log.nom} — ${entrees.length} coup(s), ${log.enr.length} commande(s)`);
+  const nom = log.nom || _nomExport('vlog'), n = entrees.length, nc = log.enr.length;
+  Promise.resolve(_telecharger([...log.depart, ...lignes].join('\x1b'), nom, log.annexes)).then(r => {
+    if(r === 'annule') chatLog(`📼 Log ${nom} non enregistré (partage annulé)`);
+    else chatLog(`📼 Log écrit : ${nom} — ${n} coup(s), ${nc} commande(s)`);
+  });
   return true;
 }
 
