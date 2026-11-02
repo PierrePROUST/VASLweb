@@ -1,4 +1,4 @@
-# Tourelle, TCA et état BU / CE dans VASL — analyse pour `carte.html`
+# Tourelle, TCA et état BU / CE dans VASL — analyse pour `VASLweb.html`
 
 Analyse faite sur les sources de VASL (branche `develop` de
 `vasl-developers/vasl`, module 6.7.4-beta5) et de VASSAL 3.7
@@ -199,7 +199,7 @@ n'est **ni centré, ni réduit à la taille du véhicule**.
 
 Rappel de `FreeRotator` : `validAngles[i] = −i × 60°`, et « CA cw » fait
 `angleIndex + 1`. Un index *i* correspond donc à *i* × 60° dans le sens
-horaire, ce que `carte.html` applique déjà avec `rotate(v × 60deg)`.
+horaire, ce que `VASLweb.html` applique déjà avec `rotate(v × 60deg)`.
 
 ---
 
@@ -287,7 +287,7 @@ les très vieux fichiers.
 
 ---
 
-## 6. Ce que fait `carte.html`
+## 6. Ce que fait `VASLweb.html`
 
 | Fonction | État |
 |---|---|
@@ -327,4 +327,4 @@ C'est un modèle maison qui ne suit pas celui de VASL :
   (commentaire l. 5813).
 
 Si l'on veut garder ce fichier, la piste la plus simple est de reprendre la
-lecture et le dessin de `carte.html` (§ 6).
+lecture et le dessin de `VASLweb.html` (§ 6).

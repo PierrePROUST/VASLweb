@@ -1,13 +1,13 @@
-# Tests de `carte.html`
+# Tests de `VASLweb.html`
 
-Des scripts Playwright qui ouvrent `carte.html` dans Chromium, fabriquent
+Des scripts Playwright qui ouvrent `VASLweb.html` dans Chromium, fabriquent
 une partie avec des pions de la base VASL (board « a », pris sur le dépôt
 GitHub de VASL : il faut le réseau), puis jouent des gestes à la souris ou
 au doigt (écran tactile simulé par CDP).
 
 ```sh
 npm install playwright      # ou une installation globale
-sh tests/tout.sh            # compare à origin/map
+sh tests/tout.sh            # compare à origin/main
 sh tests/tout.sh HEAD~3     # compare à une autre version
 ```
 
@@ -45,7 +45,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `p3.js` | Téléphone 360×740 : éventail, 3ᵉ pion d'une pile de 6, commande, sommet, déplacement seul |
 | `l3.js` | Tablette : fil LOS ancré, mode pose, feuille de commandes |
 | `volants.js` | Éventail de pile et panneau LOS déplacés par leur poignée, au doigt (tactile) et à la souris (PC) : ils restent où on les a mis quand ils se refont ; « Aucun » de l’éventail désélectionne la pile sans la fermer, « Tout » la reprend |
-| `etat.js` | Commandes d'état en tête des barres rapides (panneau Pile au PC, barre de pile au doigt : `node etat.js carte.html tactile`) : Prep Fire, First Fire, Break, Pin, Conceal ; un seul Prep Fire pour la pile, retiré au second appui (une action) ; Pin à moitié puis sur chaque unité ; Break et Conceal basculés |
+| `etat.js` | Commandes d'état en tête des barres rapides (panneau Pile au PC, barre de pile au doigt : `node etat.js VASLweb.html tactile`) : Prep Fire, First Fire, Break, Pin, Conceal ; un seul Prep Fire pour la pile, retiré au second appui (une action) ; Pin à moitié puis sur chaque unité ; Break et Conceal basculés |
 | `camp.js` | Camp choisi explicitement à chaque identification (Axe / Alliés / Les deux, jamais présélectionné, le dernier seulement indiqué), gardé sur le poste et hors du `.vsav` : glissé d'un pion adverse à la souris et au doigt → bloqué par la fenêtre « Pion du camp adverse » (pas de boîte native), « Annuler » rien ne bouge, « Déplacer quand même » il part ; pion de son camp et marqueur sans question ; « Les deux », administrateur et observateur jamais interrogés |
 | `qmark.js` | Unités dissimulées sorties d'une pile : « ? » neuf si l'ancien coiffe encore d'autres unités, sinon l'ancien suit |
 | `mf.js` | Décompte des MF / MP (table des terrains de VASL Tools) : coût de l'hexagone et cumul au chat et au log — bois, mur, pile avec chef, saut, montée, Undo, T-34 sur route (1 MP boutonné, ½ CE) et en bois (Z), Mark unmoved |
@@ -79,9 +79,9 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `mf-niveaux.js` | Board 5 : foxhole (entrer dessous 1 + 1 MF, en sortir +1 ; B27.4, B27.5), tranchées reliées (1 MF, B27.54), étage par le compteur « Building » (1 MF par niveau, B23.4), Undo |
 | `mf-escaliers.js` | Board 1 : arrivée au rez-de-chaussée sous le marqueur d'étage (B23.421) ; escalier imprimé (1U3), absent (1U2, B23.23), maison sans étage (1D4, B23.21), maison à deux niveaux 1F1-G1 (même étage : 2 MF), toit (B23.8) |
 | `p5.js` | Loupe de dépôt, double appui pour zoomer |
-| `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js carte.html 360 740`) |
+| `loupe.js` | Loupe : 200 px, rayon de 1 hexagone, dans l'écran (`node loupe.js VASLweb.html 360 740`) |
 | `loupelos.js` | LOS au doigt en deux temps : source puis cible, chacune avec la loupe dès l'appui et posée au relâché ; un deuxième doigt pince la carte |
-| `prof.js` | Capture d'un profil et part de la carte (`node prof.js carte.html tactile 360 740`) |
+| `prof.js` | Capture d'un profil et part de la carte (`node prof.js VASLweb.html tactile 360 740`) |
 | `tabtel.js` | Tablette et téléphone : même disposition, dés dans la colonne d'icônes, aperçu du chat sur deux lignes avec les jets |
 | `fermer.js` | Téléphone : la pile se ferme d'un appui à côté (zoom « Ajuster » compris) ou par la croix rouge |
 | `liste.js` | Liste de la pile au téléphone (et profil PC sur écran étroit) : appui sur la carte et croix rouge la ferment |

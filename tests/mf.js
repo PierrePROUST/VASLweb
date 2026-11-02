@@ -5,7 +5,7 @@
 // (1 MP boutonné, ½ équipage découvert) et en bois (Z : moitié des MP du gpid), Mark unmoved.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs} = await ouvrir(process.argv[2] || 'carte.html');
+  const {b, pg, errs} = await ouvrir(process.argv[2] || 'VASLweb.html');
   const r = await pg.evaluate(async () => {
     await carteLOS();
     const m = _losPrete;

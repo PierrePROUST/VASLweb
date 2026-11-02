@@ -11,7 +11,7 @@ const nav = require('./navigateur.js');
   for(const [bd, paires] of [['05', ['H4>I4', 'H3>I4', 'I4>H4']], ['24', ['V7>W7', 'X8>W8', 'W9>W8', 'V6>W6']]]){
     const pg = await (await b.newContext()).newPage();
     pg.on('pageerror', e => out.push('PAGEERROR ' + e.message));
-    await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
+    await pg.goto('file://' + nav.fichier(process.argv[2] || 'VASLweb.html'));
     out.push(...await pg.evaluate(async ([bd, paires]) => {
       await chargerBDD();
       await chargerPartie(['begin_save', 'bd\t0\t0\t' + bd, 'end_save'].join('\x1b'), 'route.vsav', new Map());

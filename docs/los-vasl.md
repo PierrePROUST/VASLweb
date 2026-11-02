@@ -1,4 +1,4 @@
-# Ligne de vue (LOS) dans `carte.html` — portage du moteur de VASL
+# Ligne de vue (LOS) dans `VASLweb.html` — portage du moteur de VASL
 
 Sources lues (branche `develop` de `vasl-developers/vasl`) :
 `VASL.LOS.Map` (`Map`, `Hex`, `Location`, `Terrain`, `LOSResult`, `Bridge`),
@@ -8,7 +8,7 @@ Sources lues (branche `develop` de `vasl-developers/vasl`) :
 
 ## Ce qui est porté
 
-| VASL | `carte.html` |
+| VASL | `VASLweb.html` |
 |---|---|
 | `Map.LOS()` et toutes ses règles (dépression, bâtiments, toits, caves, haies/murs, bocage, vergers partiels, remblais RB, murs de rangées et d'usine, hexagones aveugles, falaises, buttes, demi-niveaux, terrains partagés, ponts, gênes) | `LosMap`, `LosStatus` — méthode par méthode, noms Java conservés |
 | `Hex`, `Location`, `Terrain`, `LOSResult`, `Bridge` | `LosHex`, `LosLocation`, `LosTerrain`, `LosResult`, `LosBridge` |

@@ -1,4 +1,4 @@
-# OBA dans VASL — analyse pour `carte.html`
+# OBA dans VASL — analyse pour `VASLweb.html`
 
 Analyse faite sur les sources de VASL (branche `develop` de
 `vasl-developers/vasl`). Classe lue : `VASL.build.module.OBA`
@@ -65,7 +65,7 @@ La sauvegarde (`getRestoreCommand`) contient un `CreateModule` par
 module. Ils forment une sous-commande imbriquée : entre deux modules,
 l'ESC est précédé d'une contre-oblique dans le `.vsav`.
 
-## 4. Ce qu'en fait `carte.html`
+## 4. Ce qu'en fait `VASLweb.html`
 
 - Mêmes commandes, même état, même message : un `.vsav` ou un `.vlog`
   passe de VASL à la page et retour ; les coups circulent en partie à

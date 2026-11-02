@@ -3,11 +3,11 @@
 // l'état ; un appui les y met (un seul Prep Fire pour la pile), un second
 // les en sort. Au PC, la barre est en tête du panneau Pile ; au doigt,
 // dans la barre de pile.
-//   node etat.js [carte.html] [pc|tactile]
+//   node etat.js [VASLweb.html] [pc|tactile]
 const {ouvrir} = require('./commun.js');
 (async () => {
   const profil = process.argv[3] || 'pc';
-  const {b, pg, errs} = await ouvrir(process.argv[2] || 'carte.html', {profil});
+  const {b, pg, errs} = await ouvrir(process.argv[2] || 'VASLweb.html', {profil});
   const r = await pg.evaluate(async () => {
     const attendre = () => new Promise(r => setTimeout(r, 80));
     const poser = nom => { poserDepuisPalette(_bdd.pions.find(s => s.n === nom), 1100, 600); return vivants().slice(-1)[0]; };

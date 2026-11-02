@@ -8,7 +8,7 @@
 // Les pions de son camp et les marqueurs partent sans question ; « Les
 // deux », l'administrateur et l'observateur ne sont jamais interrogés.
 // Le camp n'entre pas dans le .vsav.
-//   node camp.js [carte.html]
+//   node camp.js [VASLweb.html]
 const nav = require('./navigateur.js');
 
 async function scenario(b, tactile){
@@ -25,7 +25,7 @@ async function scenario(b, tactile){
   pg.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
   // Aucune boîte native (confirm) : la fenêtre est celle de la page.
   pg.on('dialog', d => { natifs.push(d.message()); d.dismiss(); });
-  await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
+  await pg.goto('file://' + nav.fichier(process.argv[2] || 'VASLweb.html'));
   // Une partie : escouade allemande (T1), russe (T2), un DM (T3).
   const camps = await pg.evaluate(async () => {
     const bdd = await chargerBDD();

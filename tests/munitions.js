@@ -8,7 +8,7 @@ const nav = require('./navigateur.js');
   const pg = await (await b.newContext({viewport: {width: 1280, height: 800}})).newPage();
   const errs = [];
   pg.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
-  await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
+  await pg.goto('file://' + nav.fichier(process.argv[2] || 'VASLweb.html'));
   const r = await pg.evaluate(async () => {
     await chargerBDD();
     await chargerPartie(['begin_save', 'bd\t0\t0\ta', 'end_save'].join('\x1b'), 'munitions.vsav', new Map());

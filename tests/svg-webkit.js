@@ -4,7 +4,7 @@
 // changer (elle grossissait de SC à chaque rendu).
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const fichier = process.argv[2] || 'carte.html';
+  const fichier = process.argv[2] || 'VASLweb.html';
   const {b, pg, errs} = await ouvrir(fichier, {});
   await pg.evaluate(() => {
     const proto = HTMLImageElement.prototype;

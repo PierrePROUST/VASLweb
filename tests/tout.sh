@@ -1,16 +1,16 @@
 #!/bin/sh
-# Rejoue les tests de carte.html dans Chromium (Playwright).
+# Rejoue les tests de VASLweb.html dans Chromium (Playwright).
 #   sh tests/tout.sh [référence]
-# La référence (par défaut origin/map) est la version de carte.html à
+# La référence (par défaut origin/main) est la version de VASLweb.html à
 # laquelle on compare l'export sans jouer, les M/ des gestes à la souris
 # et les D/ d'un raccourci. Sorties (JSON, captures) : tests/sortie/.
 set -u
 ICI=$(cd "$(dirname "$0")" && pwd)
-REF=${1:-origin/map}
+REF=${1:-origin/main}
 mkdir -p "$ICI/sortie"
 cd "$ICI/sortie"
-git -C "$ICI/.." show "$REF:carte.html" > ref.html || { echo "Référence $REF introuvable"; exit 1; }
-CARTE="$ICI/../carte.html"
+git -C "$ICI/.." show "$REF:VASLweb.html" > ref.html || { echo "Référence $REF introuvable"; exit 1; }
+CARTE="$ICI/../VASLweb.html"
 echecs=0
 compare(){   # nom, commande sur la référence, commande sur la version courante
   a=$(eval "$2" 2>&1); b=$(eval "$3" 2>&1)

@@ -2,7 +2,7 @@
 // s'il ne couvre plus rien, sinon les partants reçoivent un « ? » neuf.
 const {ouvrir} = require('./commun.js');
 (async () => {
-  const {b, pg, errs} = await ouvrir(process.argv[2] || 'carte.html');
+  const {b, pg, errs} = await ouvrir(process.argv[2] || 'VASLweb.html');
   const r = await pg.evaluate(() => {
     const parUid = u => window.parUidT[u];
     const qm = k => pile(k).filter(p => infoDissimulation(p).compteur).length;

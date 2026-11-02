@@ -1,9 +1,9 @@
 // Accrochage des pions : centres et côtés d'hexagone calculés comme
 // HexGrid.hexPoint de VASSAL (tronqués), comparés aux points que VASL a
 // posés lui-même dans le log J036_Pascal_Pierre_001 (board 8 en haut à
-// gauche, marge 400). Sans navigateur : node accrochage.js carte.html
+// gauche, marge 400). Sans navigateur : node accrochage.js VASLweb.html
 const fs = require('fs');
-const src = fs.readFileSync(process.argv[2] || __dirname + '/../carte.html', 'utf8');
+const src = fs.readFileSync(process.argv[2] || __dirname + '/../VASLweb.html', 'utf8');
 const fonction = n => {
   const i = src.indexOf('function ' + n + '(');
   let d = 0, j = src.indexOf('{', i);
