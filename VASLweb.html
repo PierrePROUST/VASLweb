@@ -821,6 +821,11 @@ const EN = {
   'Nom requis : 24 caractères au plus, sans ; / \\ , < > & ".': 'Name required: 24 characters at most, without ; / \\ , < > & ".',
   'Cet utilisateur existe déjà : le choisir dans la liste.': 'This user already exists: pick it from the list.',
   'Mot de passe incorrect pour cet utilisateur.': 'Incorrect password for this user.',
+  'Camp': 'Side', '— choisir —': '— choose —', 'Axe': 'Axis', 'Alliés': 'Allied', 'Les deux': 'Both',
+  'Choisir le camp.': 'Choose the side.', 'Pion du camp adverse': 'Opposing side counter',
+  'Déplacer quand même': 'Move anyway',
+  'Déplacer un pion du camp adverse demande une confirmation ; « Les deux » ne demande rien. Le camp reste sur ce poste, hors des fichiers VASL.':
+    'Moving a counter of the opposing side asks for confirmation; “Both” asks nothing. The side stays on this device, outside VASL files.',
   'Connecté :': 'Logged in as:', 'Pions masqués': 'Hidden counters', '(vous)': '(you)',
   'Oublier': 'Forget', 'fichier': 'file', 'Aucun utilisateur': 'No users',
   'Changer d\'utilisateur…': 'Change user…',
@@ -904,6 +909,8 @@ const EN_MOTIFS = [
   ['Choisir l\'utilisateur, puis saisir son mot de passe. Les pions dissimulés et HIP ne sont visibles que de leur joueur.',
    'Choose the user, then enter their password. Concealed and HIP counters are only visible to their player.'],
   ['Retirer {} pions de la carte ?', 'Delete {} counters from the map?'],
+  ['{} pion(s) du camp adverse ({}) : {}. Les déplacer quand même ?', '{} counter(s) of the opposing side ({}): {}. Move them anyway?'],
+  ['Dernier camp : {}', 'Last side: {}'],
   ['Le log « {} » n\'est pas écrit ({} coup(s)). L\'écrire maintenant ?', 'Logfile “{}” is not written ({} move(s)). Write it now?'],
   ['Le log « {} » n\'a pas été écrit avant la fermeture de la page ({} coup(s)). L\'écrire maintenant ?',
    'Logfile “{}” was not written before the page closed ({} move(s)). Write it now?']
@@ -10082,11 +10089,14 @@ function positionDepot(x, y){
   return best ? {x: best.x, y: best.y, label: a.label} : a;
 }
 
-function deplacer(liste, x, y){
+function deplacer(liste, x, y, campConfirme){
   // Un pion invisible pour moi (HIP adverse) ne part jamais avec les miens.
-  liste = liste.filter(p => !p.cache);
+  liste = liste.filter(p => !p.cache && !p.deleted);
   if(!liste.length) return;
   if(surTables(x, y)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien déplacé'); return; }
+  // Pion du camp adverse (camp choisi à l'identification) : le déplacement
+  // est bloqué jusqu'à la réponse de la fenêtre de confirmation.
+  if(!campConfirme && !confirmerCampAdverse(liste, () => deplacer(liste, x, y, true))) return;
   _avantAction();
   const pos = positionDepot(x, y);
   const kArr = pos.x + ',' + pos.y;
@@ -15489,6 +15499,7 @@ function enregistrerCompte(nom, mdp){
   return _ecrireLocal(CLE_COMPTES, JSON.stringify(l));
 }
 function oublierCompte(nom){
+  memoriserCamp(nom, null);
   return _ecrireLocal(CLE_COMPTES, JSON.stringify(comptesLocaux().filter(x => !_memeNom(x.nom, nom))));
 }
 // Le nom est écrit tel quel dans l'état Owner : « ; », « / », « \ »,
@@ -15526,7 +15537,7 @@ function seConnecter(u, admin){
   vivants().forEach(p => majApparence(p));
   if(_pileSel) afficherPile();
   chatLog(_admin ? '👁️ Administrateur : tous les pions dissimulés et HIP sont visibles'
-    : (_utilisateur ? `👤 ${_utilisateur.nom} — ${nbMasques(_utilisateur.mdp)} pion(s) masqué(s) à vous`
+    : (_utilisateur ? `👤 ${_utilisateur.nom}${monCamp() ? ` (${CAMPS[monCamp()]})` : ''} — ${nbMasques(_utilisateur.mdp)} pion(s) masqué(s) à vous`
                     : '👤 Observateur : les pions dissimulés et HIP restent cachés'));
 }
 
@@ -15550,6 +15561,101 @@ function refuser(p, touche){
   chatLog(`🔒 ${p.el.title || p.nom} : masqué par un autre joueur, aucune commande`
     + ` — vous êtes ${_utilisateur ? _utilisateur.nom : 'observateur'}`);
   return true;
+}
+
+// ── Camps (Axe / Alliés) : données de la seule version HTML.
+// VASL ne lie pas un joueur à un camp. Le camp se choisit donc à
+// l'identification et se garde sur ce poste, par utilisateur ; il n'entre
+// ni dans le .vsav, ni dans le .vlog, ni dans les messages réseau.
+// Le camp d'un pion vient de sa nationalité, avec les codes du module
+// (dossiers Axis O/B et Allied O/B de la palette) : celle du trait conceal
+// ou concealment, sinon celle du premier prototype national (geINF,
+// ruOTtur…). Les marqueurs, les Suédois (dans les deux O/B) et les pions
+// partagés n'ont pas de camp.
+// Déplacer un pion du camp adverse demande une confirmation, au PC comme
+// au doigt. Rien n'est demandé à l'administrateur, à l'observateur, ni à
+// qui a choisi « Les deux ».
+const CAMPS = {axe: 'Axe', allies: 'Alliés', tous: 'Les deux'};
+const NATIONS_AXE = new Set(['ge', 'ss', 'ax', 'it', 'ja', 'fi', 'hu', 'nk', 'cc']);
+const NATIONS_ALLIES = new Set(['al', 'am', 'br', 'ch', 'fr', 'ru', 'un', 'sk']);
+const CLE_CAMPS = 'aslweb.camps';
+const campDeNation = n => NATIONS_AXE.has(n) ? 'axe' : NATIONS_ALLIES.has(n) ? 'allies' : null;
+function nationPion(p){
+  const m = infoDissimulation(p);
+  if(m.nation) return m.nation;
+  const te = _typeEtEtat(p.seg);
+  if(!te) return null;
+  for(const t of decoderTraits(te.type)){
+    const r = /^prototype;([a-z]{2})[A-Z0-9(]/.exec(t);
+    if(r && campDeNation(r[1])) return r[1];
+  }
+  return null;
+}
+const campPion = p => campDeNation(nationPion(p));
+// Camp de l'utilisateur connecté ; null : aucun contrôle.
+const monCamp = () => _admin ? 'tous' : (_utilisateur && CAMPS[_utilisateur.camp] ? _utilisateur.camp : null);
+
+// Camps mémorisés sur ce poste, par nom d'utilisateur (sans la casse).
+function _campsLocaux(){
+  try {
+    const o = JSON.parse(_lireLocal(CLE_CAMPS, '{}'));
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+  } catch(e){ return {}; }
+}
+const campMemorise = nom => { const c = nom ? _campsLocaux()[nom.toLowerCase()] : null; return CAMPS[c] ? c : null; };
+function memoriserCamp(nom, camp){
+  if(!nom) return;
+  const o = _campsLocaux();
+  if(CAMPS[camp]) o[nom.toLowerCase()] = camp; else delete o[nom.toLowerCase()];
+  _ecrireLocal(CLE_CAMPS, JSON.stringify(o));
+}
+// Camp d'un joueur du fichier, d'après la nationalité des pions qu'il masque.
+function campDeduit(id){
+  const n = {axe: 0, allies: 0};
+  for(const p of vivants()) if(_masqueDe(p, id)){ const c = campPion(p); if(c) n[c]++; }
+  return n.axe > n.allies ? 'axe' : n.allies > n.axe ? 'allies' : null;
+}
+
+// Vrai si le déplacement peut se faire tout de suite : aucun pion adverse.
+// Sinon le déplacement est bloqué : une fenêtre (la même au PC et au
+// doigt) demande la confirmation ; « Déplacer quand même » appelle
+// refaire(), « Annuler » (ou Échap) laisse les pions où ils sont.
+function pionsAdverses(liste){
+  const moi = monCamp();
+  if(!moi || moi === 'tous') return [];
+  return liste.filter(p => { const c = campPion(p); return c && c !== moi; });
+}
+function confirmerCampAdverse(liste, refaire){
+  const adverses = pionsAdverses(liste);
+  if(!adverses.length) return true;
+  const camp = CAMPS[monCamp() === 'axe' ? 'allies' : 'axe'];
+  const noms = adverses.slice(0, 5).map(p => accesRefuse(p) ? T('Pion dissimulé') : p.nom).join(', ')
+             + (adverses.length > 5 ? '…' : '');
+  const ancienne = document.getElementById('fenCamp');
+  if(ancienne) ancienne.remove();
+  const w = document.createElement('div');
+  w.id = 'fenCamp'; w.className = 'fenetre';
+  w.innerHTML = `
+    <div class="ft">${T('Pion du camp adverse')}</div>
+    <div class="fc">
+      <p>${_esc(T(`${adverses.length} pion(s) du camp adverse (${camp}) : ${noms}. Les déplacer quand même ?`))}</p>
+      <div class="fb">
+        <button id="campOui" class="prim">${T('Déplacer quand même')}</button>
+        <button id="campNon">${T('Annuler')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(w);
+  const fermer = () => { w.remove(); document.removeEventListener('keydown', clavier, true); };
+  const non = () => { fermer(); chatLog(`↩️ Déplacement annulé : ${adverses.length} pion(s) du camp ${camp}`); };
+  const clavier = ev => {
+    if(ev.key === 'Escape'){ ev.preventDefault(); ev.stopImmediatePropagation(); non(); }
+    else if(ev.key === 'Enter'){ ev.preventDefault(); ev.stopImmediatePropagation(); fermer(); refaire(); }
+  };
+  document.addEventListener('keydown', clavier, true);
+  w.querySelector('#campOui').onclick = () => { fermer(); refaire(); };
+  w.querySelector('#campNon').onclick = non;
+  w.querySelector('#campOui').focus();
+  return false;
 }
 
 // ── Boîte d'identification, ouverte à chaque carte chargée.
@@ -15592,6 +15698,8 @@ function demanderUtilisateur(){
         `<option value="${i}"${i === defaut ? ' selected' : ''}>${_esc(e.nom)}${e.info ? ' — ' + _esc(e.info) : ''}</option>`).join('')}</select></label>
       <label id="utNomL">Nom du nouvel utilisateur<input id="utNom" maxlength="24" autocomplete="off" placeholder="nom affiché"></label>
       <label>Mot de passe<input id="utMdp" type="password" autocomplete="off" placeholder="mot de passe"></label>
+      <label id="utCampL">Camp<select id="utCamp"><option value="">— choisir —</option>${
+        Object.entries(CAMPS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select><span id="utCampInd"></span></label>
       <div class="ferr" id="utErr"></div>
       <div class="fb">
         <button id="utOk" class="prim">Se connecter</button>
@@ -15600,21 +15708,32 @@ function demanderUtilisateur(){
       </div>
       <p class="fnote">Pour un joueur VASL, le mot de passe est celui de VASL : il ouvre ses
         pions dissimulés et en HIP.</p>
+      <p class="fnote">Déplacer un pion du camp adverse demande une confirmation ; « Les deux » ne
+        demande rien. Le camp reste sur ce poste, hors des fichiers VASL.</p>
     </div>`;
   document.body.appendChild(w);
   const $ = id => document.getElementById(id);
   const sel = $('utSel'), err = $('utErr');
   const majNom = () => {
-    const nouveau = entrees[+sel.value].type === 'nouveau';
+    const e = entrees[+sel.value], nouveau = e.type === 'nouveau';
     $('utNomL').style.display = nouveau ? '' : 'none';
+    // Camp : choix explicite à chaque connexion, jamais présélectionné ;
+    // le dernier camp de ce nom sur ce poste (ou celui des pions qu'il
+    // masque) n'est qu'indiqué.
+    $('utCampL').style.display = e.type === 'admin' ? 'none' : '';
+    $('utCamp').value = '';
+    const indice = nouveau || e.type === 'admin' ? null
+      : campMemorise(e.fiche ? (e.fiche.nom || e.nom) : e.nom) || (e.fiche && campDeduit(e.fiche.id));
+    $('utCampInd').textContent = indice ? T(`Dernier camp : ${CAMPS[indice]}`) : '';
     err.textContent = '';
     (nouveau ? $('utNom') : $('utMdp')).focus();
   };
   sel.addEventListener('change', majNom);
-  const connecter = (nom, mdp) => {
+  const connecter = (nom, mdp, camp) => {
     _ecrireLocal(CLE_DERNIER, nom);
+    memoriserCamp(nom, camp);
     w.remove();
-    seConnecter({nom, mdp}, false);
+    seConnecter({nom, mdp, camp}, false);
   };
   $('utOk').onclick = () => {
     const e = entrees[+sel.value], mdp = $('utMdp').value;
@@ -15626,6 +15745,8 @@ function demanderUtilisateur(){
       return;
     }
     if(!mdp){ err.textContent = 'Saisir le mot de passe.'; return; }
+    const camp = $('utCamp').value;
+    if(!CAMPS[camp]){ err.textContent = 'Choisir le camp.'; $('utCamp').focus(); return; }
     if(mdp === ADMIN_MDP || mdp === 'web' || mdp === 'admin'){ err.textContent = 'Ce mot de passe est réservé.'; return; }
     if(e.type === 'nouveau'){
       const nom = $('utNom').value.trim();
@@ -15635,7 +15756,7 @@ function demanderUtilisateur(){
       }
       enregistrerCompte(nom, mdp);
       chatLog(`➕ Utilisateur créé : ${nom}`);
-      connecter(nom, mdp);
+      connecter(nom, mdp, camp);
       return;
     }
     // Le mot de passe doit être celui de l'utilisateur DÉSIGNÉ.
@@ -15646,7 +15767,7 @@ function demanderUtilisateur(){
     // reconnu la prochaine fois, même sans pion masqué.
     const nom = e.fiche ? (e.fiche.nom || e.nom) : e.nom;
     if(!e.compte && nomValide(nom)) enregistrerCompte(nom, mdp);
-    connecter(nom, mdp);
+    connecter(nom, mdp, camp);
   };
   $('utObs').onclick = () => { _ecrireLocal(CLE_DERNIER, ''); w.remove(); seConnecter(null, false); };
   $('utGerer').onclick = () => { w.remove(); gererUtilisateurs(); };
@@ -15677,10 +15798,11 @@ function gererUtilisateurs(){
     <div class="ft">Utilisateurs</div>
     <div class="fc">
       <p>Connecté : <b>${_esc(_admin ? NOM_ADMIN : (_utilisateur ? _utilisateur.nom : 'observateur'))}</b>.</p>
-      <table><tr><th>Utilisateur</th><th>Pions masqués</th><th></th></tr>
-        ${lignes.map(l => `<tr><td>${_esc(l.nom)}${l.moi ? ' <b>(vous)</b>' : ''}</td><td class="nb">${l.n}</td>
+      <table><tr><th>Utilisateur</th><th>Camp</th><th>Pions masqués</th><th></th></tr>
+        ${lignes.map(l => `<tr><td>${_esc(l.nom)}${l.moi ? ' <b>(vous)</b>' : ''}</td>
+          <td>${CAMPS[(l.moi && monCamp()) || campMemorise(l.nom)] || '—'}</td><td class="nb">${l.n}</td>
           <td>${l.local ? `<button class="oubli" data-nom="${_esc(l.nom)}">Oublier</button>` : '<i>fichier</i>'}</td></tr>`).join('')
-          || '<tr><td colspan="3"><i>Aucun utilisateur</i></td></tr>'}</table>
+          || '<tr><td colspan="4"><i>Aucun utilisateur</i></td></tr>'}</table>
       <div class="fb">
         <button id="utChanger" class="prim">Changer d'utilisateur…</button>
         <button id="utFermer">Fermer</button>
