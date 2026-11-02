@@ -1383,6 +1383,7 @@ async function chargerPartie(texte, label, annexes){
   await _renderBoards(boards);
   importerPions(texte, label, annexes);
   poserTables();
+  _partieModifiee = false;
   return true;
 }
 
@@ -16735,6 +16736,8 @@ let _logNom = null;       // fichier choisi au début du log
 let _logGroupes = [], _actionNo = 0, _actionOuverte = false;
 function _logCmd(c){
   if(_net) _netCoup(c);
+  // Un coup relu ne change pas la partie : le .vlog le rejouera.
+  if(!_etapeLog && !_relecture) _partieModifiee = true;
   // Un coup joué ici (ni reçu, ni relu) : les CVP recomptés le suivent.
   if(!_netReception && !_etapeLog && !_relecture && !/^(MutableProperty|GlobalProperty)\t/.test(c)) _planifierCVP();
   if(!_actionOuverte){
@@ -16836,6 +16839,43 @@ function _reprendreLogGarde(){
   if(!confirm(T(`Le log « ${g.nom} » n'a pas été écrit avant la fermeture de la page (${n} coup(s)). L'écrire maintenant ?`))) return;
   ecrireVlog({enr: g.enr, groupes: g.groupes || [], depart: g.depart, nom: g.nom,
               annexes: new Map((g.annexes || []).map(([k, t]) => [k, _deB64(t)]))});
+}
+
+// Même secours pour la partie elle-même, log ou non : sur Android, la PWA
+// glissée hors des applications récentes, ou fermée par le système, ne
+// prévient pas. Dès que la page se cache, une partie modifiée et pas
+// encore exportée est mise de côté, puis proposée au lancement suivant.
+const CLE_PARTIE_SECOURS = 'aslweb.partieSecours';
+let _partieModifiee = false;   // coups joués depuis l'ouverture ou le dernier .vsav
+function _garderPartie(){
+  try {
+    // Pas de partie ouverte (reprise ratée, par exemple) : la copie reste.
+    if(!_source) return;
+    if(!_partieModifiee){ localStorage.removeItem(CLE_PARTIE_SECOURS); return; }
+    localStorage.setItem(CLE_PARTIE_SECOURS, JSON.stringify({nom: _nomFichier, date: Date.now(),
+      texte: etatPartie().join('\x1b'), annexes: [..._annexes].map(([n, d]) => [n, _versB64(d)])}));
+  } catch(e){
+    try { localStorage.removeItem(CLE_PARTIE_SECOURS); } catch(e2){}
+  }
+}
+async function _reprendrePartieGardee(){
+  let g = null;
+  try { g = JSON.parse(localStorage.getItem(CLE_PARTIE_SECOURS)); } catch(e){}
+  if(!g || typeof g.texte !== 'string' || !g.texte) return;
+  const quand = g.date ? new Date(g.date).toLocaleString() : '';
+  if(!confirm(T(`La partie « ${g.nom} » a été modifiée et pas enregistrée avant la fermeture${quand ? ` (${quand})` : ''}. La reprendre ?`))){
+    try { localStorage.removeItem(CLE_PARTIE_SECOURS); } catch(e){}
+    return;
+  }
+  try {
+    const annexes = new Map((g.annexes || []).map(([k, t]) => [k, _deB64(t)]));
+    const blob = await _archiveVsav(g.texte, annexes);
+    await openGameFile(new File([blob], (g.nom || 'partie') + '.vsav'));
+    // Toujours pas exportée : encore à garder si l'on referme.
+    if(_source) _partieModifiee = true;
+  } catch(e){
+    chatLog('❌ Reprise impossible : ' + (e && e.message ? e.message : e));
+  }
 }
 
 // queryNewLogFile : à l'ouverture d'une partie et à la fin d'une
@@ -17056,7 +17096,7 @@ function ecrireVsav(){
       w.remove();
       const r = await _enregistrer(blob || await prete, nom);
       if(r === 'annule') chatLog(`💾 Export de ${nom} annulé`);
-      else chatLog(`💾 .vsav écrit : ${nom} — ${nb} pion(s) sur « ${carte} »`);
+      else { chatLog(`💾 .vsav écrit : ${nom} — ${nb} pion(s) sur « ${carte} »`); _partieModifiee = false; _garderPartie(); }
     };
     w.querySelector('#svOk').onclick = ok;
     w.querySelector('#svAnnul').onclick = () => w.remove();
@@ -18530,13 +18570,13 @@ document.addEventListener('DOMContentLoaded', () => {
   w.addEventListener('wheel', cacherSurvol);
   dessinerPalette();
   majNet();
-  window.addEventListener('pagehide', () => { _garderLog(); if(_net) netQuitter(); });
-  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') _garderLog(); });
-  setTimeout(_reprendreLogGarde, 0);
+  window.addEventListener('pagehide', () => { _garderLog(); _garderPartie(); if(_net) netQuitter(); });
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden'){ _garderLog(); _garderPartie(); } });
+  setTimeout(() => { _reprendreLogGarde(); _reprendrePartieGardee(); }, 0);
   // Comme VASSAL à la fermeture : des coups enregistrés et pas encore
   // écrits ne partent pas sans avertissement.
   window.addEventListener('beforeunload', e => {
-    if(_logEnr && _logEnr.length){ e.preventDefault(); e.returnValue = ''; }
+    if((_logEnr && _logEnr.length) || (_source && _partieModifiee)){ e.preventDefault(); e.returnValue = ''; }
   });
 });
 </script>
