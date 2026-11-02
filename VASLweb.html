@@ -9194,7 +9194,14 @@ function importerPions(texte, label, annexes){
   _carteJeu = _carteDeJeu(candidats.map(c => c.d));
   let n = 0;
   for(const c of candidats){
-    if(c.d.carte !== _carteJeu) continue;     // autres fenêtres : réécrites telles quelles
+    // Autres fenêtres (Casualties…) : la pièce est gardée à l'écart, comme
+    // une pièce envoyée ailleurs (les CVP la comptent), et réécrite telle
+    // quelle.
+    if(c.d.carte !== _carteJeu){
+      const q = creerPion(c.seg.replace(/\\+$/, ''), 1000 + c.i);
+      q.deleted = true; q.ailleurs = c.d.carte; q.el.remove();
+      continue;
+    }
     // Hors de toute pile : une pièce qui ne s'empile pas est dessinée
     // sous les piles (DefaultPieceCollection, couche 0), les autres dessus.
     // La contre-oblique finale échappe l'ESC qui suit le segment, elle
@@ -9213,6 +9220,7 @@ function importerPions(texte, label, annexes){
   lireInfo(_source);
   lireLiens(_source);
   lireOBA(_source);
+  lireGlobales(_source);
   // Un .vlog s'ouvre, comme dans VASSAL, sur l'état de départ : on le
   // parcourt ensuite coup par coup.
   preparerRelecture(segs.slice(iLog));
@@ -9276,6 +9284,11 @@ function _inverse(c){
   if(_CMD_LIEN.test(c)) return [c.startsWith('UN') ? c.substring(2) : 'UN' + c];
   // CreateModule ↔ RemoveModule, UpdateModule vers l'état d'avant.
   if(_cleOBA(c).startsWith('OBA/')) return _inverseOBA(c);
+  // ChangePropertyCommand : la valeur d'avant.
+  if(c.startsWith('MutableProperty\t')){
+    const g = _lireGlob(c);
+    return g ? [`MutableProperty\t${g.nom}\t${g.valeur}\t${g.ancien}\t${g.carte}`] : null;
+  }
   if(c.startsWith('+/')) return ['-/' + c.split('/')[1]];
   if(c.startsWith('-/')){
     const uid = c.substring(2);
@@ -9436,6 +9449,8 @@ function rejouerLog(segs){
       n++;
     } else if(s.startsWith('OBA/')){
       if(_obaAppliquer(s)) n++;
+    } else if(s.startsWith('MutableProperty\t') || s.startsWith('GlobalProperty\t')){
+      if(_appliquerGlob(s)) n++;
     } else if(s.startsWith('+/')){
       if(/^\+\/[^/]+\/stack\//.test(s)){
         _pilesVassal.set(s.split('/')[1], _idsPile(s.substring(s.indexOf('/stack/') + 7)));
@@ -9495,6 +9510,8 @@ function rejouerLog(segs){
       if(_deplacerPiece(id, pos, dessous)) n++;
     }
   }
+  // Les CVP suivent les pièces entrées dans le bin ou sorties.
+  _cvpAJour(false);
   return n;
 }
 
@@ -9744,6 +9761,7 @@ function _commandesLog(tok){
 
 function _instantane(){
   return {info: _infoEtat, piles: new Map(_pilesVassal), liens: new Map(_liens), oba: _oba.map(m => ({...m})),
+          glob: new Map(_globConnu), globales: Object.assign({}, _globales),
           pions: pions.map(p => ({p, seg: p.seg, x: p.x, y: p.y, ordre: p.ordre, deleted: p.deleted, ailleurs: p.ailleurs}))};
 }
 
@@ -9764,6 +9782,12 @@ function _restaurer(snap){
   _liens = new Map(snap.liens); _planifierLiens();
   if(_infoEtat !== snap.info){ _infoEtat = snap.info; majChampsInfo(); }
   if(snap.oba && JSON.stringify(snap.oba) !== JSON.stringify(_oba)){ _oba = snap.oba.map(m => ({...m})); _majOBA(); }
+  if(snap.glob){
+    _globConnu.clear(); for(const [k, v] of snap.glob) _globConnu.set(k, v);
+    for(const k of Object.keys(_globales)) delete _globales[k];
+    Object.assign(_globales, snap.globales);
+    _cvpAJour(false);
+  }
   if(_fil && _fil.distant) _effacerFil();
 }
 
@@ -11682,6 +11706,8 @@ function proprietesPion(p, T, S){
   const pr = Object.assign({}, _globales, _proprietes({typ: T, eta: S}));
   pr.BasicName = pr.PieceName = p.nom;
   pr.CurrentMap = pr.OldMap = p.ailleurs || _carteJeu;
+  // Zone d'une pièce tenue sur une autre fenêtre (« Axis Casualties »).
+  if(p.ailleurs){ const d = lirePiece(p.seg), z = _zoneDe(p.ailleurs, d.x, d.y); if(z) pr.CurrentZone = z; }
   pr.PlayerName = pr.PlayerSide = joueur();
   return pr;
 }
@@ -12104,27 +12130,15 @@ function commandesDe(type){
   return res;
 }
 
-// ── Envoie une touche à un pion. Les états changés sont réécrits et
-// consignés par un « D/ » ; les effets (poser, retirer, cloner,
-// déplacer) passent après, chacun avec ses propres commandes de log.
-function executerTouche(p, touche, cmdDirecte, lot){
-  if(!p || p.deleted) return false;
-  // Obscurable.keyEvent : sur l'unité d'un autre, seule la commande
-  // Conceal agit, et elle démasque.
-  const k = touche || (cmdDirecte && cmdDirecte.touche);
-  if(accesRefuse(p) && !accesRefuse(p, k)){ dissimuler(p); return true; }
-  if(refuser(p, k)) return false;
-  const te = _typeEtEtat(p.seg);
-  if(!te) return false;
-  const S = decoderTraits(te.etat);
-  const avant = S.join('\x00');
-  const {cmds, suivis, T} = commandesDe(te.type);
+// ── Passage d'une touche dans les traits d'un pion, l'état S modifié sur
+// place. Une touche traverse les traits de l'extérieur vers l'intérieur.
+// Une macro n'agit qu'après le passage de la touche dans les traits qui
+// lui sont intérieurs (TriggerAction de VASSAL), et envoie alors chacune
+// de ses touches au pion entier, aussitôt. Une restriction (hideCmd) dont
+// la condition est vraie arrête la touche. Garde-fou contre les boucles.
+// Les effets (poser, retirer, déplacer…) sont rendus, pas exécutés.
+function _passerTouche(p, T, S, cmds, touche, cmdDirecte, lot){
   const effets = [], tirees = [];
-  // Une touche traverse les traits de l'extérieur vers l'intérieur. Une
-  // macro n'agit qu'après le passage de la touche dans les traits qui lui
-  // sont intérieurs (TriggerAction de VASSAL), et envoie alors chacune de
-  // ses touches au pion entier, aussitôt. Une restriction (hideCmd) dont
-  // la condition est vraie arrête la touche. Garde-fou contre les boucles.
   let agi = false, n = 0, prof = 0;
   const parcourir = (k, j) => {
     for(; j < cmds.length; j++){
@@ -12147,9 +12161,28 @@ function executerTouche(p, touche, cmdDirecte, lot){
     prof--;
   };
   const ctx = {S, p, effets, lot: lot || {}, declencher: transmettre};
-  const nomAvant = nomRapport(p);
   if(cmdDirecte){ cmdDirecte.faire(ctx); agi = true; if(cmdDirecte.touche) tirees.push(cmdDirecte.touche); }
   else transmettre(touche);
+  return {agi, effets, tirees};
+}
+
+// ── Envoie une touche à un pion. Les états changés sont réécrits et
+// consignés par un « D/ » ; les effets (poser, retirer, cloner,
+// déplacer) passent après, chacun avec ses propres commandes de log.
+function executerTouche(p, touche, cmdDirecte, lot){
+  if(!p || p.deleted) return false;
+  // Obscurable.keyEvent : sur l'unité d'un autre, seule la commande
+  // Conceal agit, et elle démasque.
+  const k = touche || (cmdDirecte && cmdDirecte.touche);
+  if(accesRefuse(p) && !accesRefuse(p, k)){ dissimuler(p); return true; }
+  if(refuser(p, k)) return false;
+  const te = _typeEtEtat(p.seg);
+  if(!te) return false;
+  const S = decoderTraits(te.etat);
+  const avant = S.join('\x00');
+  const {cmds, suivis, T} = commandesDe(te.type);
+  const nomAvant = nomRapport(p);
+  const {agi, effets, tirees} = _passerTouche(p, T, S, cmds, touche, cmdDirecte, lot);
   // Couches qui suivent une propriété : leur niveau en découle.
   if(suivis.length){
     const pr = proprietesPion(p, T, S);
@@ -12311,6 +12344,145 @@ function envoyer(p, carte, x, y){
   _logCmd(`M/${p.uid}/${carte}/${x}/${y}/null/${_carteJeu}/${ax}/${ay}/${sous}/${joueur()}`);
   rendrePile(k); afficherPile();
   chatLog(`📤 ${p.nom} → ${carte}`);
+}
+
+// ═══ CVP — LE CASUALTIES BIN ═══
+// Dans VASL, AlliedCVP et AxisCVP sont des propriétés globales de la
+// fenêtre Casualties. Un pion envoyé au bin les incrémente (touche de
+// déplacement de la carte, 77,715) ; rien ne les décrémente quand il en
+// sort : seuls les boutons « Allied CVP » / « Axis CVP » les recomptent
+// (le marqueur remet le total à 0, chaque pion de la zone ajoute sa
+// valeur : iCVP, gCVP, tCVP + tankmod, pCVP ; 0 pour un « ? »).
+// Ici, le total est toujours ce recomptage, refait après chaque coup.
+// VASL le reçoit comme il le transmet lui-même :
+//   MutableProperty\t<nom>\t<ancien>\t<nouveau>\t<carte>   (log, réseau)
+//   GlobalProperty\t;<nom>;<valeur>;<carte>                (sauvegarde)
+const _globConnu = new Map();   // nom\u0001carte → valeur connue de VASL
+let _cvpAffiche = '';
+const _cleGlob = (nom, carte) => nom + '\u0001' + (carte || '');
+
+// Zone de la carte « carte » qui contient (x, y) : Polygon.contains,
+// règle pair-impair.
+function _zoneDe(carte, x, y){
+  if(!_bdd || !_bdd.zones) return null;
+  for(const z of _bdd.zones.values()){
+    if(z.carte !== carte || !z.poly) continue;
+    let dedans = false;
+    for(let i = 0, j = z.poly.length - 1; i < z.poly.length; j = i++){
+      const [xi, yi] = z.poly[i], [xj, yj] = z.poly[j];
+      if((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) dedans = !dedans;
+    }
+    if(dedans) return z.nom;
+  }
+  return null;
+}
+
+// Commande de propriété globale (GlobalProperty ou MutableProperty) :
+// {nom, valeur, ancien, carte}, ou null.
+function _lireGlob(c){
+  if(c.startsWith('GlobalProperty\t')){
+    const f = _seq(c, ';');
+    return f[1] ? {nom: f[1], valeur: f[2] || '', carte: f[3] || ''} : null;
+  }
+  if(c.startsWith('MutableProperty\t')){
+    const f = _seq(c.substring(16), '\t');
+    return f[0] ? {nom: f[0], ancien: f[1] || '', valeur: f[2] || '', carte: f[3] || ''} : null;
+  }
+  return null;
+}
+function _appliquerGlob(c){
+  const g = _lireGlob(c);
+  if(!g) return false;
+  _globConnu.set(_cleGlob(g.nom, g.carte), g.valeur);
+  _globales[g.nom] = g.valeur;
+  return true;
+}
+
+// Recomptage des compteurs, comme leurs boutons : la touche du bouton
+// passe dans chaque pièce de la carte qui répond au filtre, le total
+// partant de 0. Les propriétés globales n'en gardent rien : rend
+// {prop: valeur}, ou null sans le module.
+function _recompterCVP(){
+  if(!_bdd || !_bdd.compteurs || !_bdd.compteurs.length) return null;
+  const avant = Object.assign({}, _globales), res = {};
+  try {
+    for(const c of _bdd.compteurs){
+      _globales[c.prop] = '0';
+      for(const p of pions){
+        if(!p.deleted || p.ailleurs !== c.carte) continue;
+        const te = _typeEtEtat(p.seg);
+        if(!te) continue;
+        const S = decoderTraits(te.etat);
+        const {cmds, T} = commandesDe(te.type);
+        if(c.filtre && !evaluerCondition(c.filtre, proprietesPion(p, T, S))) continue;
+        _passerTouche(p, T, S, cmds, c.touche);
+      }
+      res[c.prop] = String(Number(_globales[c.prop]) || 0);
+    }
+  } finally {
+    for(const k of Object.keys(_globales)) if(!(k in avant)) delete _globales[k];
+    Object.assign(_globales, avant, res);
+  }
+  return res;
+}
+
+// Recompte, montre le total s'il a changé et, pour un coup joué ici
+// (emettre), envoie à VASL les totaux qui diffèrent de ce qu'il en sait.
+function _cvpAJour(emettre){
+  const r = _recompterCVP();
+  if(!r) return;
+  const libelle = c => c.prop.replace(/([a-z])([A-Z])/g, '$1 $2');
+  const ecarts = [];
+  for(const c of _bdd.compteurs){
+    const k = _cleGlob(c.prop, c.carte);
+    const connu = _globConnu.has(k) ? _globConnu.get(k) : (c.initial || '0');
+    if(r[c.prop] === connu) continue;
+    if(emettre){
+      _logCmd(`MutableProperty\t${c.prop}\t${connu}\t${r[c.prop]}\t${c.carte}`);
+      _globConnu.set(k, r[c.prop]);
+    } else ecarts.push(`${libelle(c)} ${connu}`);
+  }
+  const texte = _bdd.compteurs.map(c => `${libelle(c)} ${r[c.prop]}`).join(' · ');
+  if(texte !== _cvpAffiche && (_cvpAffiche || _bdd.compteurs.some(c => r[c.prop] !== '0') || ecarts.length)){
+    chatLog(`🎖️ ${texte}` + (ecarts.length ? ` (VASL : ${ecarts.join(' · ')}, corrigé au prochain coup)` : ''));
+  }
+  _cvpAffiche = texte;
+}
+
+// Après chaque coup joué ici, une fois toutes ses commandes passées.
+let _cvpPlanifie = false;
+function _planifierCVP(){
+  if(_cvpPlanifie) return;
+  _cvpPlanifie = true;
+  queueMicrotask(() => { _cvpPlanifie = false; _cvpAJour(true); });
+}
+
+// Partie ouverte : les valeurs que la sauvegarde donne aux propriétés
+// globales, puis le recomptage (le module est lu s'il y a des pièces
+// hors de la carte de jeu).
+function lireGlobales(segs){
+  _globConnu.clear(); _cvpAffiche = '';
+  for(const k of Object.keys(_globales)) delete _globales[k];
+  for(const s of segs) if(s.startsWith('GlobalProperty\t')) _appliquerGlob(s.replace(/\\+$/, ''));
+  if(_bdd) _cvpAJour(false);
+  else if(pions.some(p => p.ailleurs)) chargerBDD().catch(() => {});
+}
+
+// Sauvegarde : les compteurs recomptés à la place des valeurs lues ; un
+// compteur absent du fichier n'y entre que s'il n'est pas nul.
+function _segmentsGlob(sortie){
+  const r = _recompterCVP();
+  if(!r) return [];
+  const vus = new Set();
+  for(let i = 0; i < sortie.length; i++){
+    const g = sortie[i].startsWith('GlobalProperty\t') && _lireGlob(sortie[i]);
+    const c = g && _bdd.compteurs.find(x => x.prop === g.nom && x.carte === g.carte);
+    if(!c) continue;
+    vus.add(c);
+    sortie[i] = `GlobalProperty\t;${c.prop};${r[c.prop]};${c.carte}`;
+  }
+  return _bdd.compteurs.filter(c => !vus.has(c) && r[c.prop] !== '0')
+    .map(c => `GlobalProperty\t;${c.prop};${r[c.prop]};${c.carte}`);
 }
 
 // ═══ DISSIMULATION — Concealable et Concealment (VASL) ═══
@@ -14230,7 +14402,27 @@ async function _chargerBDD(){
       const xs = pts.map(c => c[0]), ys = pts.map(c => c[1]);
       const x0 = Math.min(...xs), y0 = Math.min(...ys);
       zones.set(m.getAttribute('mapName') + '\u0001' + z.getAttribute('name'),
-                {x: bx + x0 + Math.floor((Math.max(...xs) - x0) / 2), y: by + y0 + Math.floor((Math.max(...ys) - y0) / 2)});
+                {x: bx + x0 + Math.floor((Math.max(...xs) - x0) / 2), y: by + y0 + Math.floor((Math.max(...ys) - y0) / 2),
+                 carte: m.getAttribute('mapName'), nom: z.getAttribute('name'), poly: pts.map(([x, y]) => [bx + x, by + y])});
+    }
+  }
+  // Compteurs d'une carte (Casualties : AlliedCVP, AxisCVP) : une
+  // propriété globale de la carte que recompte un bouton de sa barre
+  // (MassKeyCommand « Allied CVP ») ; il envoie sa touche aux pièces de la
+  // carte qui passent son filtre (CurrentZone=="Allied Casualties"), et
+  // dit la propriété dans son rapport (« Allied CVP: $AlliedCVP$ »).
+  const compteurs = [];
+  for(const m of mod.children){
+    if(!/\.(Map|PrivateMap|PlayerHand)$/.test(m.tagName)) continue;
+    const glob = new Map();
+    for(const g of m.getElementsByTagName('*'))
+      if(g.tagName.endsWith('.GlobalProperty')) glob.set(g.getAttribute('name'), g.getAttribute('initialValue') || '');
+    for(const k of m.children){
+      if(!k.tagName.endsWith('.MassKeyCommand')) continue;
+      const touche = lireTouche(k.getAttribute('hotkey') || '');
+      const prop = ((k.getAttribute('reportFormat') || '').match(/\$(\w+)\$/g) || []).map(x => x.slice(1, -1)).find(x => glob.has(x));
+      if(touche && prop) compteurs.push({carte: m.getAttribute('mapName'), prop, initial: glob.get(prop),
+                                         touche, filtre: (k.getAttribute('filter') || '').trim(), nom: k.getAttribute('buttonText') || prop});
     }
   }
   // Fenêtre QRDC (ChartWindow) : les tables de référence, en onglets.
@@ -14255,10 +14447,12 @@ async function _chargerBDD(){
     ongletsQRDC.enfants.push({id: qid++, t: 'OBA', nom: 'OBA', enfants: []});
     qrdc.oba = {onglets: ongletsQRDC.id, rang: ongletsQRDC.enfants.length - 1};
   }
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, zones, version: mod.getAttribute('version')};
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, zones, compteurs, version: mod.getAttribute('version')};
   rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
+  // Les CVP du Casualties Bin se recomptent dès que le module est connu.
+  _cvpAJour(false);
   chatLog(`📚 Base VASL ${_bdd.version} : ${slots.length} pions, ${cats.length} catégories`);
   return _bdd;
 }
@@ -16289,6 +16483,8 @@ let _logNom = null;       // fichier choisi au début du log
 let _logGroupes = [], _actionNo = 0, _actionOuverte = false;
 function _logCmd(c){
   if(_net) _netCoup(c);
+  // Un coup joué ici (ni reçu, ni relu) : les CVP recomptés le suivent.
+  if(!_netReception && !_etapeLog && !_relecture && !/^(MutableProperty|GlobalProperty)\t/.test(c)) _planifierCVP();
   if(!_actionOuverte){
     _actionNo++; _actionOuverte = true;
     setTimeout(() => { _actionOuverte = false; }, 0);
@@ -16467,7 +16663,7 @@ function etatPartie(){
   }
   // Pions posés ou créés par le log : avant la fin de sauvegarde.
   const neufs = pions.filter(p => (!p.deleted || p.ailleurs) && !connus.has(p.uid)).map(p => p.seg);
-  const ajout = [...neufs, ..._segmentsPiles(), ...segmentsLiens(), ...(obaPose ? [] : _segmentsOBA())];
+  const ajout = [...neufs, ..._segmentsPiles(), ...segmentsLiens(), ...(obaPose ? [] : _segmentsOBA()), ..._segmentsGlob(sortie)];
   // SAN saisis ici alors que le fichier n'avait pas d'informations de scénario.
   if(_infoModifiee && !_source.some(x => x.startsWith('INFO\t'))) ajout.push('INFO\t' + _infoEtat);
   const iFin = sortie.lastIndexOf('end_save');
