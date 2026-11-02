@@ -397,6 +397,25 @@ body[data-terminal=tactile] .vig .mini{transform:scale(1.25)}
 .oba .obaVide{color:var(--doux);margin:.4em 0}
 .oba .obaNoir{color:#bbb}
 .oba .obaRouge{color:#ff6a6a}
+/* Casualties Bin : la fenêtre « Casualties » de VASL, en onglet des tables
+   QRDC comme l'OBA. Une colonne par zone, ses pions et son total de CVP. */
+.tablesQRDC .bin{font-size:calc(15px * max(1, var(--zinv, 1)))}
+.bin{color:#ddd;display:flex;flex-wrap:wrap;gap:.6em;align-items:flex-start;max-width:52em}
+.bin .binZone{flex:1 1 18em;min-width:14em;background:rgba(20,20,20,.9);border:1px solid var(--bord);border-radius:.4em;
+  padding:.45em .55em;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+.fenQRDC .bin .binZone{box-shadow:none}
+.bin .binZone.vise{border-color:var(--accent)}
+.bin .binTete{display:flex;align-items:baseline;gap:.5em;margin-bottom:.4em}
+.bin .binTitre{font-weight:700;color:var(--accent)}
+.bin .binTotal{margin-left:auto;font-weight:700;white-space:nowrap}
+.bin .binLig{display:flex;align-items:center;gap:.4em;padding:.2em 0;border-top:1px solid rgba(255,255,255,.08);
+  touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
+.bin .binMini{position:relative;flex:none;width:calc(40px * max(1, var(--zinv, 1)));height:calc(40px * max(1, var(--zinv, 1)));overflow:hidden}
+.bin .binNom{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bin .binCvp{color:var(--doux);white-space:nowrap}
+.bin button{font:inherit;cursor:pointer;background:#262626;color:#ccc;border:1px solid var(--bord);border-radius:.3em;
+  padding:.1em .45em;min-width:2.3em;min-height:2.2em}
+.bin .binVide{color:var(--doux);margin:.3em 0}
 .obaJet .obaMini{display:inline-block;width:.7em;height:1em;border:1px solid #888;border-radius:2px;
   vertical-align:-.15em;margin-right:.45em}
 .obaJet .obaMini.b{background:#000}
@@ -9525,6 +9544,8 @@ function _deplacerPiece(uid, [carte, x, y], dessous){
     document.getElementById('mapInner').appendChild(p.el);
   }
   if(carte !== _carteJeu){
+    // Partie de la carte de jeu : sa place, pour l'y remettre.
+    if(!p.ailleurs && !p.deleted) p.retour = {x: p.x, y: p.y};
     const te = _typeEtEtat(p.seg);
     if(te) p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, carte, x, y);
     p.deleted = true; p.ailleurs = carte; p.el.remove();
@@ -12341,6 +12362,7 @@ function envoyer(p, carte, x, y){
   const te = _typeEtEtat(p.seg);
   if(te) p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, carte, x, y);
   p.deleted = true; p.ailleurs = carte; p.el.remove(); _sel.delete(p);
+  p.retour = {x: ax, y: ay};
   _logCmd(`M/${p.uid}/${carte}/${x}/${y}/null/${_carteJeu}/${ax}/${ay}/${sous}/${joueur()}`);
   rendrePile(k); afficherPile();
   chatLog(`📤 ${p.nom} → ${carte}`);
@@ -12404,26 +12426,31 @@ function _appliquerGlob(c){
 // {prop: valeur}, ou null sans le module.
 function _recompterCVP(){
   if(!_bdd || !_bdd.compteurs || !_bdd.compteurs.length) return null;
-  const avant = Object.assign({}, _globales), res = {};
+  const res = {};
+  for(const c of _bdd.compteurs) res[c.prop] = _compter(c, pions);
+  Object.assign(_globales, res);
+  return res;
+}
+// Total du compteur c sur les pièces de « liste » (une seule : la valeur
+// d'un pion), sans rien laisser dans les propriétés globales.
+function _compter(c, liste){
+  const avant = Object.assign({}, _globales);
   try {
-    for(const c of _bdd.compteurs){
-      _globales[c.prop] = '0';
-      for(const p of pions){
-        if(!p.deleted || p.ailleurs !== c.carte) continue;
-        const te = _typeEtEtat(p.seg);
-        if(!te) continue;
-        const S = decoderTraits(te.etat);
-        const {cmds, T} = commandesDe(te.type);
-        if(c.filtre && !evaluerCondition(c.filtre, proprietesPion(p, T, S))) continue;
-        _passerTouche(p, T, S, cmds, c.touche);
-      }
-      res[c.prop] = String(Number(_globales[c.prop]) || 0);
+    _globales[c.prop] = '0';
+    for(const p of liste){
+      if(!p.deleted || p.ailleurs !== c.carte) continue;
+      const te = _typeEtEtat(p.seg);
+      if(!te) continue;
+      const S = decoderTraits(te.etat);
+      const {cmds, T} = commandesDe(te.type);
+      if(c.filtre && !evaluerCondition(c.filtre, proprietesPion(p, T, S))) continue;
+      _passerTouche(p, T, S, cmds, c.touche);
     }
+    return String(Number(_globales[c.prop]) || 0);
   } finally {
     for(const k of Object.keys(_globales)) if(!(k in avant)) delete _globales[k];
-    Object.assign(_globales, avant, res);
+    Object.assign(_globales, avant);
   }
-  return res;
 }
 
 // Recompte, montre le total s'il a changé et, pour un coup joué ici
@@ -12447,6 +12474,8 @@ function _cvpAJour(emettre){
     chatLog(`🎖️ ${texte}` + (ecarts.length ? ` (VASL : ${ecarts.join(' · ')}, corrigé au prochain coup)` : ''));
   }
   _cvpAffiche = texte;
+  _dessinerBin();
+  rafraichirActions(['bin']);
 }
 
 // Après chaque coup joué ici, une fois toutes ses commandes passées.
@@ -12483,6 +12512,203 @@ function _segmentsGlob(sortie){
   }
   return _bdd.compteurs.filter(c => !vus.has(c) && r[c.prop] !== '0')
     .map(c => `GlobalProperty\t;${c.prop};${r[c.prop]};${c.carte}`);
+}
+
+// ── Le panneau Casualties Bin : onglet des tables QRDC, comme l'OBA.
+// Une colonne par zone de la fenêtre Casualties de VASL, avec son total
+// de CVP ; une ligne par pion, du sommet au fond, avec sa valeur. Dans
+// VASL, chaque zone n'est qu'une pile, au centre de la zone.
+//   · ↩ remet le pion sur la carte, à la place qu'il a quittée (sinon au
+//     centre de la vue) ; un glissé de la ligne vers la carte l'y pose ;
+//   · ⇄ ou un glissé vers l'autre colonne le fait changer de zone ;
+//   · ✕ le retire du jeu.
+// Chaque geste est un M/ (ou un -/) comme dans VASL ; Undo l'annule, et
+// les CVP sont recomptés après lui.
+const _ongletBin = () => _bdd && _bdd.qrdc && _bdd.qrdc.bin;
+const _surOngletBin = () => { const o = _ongletBin(); return !!o && (_tablesSel.get(o.onglets) || 0) === o.rang; };
+const binOuvert = () => _tablesOuvertes() && _surOngletBin();
+const basculerBin = () => _basculerOnglet(_ongletBin, binOuvert, '.ongletBin', 'Casualties');
+
+const _zonesBin = carte => [...(_bdd ? _bdd.zones.values() : [])].filter(z => z.carte === carte);
+const _zoneDuPion = p => { const d = lirePiece(p.seg); return _zoneDe(p.ailleurs, d.x, d.y); };
+const _compteurDe = (carte, zone) => (_bdd.compteurs || []).find(c => c.carte === carte && c.filtre.includes('"' + zone + '"'));
+// Pions du bin, du sommet au fond.
+const _pionsBin = carte => pions.filter(p => p.deleted && p.ailleurs === carte).sort((a, b) => b.ordre - a.ordre);
+
+function _dessinerBin(){
+  for(const b of document.querySelectorAll('.ongletBin')) _rendreBin(b);
+}
+
+function _rendreBin(boite){
+  boite.replaceChildren();
+  const o = _ongletBin();
+  if(!o) return;
+  const zones = _zonesBin(o.carte);
+  const tous = _pionsBin(o.carte);
+  const colonnes = [];
+  // Une pièce hors des zones (déplacée dans VASL) a sa colonne.
+  const groupes = zones.map(z => ({z, nom: z.nom, liste: tous.filter(p => _zoneDuPion(p) === z.nom)}));
+  const hors = tous.filter(p => !zones.some(z => z.nom === _zoneDuPion(p)));
+  if(hors.length) groupes.push({z: null, nom: 'Hors zone', liste: hors});
+  for(const g of groupes){
+    const col = document.createElement('div');
+    col.className = 'binZone';
+    col.setAttribute('role', 'group');
+    col.setAttribute('aria-label', g.nom);
+    const tete = document.createElement('div');
+    tete.className = 'binTete';
+    const t = document.createElement('span');
+    t.className = 'binTitre'; t.textContent = g.nom;
+    tete.appendChild(t);
+    const c = g.z && _compteurDe(o.carte, g.z.nom);
+    if(c){
+      const n = document.createElement('span');
+      n.className = 'binTotal'; n.textContent = `${_globales[c.prop] || '0'} CVP`;
+      tete.appendChild(n);
+    }
+    col.appendChild(tete);
+    if(!g.liste.length){
+      const v = document.createElement('div');
+      v.className = 'binVide'; v.textContent = 'Aucune perte';
+      col.appendChild(v);
+    }
+    for(const p of g.liste) col.appendChild(_ligneBin(p, c, zones, g.z, () => colonnes, boite));
+    colonnes.push({col, z: g.z});
+    boite.appendChild(col);
+  }
+}
+
+function _ligneBin(p, c, zones, zone, colonnes, boite){
+  const l = document.createElement('div');
+  l.className = 'binLig';
+  const nom = nomRapport(p);
+  l.setAttribute('aria-label', nom);
+  l.title = nom + ' — glisser vers la carte pour l\'y remettre, vers une autre zone pour l\'y passer';
+  const im = document.createElement('div');
+  im.className = 'binMini';
+  const sz = p.sz || 48;
+  const copie = p.el.cloneNode(true);
+  copie.classList.remove('sel', 'deplie', 'coup');
+  copie.removeAttribute('title');
+  copie.style.cssText = `position:absolute;left:0;top:0;width:${sz}px;height:${sz}px;`
+                      + `transform:scale(calc(${40 / sz} * max(1, var(--zinv, 1))));transform-origin:0 0;opacity:1`;
+  im.appendChild(copie);
+  const n = document.createElement('span');
+  n.className = 'binNom'; n.textContent = nom;
+  l.append(im, n);
+  if(c){
+    const v = document.createElement('span');
+    v.className = 'binCvp'; v.textContent = _compter(c, [p]) + ' CVP';
+    l.appendChild(v);
+  }
+  const autre = zones.length > 1 ? zones[(zones.indexOf(zone) + 1) % zones.length] : null;
+  const boutons = [['↩', 'Remettre sur la carte', () => remettreDuBin(p)]];
+  if(autre && zone) boutons.push(['⇄', `Passer en ${autre.nom}`, () => changerZoneBin(p, autre)]);
+  boutons.push(['✕', 'Retirer du jeu', () => retirerDuBin(p)]);
+  for(const [txt, titre, f] of boutons){
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = txt; b.title = titre; b.setAttribute('aria-label', titre + ' : ' + nom);
+    b.addEventListener('click', f);
+    l.appendChild(b);
+  }
+  // Glissé : vers la carte, le pion y revient ; vers une autre colonne, il
+  // change de zone. Au doigt, après un appui long (sinon la carte défile).
+  const colonneSous = ev => colonnes().find(x => {
+    const r = x.col.getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  });
+  l.addEventListener('pointerdown', e => {
+    if(e.button > 0 || e.target.closest('button')) return;
+    const id = e.pointerId;
+    glisser(e, p.face && p.face.src, sz * zoom, (cx, cy) => {
+      const m = clientVersCarte(cx, cy);
+      if(m) remettreDuBin(p, m.x, m.y);
+    }, null, {
+      appuiLong: 300,
+      zone: boite,
+      // Le doigt qui glisse une ligne posée sur la carte ne la fait plus défiler.
+      debut: () => {
+        _pointeursCarte.delete(id);
+        const w = document.getElementById('mapWrap');
+        try { w.releasePointerCapture(id); } catch(err){}
+        w.classList.remove('pan');
+      },
+      dansZone: ev => { const x = colonneSous(ev); for(const y of colonnes()) y.col.classList.toggle('vise', y === x && y.z !== zone); },
+      fin: () => { for(const y of colonnes()) y.col.classList.remove('vise'); },
+      lacherZone: ev => { const x = colonneSous(ev); if(x && x.z && x.z !== zone) changerZoneBin(p, x.z); }
+    });
+  });
+  return l;
+}
+
+// Place que le pion a quittée sur la carte de jeu : retenue à son départ,
+// sinon celle que garde son trait SendToLocation (« carte;x;y »).
+function _retourDe(p){
+  if(p.retour) return p.retour;
+  const te = _typeEtEtat(p.seg);
+  if(!te) return null;
+  const T = decoderTraits(te.type), S = decoderTraits(te.etat);
+  for(let i = 0; i < T.length; i++){
+    if(!/^sendto;/.test(T[i])) continue;
+    const f = (S[i] || '').replace(/\\+$/, '').split(';');
+    const x = parseInt(f[1], 10), y = parseInt(f[2], 10);
+    if(Number.isFinite(x) && Number.isFinite(y)) return {x, y};
+  }
+  return null;
+}
+
+// Centre de la vue, ou des boards si la vue montre les tables.
+function _placeAuCentre(){
+  const r = document.getElementById('mapWrap').getBoundingClientRect();
+  const c = clientVersCarte((r.left + r.right) / 2, (r.top + r.bottom) / 2, null, true);
+  if(c && !surTables(c.x, c.y)) return c;
+  const e = _empriseBoards;
+  return e ? {x: (e.x + e.w / 2) / SC, y: (e.y + e.h / 2) / SC} : c;
+}
+
+// Le pion revient sur la carte de jeu, en (x, y) ou à sa place d'avant,
+// comme un glissé de la fenêtre Casualties vers la carte dans VASL.
+function remettreDuBin(p, x, y){
+  if(!p.deleted || !p.ailleurs || refuser(p)) return;
+  if(x === undefined){ const r = _retourDe(p) || _placeAuCentre(); if(!r) return; x = r.x; y = r.y; }
+  if(surTables(x, y)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien déplacé'); return; }
+  _avantAction();
+  const d = lirePiece(p.seg), carte = p.ailleurs;
+  const pos = positionDepot(x, y), k = pos.x + ',' + pos.y;
+  const haut = Math.max(-1, ...pile(k).map(q => q.ordre));
+  p.deleted = false; p.ailleurs = null; p.retour = null;
+  p.x = pos.x; p.y = pos.y; p.ordre = haut + 1;
+  document.getElementById('mapInner').appendChild(p.el);
+  _majSeg(p);
+  _logCmd(`M/${p.uid}/${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}/${carte}/${d.x}/${d.y}/null/${joueur()}`);
+  majApparence(p);
+  marquerDeplace(p, true);
+  executerTouche(p, TOUCHE_MOUVEMENT);
+  ajusterDissimulation(k); rendrePile(k);
+  if(selectionnable(p)) selectionner([p]);
+  chatLog(`📥 ${nomRapport(p)} : ${carte} → ${pos.label || k}`);
+}
+
+// Le pion passe dans une autre zone du bin, au centre, comme son envoi.
+function changerZoneBin(p, z){
+  if(!p.deleted || p.ailleurs !== z.carte || refuser(p)) return;
+  const te = _typeEtEtat(p.seg);
+  if(!te) return;
+  _avantAction();
+  const d = lirePiece(p.seg);
+  p.seg = '+/' + p.uid + '/' + te.type + '/' + _majPosEtat(te.etat, z.carte, z.x, z.y);
+  p.ordre = Math.max(-1, ..._pionsBin(z.carte).filter(q => q !== p && _zoneDuPion(q) === z.nom).map(q => q.ordre)) + 1;
+  _logCmd(`M/${p.uid}/${z.carte}/${z.x}/${z.y}/null/${z.carte}/${d.x}/${d.y}/null/${joueur()}`);
+  chatLog(`📤 ${nomRapport(p)} → ${z.nom}`);
+}
+
+// Le pion quitte le jeu (Delete dans la fenêtre Casualties).
+function retirerDuBin(p){
+  if(!p.deleted || !p.ailleurs || refuser(p)) return;
+  _avantAction();
+  p.ailleurs = null;
+  _logCmd('-/' + p.uid);
+  chatLog(`✖️ ${nomRapport(p)} retiré du jeu`);
 }
 
 // ═══ DISSIMULATION — Concealable et Concealment (VASL) ═══
@@ -14447,6 +14673,14 @@ async function _chargerBDD(){
     ongletsQRDC.enfants.push({id: qid++, t: 'OBA', nom: 'OBA', enfants: []});
     qrdc.oba = {onglets: ongletsQRDC.id, rang: ongletsQRDC.enfants.length - 1};
   }
+  // Le Casualties Bin : un onglet de plus, pour la carte des compteurs.
+  if(ongletsQRDC && compteurs.length){
+    const carte = compteurs[0].carte;
+    const m = [...mod.children].find(x => x.getAttribute('mapName') === carte);
+    ongletsQRDC.enfants.push({id: qid++, t: 'Casualties', nom: carte, enfants: []});
+    qrdc.bin = {onglets: ongletsQRDC.id, rang: ongletsQRDC.enfants.length - 1, carte,
+                titre: (m && m.getAttribute('buttonName')) || carte};
+  }
   _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, zones, compteurs, version: mod.getAttribute('version')};
   rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
@@ -14677,6 +14911,14 @@ function _dessinerTables(){
 // Comme les widgets de la palette : seule la branche choisie est dessinée,
 // et le choix de chaque onglet est retenu d'une visite à l'autre.
 function rendreTable(n, boite, k){
+  if(n.t === 'Casualties'){
+    const z = document.createElement('div');
+    z.className = 'bin ongletBin';
+    _brancherOBA(z);
+    _rendreBin(z);
+    boite.appendChild(z);
+    return;
+  }
   if(n.t === 'OBA'){
     const z = document.createElement('div');
     z.className = 'oba ongletOBA';
@@ -14712,7 +14954,7 @@ function rendreTable(n, boite, k){
         _tablesSel.set(n.id, i);
         try { localStorage.setItem('qrdcSel', JSON.stringify([..._tablesSel])); } catch(e){}
         _dessinerTables();
-        rafraichirActions(['oba']);
+        rafraichirActions(['oba', 'bin']);
       });
       o.appendChild(b);
     });
@@ -14787,7 +15029,7 @@ async function ouvrirFenetreTables(){
 }
 function fermerFenetreTables(){
   const w = document.getElementById('fenQRDC');
-  if(w){ w.remove(); rafraichirActions(['tables', 'oba']); }
+  if(w){ w.remove(); rafraichirActions(['tables', 'oba', 'bin']); }
 }
 
 // Changement de profil : la fenêtre au PC, la couche de la carte en tactile.
@@ -14809,7 +15051,7 @@ function basculerTables(){
     _oublierTables();
     _etendreCarte(true);
   }
-  rafraichirActions(['tables', 'oba']);
+  rafraichirActions(['tables', 'oba', 'bin']);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -14972,7 +15214,7 @@ function _dessinerOBA(){
 }
 function _majOBA(){
   _dessinerOBA();
-  rafraichirActions(['oba']);
+  rafraichirActions(['oba', 'bin']);
 }
 
 // Les appuis sur les commandes ne sont pas pris par la carte (défilement).
@@ -15096,22 +15338,26 @@ const _surOngletOBA = () => { const o = _ongletOBA(); return !!o && (_tablesSel.
 const _tablesOuvertes = () => _telLike() && _empriseBoards ? !!_tablesEl : !!document.getElementById('fenQRDC');
 const obaOuvert = () => _tablesOuvertes() && _surOngletOBA();
 
-async function basculerOBA(){
-  if(obaOuvert()){ _telLike() && _empriseBoards ? basculerTables() : fermerFenetreTables(); return; }
+const basculerOBA = () => _basculerOnglet(_ongletOBA, obaOuvert, '.ongletOBA', 'OBA');
+
+// Les tables QRDC ouvertes sur un onglet (OBA, Casualties) ; fermées si
+// elles y sont déjà.
+async function _basculerOnglet(onglet, ouvert, classe, nom){
+  if(ouvert()){ _telLike() && _empriseBoards ? basculerTables() : fermerFenetreTables(); return; }
   try { await chargerBDD(); } catch(e){}
-  const o = _ongletOBA();
-  if(!o){ chatLog('⚠️ Tables QRDC indisponibles : pas d\'onglet OBA.'); return; }
+  const o = onglet();
+  if(!o){ chatLog(`⚠️ Tables QRDC indisponibles : pas d'onglet ${nom}.`); return; }
   _tablesSel.set(o.onglets, o.rang);
   try { localStorage.setItem('qrdcSel', JSON.stringify([..._tablesSel])); } catch(e){}
   if(_telLike() && _empriseBoards){
     if(!_tablesEl) basculerTables(); else _dessinerTables();
     // Les tables sont sous les boards : la vue y descend.
-    for(let n = 0; n < 40 && !document.querySelector('#tablesQRDC .ongletOBA'); n++) await new Promise(r => setTimeout(r, 50));
+    for(let n = 0; n < 40 && !document.querySelector('#tablesQRDC ' + classe); n++) await new Promise(r => setTimeout(r, 50));
     const z = document.querySelector('#tablesQRDC .qOnglets');
     if(z) z.scrollIntoView({block: 'start', inline: 'nearest', behavior: 'smooth'});
   } else if(document.getElementById('fenQRDC')) _dessinerTables();
   else await ouvrirFenetreTables();
-  rafraichirActions(['oba', 'tables']);
+  rafraichirActions(['oba', 'bin', 'tables']);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -16974,6 +17220,9 @@ const ACTIONS = {
   // Bouton « OBA » de VASL (F6) : les pioches de cartes Battery Access.
   oba:      {lib: 'OBA — pioches de cartes (onglet des tables QRDC)',
              court: 'OBA', ico: 'OBA', classe: 'sigle', touche: 'F6', coche: obaOuvert, faire: basculerOBA},
+  // Bouton « Casualties Bin » de VASL : les pertes et leurs CVP.
+  bin:      {lib: () => 'Casualties Bin — pertes et CVP (onglet des tables QRDC)' + (_cvpAffiche ? ' : ' + _cvpAffiche : ''),
+             court: 'Pertes', ico: 'CVP', classe: 'sigle', coche: binOuvert, faire: basculerBin},
   effectif: {ico: '🔢', lib: 'Afficher l\'effectif des piles (vue de loin)', coche: () => _effectifPiles, faire: () => basculerEffectif()},
   raccourcis: {lib: 'Raccourcis clavier et gestes…', court: 'Aide', ico: '?', faire: () => aideRaccourcis()},
   couche_unite:    {ico: '👥', lib: 'Sélection : unités', coche: () => COUCHES_SEL.unite, faire: () => basculerCouche('unite')},
@@ -17233,13 +17482,13 @@ const DISPOSITIONS = {
       // des piles, LOS détaillée (toujours au clic droit sur le bouton LOS).
       'Affichage': ['zoomPlus', 'zoomMoins', 'ajuster', 'zoom100', '-', 'rotDroite', 'rotGauche', 'rot180', 'rot0', '-', 'masquer', 'tables', '-', 'couche_unite', 'couche_marqueur',
                     'couche_overlay', '-', 'pions', 'journal', '-', 'profil_auto', 'profil_pc', 'profil_tactile'],
-      'Outils':    ['los', 'losMuet', '-', 'oba'],
+      'Outils':    ['los', 'losMuet', '-', 'oba', 'bin'],
       'Dés':       [...DES.map(d => d.id), '-', 'infoScenario'],
       'Réseau':    ['reseau', 'utilisateur'],
       'Aide':      ['raccourcis']
     },
     barre: ['ouvrir', 'vsav', 'log', 'logTxt', '|', 'undo', '|', 'zoomMoins', 'zoomTxt', 'zoomPlus', 'ajuster', 'rotGauche', 'rotDroite',
-            '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'oba', '|', 'reseau', 'utilisateur'],
+            '|', 'relecture', 'los', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'oba', 'bin', '|', 'reseau', 'utilisateur'],
     // Les dés restent à portée, en boutons sous la barre d'icônes.
     barreDes: [...DES.filter(d => d.id.startsWith('DR_')).map(d => d.id), '|', ...DES.filter(d => d.id.startsWith('dr_')).map(d => d.id)],
     panneau: ['pile', 'palette', 'des']
@@ -17452,7 +17701,7 @@ function placerColonne(c){
 // PC) : pour les rendre, remettre 'couche_unite', 'couche_marqueur' ici.
 // La sélection des overlays reste : sans elle, un overlay posé ne pourrait
 // plus être ni déplacé ni retiré au doigt.
-const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'oba', 'couche_overlay', '-', 'rotDroite', 'rot180', '-', 'reseau', 'utilisateur', '-',
+const PLUS = ['ouvrir', 'vsav', 'log', '-', 'los', 'losMuet', 'unmoved', 'all', 'brises', 'sniper', 'masquer', 'tables', 'oba', 'bin', 'couche_overlay', '-', 'rotDroite', 'rot180', '-', 'reseau', 'utilisateur', '-',
   'sanPieges', '-', 'profil_pc'];
 // Dans la feuille « Plus », mais pas dans la colonne d'icônes.
 const PLUS_SANS_ICONE = ['profil_pc', 'reseau', 'utilisateur'];
