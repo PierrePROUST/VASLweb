@@ -1,0 +1,4 @@
+Ajouter les gestions des munitions
+Ajouter la gestion des piles avec fenêtre flottantes
+Ajouter la gestion des LOS 
+Ajour la connexion à VASL 
