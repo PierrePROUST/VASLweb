@@ -800,7 +800,8 @@ const EN = {
   'Cet utilisateur existe déjà : le choisir dans la liste.': 'This user already exists: pick it from the list.',
   'Mot de passe incorrect pour cet utilisateur.': 'Incorrect password for this user.',
   'Camp': 'Side', '— choisir —': '— choose —', 'Axe': 'Axis', 'Alliés': 'Allied', 'Les deux': 'Both',
-  'Choisir le camp.': 'Choose the side.',
+  'Choisir le camp.': 'Choose the side.', 'Pion du camp adverse': 'Opposing side counter',
+  'Déplacer quand même': 'Move anyway',
   'Déplacer un pion du camp adverse demande une confirmation ; « Les deux » ne demande rien. Le camp reste sur ce poste, hors des fichiers VASL.':
     'Moving a counter of the opposing side asks for confirmation; “Both” asks nothing. The side stays on this device, outside VASL files.',
   'Connecté :': 'Logged in as:', 'Pions masqués': 'Hidden counters', '(vous)': '(you)',
@@ -881,6 +882,7 @@ const EN_MOTIFS = [
    'Choose the user, then enter their password. Concealed and HIP counters are only visible to their player.'],
   ['Retirer {} pions de la carte ?', 'Delete {} counters from the map?'],
   ['{} pion(s) du camp adverse ({}) : {}. Les déplacer quand même ?', '{} counter(s) of the opposing side ({}): {}. Move them anyway?'],
+  ['Dernier camp : {}', 'Last side: {}'],
   ['Le log « {} » n\'est pas écrit ({} coup(s)). L\'écrire maintenant ?', 'Logfile “{}” is not written ({} move(s)). Write it now?'],
   ['Le log « {} » n\'a pas été écrit avant la fermeture de la page ({} coup(s)). L\'écrire maintenant ?',
    'Logfile “{}” was not written before the page closed ({} move(s)). Write it now?']
@@ -9807,13 +9809,14 @@ function positionDepot(x, y){
   return best ? {x: best.x, y: best.y, label: a.label} : a;
 }
 
-function deplacer(liste, x, y){
+function deplacer(liste, x, y, campConfirme){
   // Un pion invisible pour moi (HIP adverse) ne part jamais avec les miens.
-  liste = liste.filter(p => !p.cache);
+  liste = liste.filter(p => !p.cache && !p.deleted);
   if(!liste.length) return;
   if(surTables(x, y)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien déplacé'); return; }
-  // Pion du camp adverse (camp choisi à l'identification) : confirmation.
-  if(!confirmerCampAdverse(liste)) return;
+  // Pion du camp adverse (camp choisi à l'identification) : le déplacement
+  // est bloqué jusqu'à la réponse de la fenêtre de confirmation.
+  if(!campConfirme && !confirmerCampAdverse(liste, () => deplacer(liste, x, y, true))) return;
   _avantAction();
   const pos = positionDepot(x, y);
   const kArr = pos.x + ',' + pos.y;
@@ -14901,17 +14904,45 @@ function campDeduit(id){
   return n.axe > n.allies ? 'axe' : n.allies > n.axe ? 'allies' : null;
 }
 
-// Vrai si le déplacement peut se faire : sans pion adverse, ou confirmé.
-function confirmerCampAdverse(liste){
+// Vrai si le déplacement peut se faire tout de suite : aucun pion adverse.
+// Sinon le déplacement est bloqué : une fenêtre (la même au PC et au
+// doigt) demande la confirmation ; « Déplacer quand même » appelle
+// refaire(), « Annuler » (ou Échap) laisse les pions où ils sont.
+function pionsAdverses(liste){
   const moi = monCamp();
-  if(!moi || moi === 'tous') return true;
-  const adverses = liste.filter(p => { const c = campPion(p); return c && c !== moi; });
+  if(!moi || moi === 'tous') return [];
+  return liste.filter(p => { const c = campPion(p); return c && c !== moi; });
+}
+function confirmerCampAdverse(liste, refaire){
+  const adverses = pionsAdverses(liste);
   if(!adverses.length) return true;
-  const camp = CAMPS[moi === 'axe' ? 'allies' : 'axe'];
+  const camp = CAMPS[monCamp() === 'axe' ? 'allies' : 'axe'];
   const noms = adverses.slice(0, 5).map(p => accesRefuse(p) ? T('Pion dissimulé') : p.nom).join(', ')
              + (adverses.length > 5 ? '…' : '');
-  if(confirm(T(`${adverses.length} pion(s) du camp adverse (${camp}) : ${noms}. Les déplacer quand même ?`))) return true;
-  chatLog(`↩️ Déplacement annulé : ${adverses.length} pion(s) du camp ${camp}`);
+  const ancienne = document.getElementById('fenCamp');
+  if(ancienne) ancienne.remove();
+  const w = document.createElement('div');
+  w.id = 'fenCamp'; w.className = 'fenetre';
+  w.innerHTML = `
+    <div class="ft">${T('Pion du camp adverse')}</div>
+    <div class="fc">
+      <p>${_esc(T(`${adverses.length} pion(s) du camp adverse (${camp}) : ${noms}. Les déplacer quand même ?`))}</p>
+      <div class="fb">
+        <button id="campOui" class="prim">${T('Déplacer quand même')}</button>
+        <button id="campNon">${T('Annuler')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(w);
+  const fermer = () => { w.remove(); document.removeEventListener('keydown', clavier, true); };
+  const non = () => { fermer(); chatLog(`↩️ Déplacement annulé : ${adverses.length} pion(s) du camp ${camp}`); };
+  const clavier = ev => {
+    if(ev.key === 'Escape'){ ev.preventDefault(); ev.stopImmediatePropagation(); non(); }
+    else if(ev.key === 'Enter'){ ev.preventDefault(); ev.stopImmediatePropagation(); fermer(); refaire(); }
+  };
+  document.addEventListener('keydown', clavier, true);
+  w.querySelector('#campOui').onclick = () => { fermer(); refaire(); };
+  w.querySelector('#campNon').onclick = non;
+  w.querySelector('#campOui').focus();
   return false;
 }
 
@@ -14956,7 +14987,7 @@ function demanderUtilisateur(){
       <label id="utNomL">Nom du nouvel utilisateur<input id="utNom" maxlength="24" autocomplete="off" placeholder="nom affiché"></label>
       <label>Mot de passe<input id="utMdp" type="password" autocomplete="off" placeholder="mot de passe"></label>
       <label id="utCampL">Camp<select id="utCamp"><option value="">— choisir —</option>${
-        Object.entries(CAMPS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+        Object.entries(CAMPS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select><span id="utCampInd"></span></label>
       <div class="ferr" id="utErr"></div>
       <div class="fb">
         <button id="utOk" class="prim">Se connecter</button>
@@ -14974,10 +15005,14 @@ function demanderUtilisateur(){
   const majNom = () => {
     const e = entrees[+sel.value], nouveau = e.type === 'nouveau';
     $('utNomL').style.display = nouveau ? '' : 'none';
-    // Camp : celui mémorisé pour ce nom, sinon celui des pions qu'il masque.
+    // Camp : choix explicite à chaque connexion, jamais présélectionné ;
+    // le dernier camp de ce nom sur ce poste (ou celui des pions qu'il
+    // masque) n'est qu'indiqué.
     $('utCampL').style.display = e.type === 'admin' ? 'none' : '';
-    if(!nouveau) $('utCamp').value = campMemorise(e.type === 'admin' ? '' : (e.fiche ? (e.fiche.nom || e.nom) : e.nom))
-                                    || (e.fiche && campDeduit(e.fiche.id)) || '';
+    $('utCamp').value = '';
+    const indice = nouveau || e.type === 'admin' ? null
+      : campMemorise(e.fiche ? (e.fiche.nom || e.nom) : e.nom) || (e.fiche && campDeduit(e.fiche.id));
+    $('utCampInd').textContent = indice ? T(`Dernier camp : ${CAMPS[indice]}`) : '';
     err.textContent = '';
     (nouveau ? $('utNom') : $('utMdp')).focus();
   };

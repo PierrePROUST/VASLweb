@@ -1,7 +1,10 @@
 // Camp du joueur (Axe / Alliés), choisi à l'identification et gardé sur
 // le poste : le camp des pions vient de leur nationalité ; déplacer un
-// pion du camp adverse demande une confirmation, au PC (glissé à la
-// souris) comme au doigt (glissé tactile) ; refusée, rien ne bouge.
+// pion du camp adverse est bloqué par une fenêtre de confirmation, au PC
+// (glissé à la souris) comme au doigt (glissé tactile) : tant qu'elle est
+// ouverte, rien ne bouge ; « Annuler », rien ne bouge ; « Déplacer quand
+// même », le pion part. Le camp se choisit explicitement à chaque
+// connexion : jamais présélectionné, le dernier est seulement indiqué.
 // Les pions de son camp et les marqueurs partent sans question ; « Les
 // deux », l'administrateur et l'observateur ne sont jamais interrogés.
 // Le camp n'entre pas dans le .vsav.
@@ -18,10 +21,10 @@ async function scenario(b, tactile){
     }
     localStorage.setItem('aslweb.profil', p);
   }, tactile ? 'tactile' : 'pc');
-  const errs = [], dialogues = [];
-  let accepter = false;
+  const errs = [], natifs = [];
   pg.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
-  pg.on('dialog', d => { dialogues.push(d.message()); accepter ? d.accept() : d.dismiss(); });
+  // Aucune boîte native (confirm) : la fenêtre est celle de la page.
+  pg.on('dialog', d => { natifs.push(d.message()); d.dismiss(); });
   await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
   // Une partie : escouade allemande (T1), russe (T2), un DM (T3).
   const camps = await pg.evaluate(async () => {
@@ -81,29 +84,42 @@ async function scenario(b, tactile){
     return pg.evaluate(u => [parUid(u).x, parUid(u).y], uid);
   };
   const pos = uid => pg.evaluate(u => [parUid(u).x, parUid(u).y], uid);
+  const question = () => pg.evaluate(() => { const w = document.getElementById('fenCamp'); return w ? w.querySelector('p').textContent : null; });
+  // Réponse à la fenêtre : clic, ou toucher du doigt.
+  const repondre = async id => {
+    const [x, y] = await pg.evaluate(i => { const r = document.getElementById(i).getBoundingClientRect(); return [r.left + r.width/2, r.top + r.height/2]; }, id);
+    if(tactile){ await touche('touchStart', [[x, y]]); await touche('touchEnd', []); }
+    else await pg.mouse.click(x, y);
+    await pg.waitForTimeout(150);
+  };
+  const essai = async (uid, cx, cy) => {
+    const avant = await pos(uid), apres = await glisser(uid, cx, cy);
+    return {avant, bouge: String(apres) !== String(avant), question: await question()};
+  };
   const r = {camps, ident};
   // Pion de son camp : aucune question.
-  let n = dialogues.length, avant = await pos('T1');
-  r.propre = {bouge: String(await glisser('T1', 960, 640)) !== String(avant), question: dialogues.length - n};
+  r.propre = await essai('T1', 960, 640);
   // Marqueur (sans camp) : aucune question.
-  n = dialogues.length; avant = await pos('T3');
-  r.marqueur = {bouge: String(await glisser('T3', 1360, 640)) !== String(avant), question: dialogues.length - n};
-  // Pion adverse, confirmation refusée : rien ne bouge.
-  n = dialogues.length; avant = await pos('T2');
-  r.refuse = {bouge: String(await glisser('T2', 1160, 640)) !== String(avant), question: dialogues.slice(n),
-              journal: await pg.evaluate(() => [...document.querySelectorAll('#journal .sys')].map(d => d.textContent).filter(t => /annulé/.test(t)).pop())};
-  // Pion adverse, confirmation acceptée : il part.
-  accepter = true; n = dialogues.length; avant = await pos('T2');
-  r.accepte = {bouge: String(await glisser('T2', 1160, 640)) !== String(avant), question: dialogues.length - n};
-  accepter = false;
+  r.marqueur = await essai('T3', 1360, 640);
+  // Pion adverse : bloqué, fenêtre ouverte ; « Annuler » : rien ne bouge.
+  r.refuse = await essai('T2', 1160, 640);
+  await repondre('campNon');
+  r.refuse.apresAnnuler = String(await pos('T2')) !== String(r.refuse.avant);
+  r.refuse.fermee = (await question()) === null;
+  r.refuse.journal = await pg.evaluate(() => [...document.querySelectorAll('#journal .sys')].map(d => d.textContent).filter(t => /annulé/.test(t)).pop());
+  // Pion adverse : « Déplacer quand même » : il part.
+  r.accepte = await essai('T2', 1160, 640);
+  await repondre('campOui');
+  r.accepte.apresOui = String(await pos('T2')) !== String(r.accepte.avant);
+  r.accepte.fermee = (await question()) === null;
   // « Les deux », administrateur, observateur : jamais de question.
   for(const [qui, f] of [['deux', () => seConnecter({nom: 'Alice', mdp: 'secretA', camp: 'tous'}, false)],
                          ['admin', () => seConnecter(null, true)], ['observateur', () => seConnecter(null, false)]]){
     await pg.evaluate(f);
-    n = dialogues.length; avant = await pos('T2');
     const x = 1100 + 60 * (Object.keys(r).length % 3);
-    r[qui] = {bouge: String(await glisser('T2', x, 820)) !== String(avant), question: dialogues.length - n};
+    r[qui] = await essai('T2', x, 820);
   }
+  r.natifs = natifs;
   // Le camp reste hors du .vsav, et la boîte le reprend pour Alice.
   r.horsVsav = await pg.evaluate(() => !etatPartie().join('\x1b').includes('aslweb') && !/\bcamp\b/.test(etatPartie().join('\x1b')));
   r.memorise = await pg.evaluate(() => {
@@ -111,7 +127,7 @@ async function scenario(b, tactile){
     const sel = document.getElementById('utSel');
     sel.value = [...sel.options].find(o => /^Alice/.test(o.text)).value;
     sel.dispatchEvent(new Event('change'));
-    const v = document.getElementById('utCamp').value;
+    const v = {valeur: document.getElementById('utCamp').value, indique: document.getElementById('utCampInd').textContent};
     document.querySelectorAll('.fenetre').forEach(w => w.remove());
     return v;
   });
