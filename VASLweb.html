@@ -12073,10 +12073,27 @@ function commandesDe(type){
       });
     } else if(id === 'sendto'){
       // SendToLocation : la pièce quitte la carte de jeu (Casualties…).
-      // La carte est donnée par une expression {"Nom"} ou en clair.
-      const carte = (ch[3] || '').replace(/\\(.)/g, '$1').replace(/^\{"?|"?\}$/g, '');
-      const x = parseInt(ch[5], 10) || 0, y = parseInt(ch[6], 10) || 0;
-      if(carte) ajouter(i, ch[1], lireTouche(ch[2]), ({p, effets}) => effets.push(() => envoyer(p, carte, x, y)));
+      // Champs : nom;touche;carte;board;x;y;retour;touche retour;xIndex;
+      // yIndex;xOffset;yOffset;description;destination;zone;région…
+      // La carte et la zone sont données par une expression {"Nom"} ou en
+      // clair. Destination « L » (défaut) : le point x, y ; « Z » : le
+      // centre de la zone (Zone.getCenter), introuvable : rien ne bouge,
+      // comme dans VASSAL. Les autres destinations gardent le point x, y.
+      // Puis le décalage xIndex × xOffset, yIndex × yOffset.
+      const texte = v => (v || '').replace(/\\(.)/g, '$1').replace(/^\{"?|"?\}$/g, '').trim();
+      const carte = texte(ch[3]);
+      const ent = (v, d) => { const n = parseInt(texte(v), 10); return Number.isFinite(n) ? n : d; };
+      const x = ent(ch[5], 0), y = ent(ch[6], 0);
+      const dx = ent(ch[9], 0) * ent(ch[11], 1), dy = ent(ch[10], 0) * ent(ch[12], 1);
+      const dest = texte(ch[14]).charAt(0) || 'L', zone = texte(ch[15]);
+      if(carte) ajouter(i, ch[1], lireTouche(ch[2]), ({p, effets}) => {
+        let pt = {x, y};
+        if(dest === 'Z'){
+          pt = _bdd && _bdd.zones && _bdd.zones.get(carte + '\u0001' + zone);
+          if(!pt){ chatLog(`⚠️ ${p.nom} : zone « ${zone} » introuvable sur « ${carte} »`); return; }
+        }
+        effets.push(() => envoyer(p, carte, pt.x + dx, pt.y + dy));
+      });
     } else if(id === 'submenu'){
       sousMenus.push({nom: (ch[1] || '').replace(/\\(.)/g, '$1'),
                       cmds: (ch[2] || '').split(/(?<!\\),/).map(x => x.replace(/\\(.)/g, '$1').trim())});
@@ -14196,6 +14213,26 @@ async function _chargerBDD(){
     bottom: lireTouche(sm.getAttribute('bottom')) || METRIQUES_DEFAUT.bottom,
     up: lireTouche(sm.getAttribute('up')) || METRIQUES_DEFAUT.up,
     down: lireTouche(sm.getAttribute('down')) || METRIQUES_DEFAUT.down} : null;
+  // Zones des cartes à board fixe (fenêtre Casualties : « Allied
+  // Casualties », « Axis Casualties »), pour un SendToLocation vers une
+  // zone : Zone.getCenter, centre du rectangle qui contient le polygone,
+  // décalé de la place du board sur la carte (marges de la carte).
+  const zones = new Map();
+  for(const m of mod.children){
+    if(!/\.(Map|PrivateMap|PlayerHand)$/.test(m.tagName)) continue;
+    const boards = [...m.getElementsByTagName('*')].filter(e => e.tagName.endsWith('.Board'));
+    if(boards.length !== 1) continue;
+    const bx = parseInt(m.getAttribute('edgeWidth'), 10) || 0, by = parseInt(m.getAttribute('edgeHeight'), 10) || 0;
+    for(const z of boards[0].getElementsByTagName('*')){
+      if(!z.tagName.endsWith('.Zone')) continue;
+      const pts = (z.getAttribute('path') || '').split(';').map(c => c.split(',').map(Number)).filter(c => c.length === 2 && c.every(Number.isFinite));
+      if(!pts.length) continue;
+      const xs = pts.map(c => c[0]), ys = pts.map(c => c[1]);
+      const x0 = Math.min(...xs), y0 = Math.min(...ys);
+      zones.set(m.getAttribute('mapName') + '\u0001' + z.getAttribute('name'),
+                {x: bx + x0 + Math.floor((Math.max(...xs) - x0) / 2), y: by + y0 + Math.floor((Math.max(...ys) - y0) / 2)});
+    }
+  }
   // Fenêtre QRDC (ChartWindow) : les tables de référence, en onglets.
   // Chart : une image du module ; TabWidget : des onglets ; PanelWidget :
   // ses enfants côte à côte, ou l'un sous l'autre (vert).
@@ -14218,7 +14255,7 @@ async function _chargerBDD(){
     ongletsQRDC.enfants.push({id: qid++, t: 'OBA', nom: 'OBA', enfants: []});
     qrdc.oba = {onglets: ongletsQRDC.id, rang: ongletsQRDC.enfants.length - 1};
   }
-  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, version: mod.getAttribute('version')};
+  _bdd = {cats, pions: slots, protos, parGpid, parChemin, arbre, massRemover, stackMetrics, qrdc, zones, version: mod.getAttribute('version')};
   rendreToutes();
   // Les pions déjà sur la carte gagnent les couches de leurs prototypes.
   for(const p of vivants()) majApparence(p);
