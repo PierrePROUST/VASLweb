@@ -33,3 +33,22 @@ const {ouvrir} = require('./commun.js');
   console.log(JSON.stringify(r, null, 1), errs);
   await b.close();
 })();
+// Pile S1 (T1 T2 T3 T7 T8 T9, du fond au sommet) : seuls T2 et T3 sont
+// sélectionnés ; le glissé saisi sur le sommet (T9) emporte la sélection,
+// et le fantôme montre T3, le plus haut des pions qui partent.
+(async () => {
+  const {b, pg, errs, centre} = await ouvrir(process.argv[2]);
+  await pg.evaluate(() => selectionner([parUid('T2'), parUid('T3')]));
+  await pg.waitForTimeout(200);
+  const [x, y] = await centre('T9');
+  await pg.mouse.move(x, y); await pg.mouse.down(); await pg.mouse.move(x + 80, y + 50, {steps: 5});
+  await pg.waitForTimeout(300);
+  const r = await pg.evaluate(() => {
+    const f = document.querySelector('.fantome .face');
+    return {fantome: f && f.src === parUid('T3').face.src, sommetPile: parUid('T9').face.src === parUid('T3').face.src};
+  });
+  await pg.mouse.up(); await pg.waitForTimeout(200);
+  r.partis = await pg.evaluate(() => ['T2', 'T3', 'T9'].map(u => parUid(u).x + ',' + parUid(u).y));
+  console.log('pile :', JSON.stringify(r), errs);
+  await b.close();
+})();

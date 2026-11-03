@@ -36,7 +36,7 @@ captures d'écran) vont dans `tests/sortie/`, ignoré par git.
 | `pc.js` | Double-clic, clic dans une pile dépliée, Ctrl+clic, ↑, glissé de la sélection, Échap, Maj+rectangle, clic dans le vide |
 | `alt.js` | Alt + molette dans une pile |
 | `pile-arrivee.js` | Pion entré dans une pile occupée : la sélection reste la sienne ; glissé depuis lui ou depuis un pion déjà là, seul lui repart ; Ctrl+clic ajoute un pion au groupe ; clic simple : pile entière ; pions HIP adverses de la pile d'arrivée laissés sur place |
-| `fantome.js` | Glissé d'un char au CA et au TCA tournés : le fantôme garde l'orientation de la caisse et la tourelle (capture dans `tests/sortie/fantome.png`) |
+| `fantome.js` | Glissé d'un char au CA et au TCA tournés : le fantôme garde l'orientation de la caisse et la tourelle (capture dans `tests/sortie/fantome.png`) ; glissé d'une partie d'une pile saisie par son sommet : le fantôme montre le plus haut des pions qui partent |
 | `p4.js` | Panneau Pile : rang par glisser-déposer (un seul `M/`), Undo, Maj+clic, Ctrl+clic |
 | `ui.js` | Menus (Alt, flèches), Ctrl+K inactif, onglet Dés, changement de profil à chaud |
 | `desbarre.js` | Dés en boutons sous la barre d'icônes (PC) |
