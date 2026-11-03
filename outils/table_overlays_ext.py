@@ -5,7 +5,7 @@ Pour chaque image « ovr<nom><o>.gif » de l'extension (.vmdx), cherche
 l'image de l'archive du dépôt VASL (boards/bdFiles/overlays) qui lui
 correspond : son orientation et le cadre de l'image de l'extension dans
 celle-ci (dx, dy, largeur, hauteur), puis, pour un board retourné,
-l'orientation et le coin de l'image tournée de 180°. La table est écrite dans carte.html
+l'orientation et le coin de l'image tournée de 180°. La table est écrite dans VASLweb.html
 (TABLE_OVR_EXT_TEXTE) ; les images sans correspondance sûre sont listées.
 
     python3 outils/table_overlays_ext.py VASL_Overlays.vmdx [cache] [--reprendre]
@@ -21,10 +21,10 @@ from PIL import Image
 
 DEPOT = 'https://raw.githubusercontent.com/vasl-developers/vasl/develop/boards/bdFiles/overlays/'
 ICI = os.path.dirname(os.path.abspath(__file__))
-CARTE = os.path.join(ICI, '..', 'carte.html')
+CARTE = os.path.join(ICI, '..', 'VASLweb.html')
 IOU_MIN = 0.85          # recouvrement minimal des pixels opaques
 
-# Mêmes règles que carte.html (_equivalence, _trimNom, archiveOverlay).
+# Mêmes règles que VASLweb.html (_equivalence, _trimNom, archiveOverlay).
 def equivalence(f):
     if re.match(r'^be[23]', f): return 'be1' + f[3:]
     if re.match(r'^be[56]', f): return 'be4' + f[3:]

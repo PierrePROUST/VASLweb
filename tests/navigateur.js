@@ -22,6 +22,6 @@ exports.lancer = async () => {
   b.newPage = (o = {}) => page(Object.assign({locale: LOCALE}, o));
   return b;
 };
-// Le carte.html du dépôt, par défaut.
-exports.CARTE = path.resolve(__dirname, '..', 'carte.html');
+// Le VASLweb.html du dépôt, par défaut.
+exports.CARTE = path.resolve(__dirname, '..', 'VASLweb.html');
 exports.fichier = a => path.resolve(a || exports.CARTE);

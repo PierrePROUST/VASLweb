@@ -8,7 +8,7 @@ const nav = require('./navigateur.js');
   const pg = await (await b.newContext()).newPage();
   const errs = [];
   pg.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
-  await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
+  await pg.goto('file://' + nav.fichier(process.argv[2] || 'VASLweb.html'));
   const r = await pg.evaluate(async () => {
     const r = {};
     for(const im of ['ge/ge468Ss.svg', 'ge/ge248Hs.svg', 'ru/ru628Sae.svg']){

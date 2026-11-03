@@ -12,7 +12,7 @@ const ST3 = "+/1790710308542/hide;79,130;Opaque;;player:;0.5;;false\timmob;c;I;R
   const pg = await (await b.newContext({viewport: {width: 1280, height: 800}})).newPage();
   const errs = [];
   pg.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
-  await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
+  await pg.goto('file://' + nav.fichier(process.argv[2] || 'VASLweb.html'));
   const r = await pg.evaluate(async () => {
     localStorage.removeItem('couchesSel');
     await chargerBDD();

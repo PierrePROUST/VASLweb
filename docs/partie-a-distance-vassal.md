@@ -1,4 +1,4 @@
-# Partie à distance dans VASSAL/VASL — analyse et portage dans `carte.html`
+# Partie à distance dans VASSAL/VASL — analyse et portage dans `VASLweb.html`
 
 Analyse faite sur les sources de VASSAL (`vassalengine/vassal`, branche
 principale), paquetages `VASSAL.chat` et `VASSAL.chat.node`. Classes lues :
@@ -81,7 +81,7 @@ Deux règles complètent cette séquence :
   réseau ajoute au module. Ils voyagent comme des commandes ordinaires.
   `SynchCommand` n'est pas consignée au log (`isLoggable` vaut faux).
 
-## 3. Portage dans `carte.html`
+## 3. Portage dans `VASLweb.html`
 
 Un navigateur ne peut pas ouvrir de socket TCP vers le port 5050. La page
 qui héberge joue donc le rôle du serveur (`creerServeur`, équivalent de
@@ -94,7 +94,7 @@ qui héberge joue donc le rôle du serveur (`creerServeur`, équivalent de
 - **entre onglets d'un même navigateur**, par `BroadcastChannel`. Ce mode
   sert aux essais et au jeu à deux sur un même poste.
 
-| VASSAL | `carte.html` |
+| VASSAL | `VASLweb.html` |
 |---|---|
 | `ServerNode.forward` / `getMsgSender` | `creerServeur().recevoir` / `cibles` |
 | `ReportContentsThread` (LIST, ROOM_INFO) | `creerServeur().changer` |
@@ -119,7 +119,7 @@ son export `.vlog` contient toute la partie depuis sa synchronisation.
 Écarts avec VASSAL :
 
 - quand le propriétaire ouvre une partie alors que la salle est occupée,
-  `carte.html` l'envoie aussitôt aux autres (`netPartieChargee`). Dans
+  `VASLweb.html` l'envoie aussitôt aux autres (`netPartieChargee`). Dans
   VASSAL, chacun doit demander la synchronisation ;
 - après la restauration, un invité qui est encore observateur se voit
   demander son identité. Ses pions masqués restent ainsi invisibles pour

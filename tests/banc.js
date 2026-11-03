@@ -1,4 +1,4 @@
-// Banc d'essai : charge carte.html, fabrique une partie, renvoie l'état exporté.
+// Banc d'essai : charge VASLweb.html, fabrique une partie, renvoie l'état exporté.
 const nav = require('./navigateur.js');
 const fichier = nav.fichier(process.argv[2]);
 (async () => {

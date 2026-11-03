@@ -6,7 +6,7 @@
 // hexagone avant d'y entrer (VCA, D2.11), démarre (D2.12) et s'arrête
 // (D2.13) ; une phase finit quand l'arrêt ne tiendrait plus dans ses MP,
 // puis Mark unmoved ouvre la suivante.
-//   node tests/log-vehicule.js [carte.html] [sortie.vlog]
+//   node tests/log-vehicule.js [VASLweb.html] [sortie.vlog]
 const nav = require('./navigateur.js');
 const fs = require('fs'), path = require('path');
 (async () => {
@@ -16,7 +16,7 @@ const fs = require('fs'), path = require('path');
   const pg = await ctx.newPage();
   const errs = [];
   pg.on('pageerror', e => errs.push('PAGEERROR ' + e.message));
-  await pg.goto('file://' + nav.fichier(process.argv[2] || 'carte.html'));
+  await pg.goto('file://' + nav.fichier(process.argv[2] || 'VASLweb.html'));
   const telechargement = pg.waitForEvent('download', {timeout: 120000});
   const r = await pg.evaluate(async () => {
     await chargerBDD();

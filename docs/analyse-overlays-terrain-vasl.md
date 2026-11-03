@@ -1,7 +1,7 @@
-# Overlays et transformations de terrain dans VASL — analyse pour `carte.html`
+# Overlays et transformations de terrain dans VASL — analyse pour `VASLweb.html`
 
 Analyse faite sur les sources de VASL (branche `develop` de
-`vasl-developers/vasl`) pour préparer le portage dans `carte.html`.
+`vasl-developers/vasl`) pour préparer le portage dans `VASLweb.html`.
 Classes lues : `ASLBoardPicker`, `boardPicker/ASLBoard`, `Overlay`,
 `SSROverlay`, `Underlay`, `SSRFilter`, `board/ASLHexGrid`,
 `boardArchive/BoardArchive`, `BoardMetadata`, `AbstractMetadata`.
@@ -11,7 +11,7 @@ board `bd92`.
 
 ---
 
-## 1. Ce que fait `carte.html` aujourd'hui
+## 1. Ce que fait `VASLweb.html` aujourd'hui
 
 | Fonction | État |
 |---|---|
@@ -59,7 +59,7 @@ bd \t x \t y \t [r]nom \t [cropX \t cropY \t cropW \t cropH \t]
   avec `while (bd.contains("OVR"))`, puis prend comme règles tout ce qui suit
   `SSR`.
 
-Le parseur actuel de `carte.html` convient pour `SSR`. Pour `OVR`, la
+Le parseur actuel de `VASLweb.html` convient pour `SSR`. Pour `OVR`, la
 fonction `_parseOverlays` de baseVaslWeb peut être reprise telle quelle.
 
 ---
@@ -83,7 +83,7 @@ Conséquences :
 
 - **Le repeint des couleurs s'applique après les overlays.** `NoGrain`
   enlève aussi le blé d'un overlay, et `WoodsToBrush` repeint aussi le motif
-  posé par l'underlay. Dans `carte.html`, le repeint se fait aujourd'hui sur
+  posé par l'underlay. Dans `VASLweb.html`, le repeint se fait aujourd'hui sur
   le board seul, avant le recadrage. Il devra passer **après** la
   composition.
 - **Le retournement porte sur l'image composée.** Un overlay sur un board
@@ -155,7 +155,7 @@ Différences avec `appliquerSSR` :
 2. **Chaînes dans une même règle.** La fermeture relie aussi les
    correspondances d'une même règle. Cela arrive dans `Mud`
    (`GullyHill5 → GullyHill5Mud`, qui a le même RGB que `Level6`, lui-même
-   remappé). Avec une seule table par passe, `carte.html` ne relie pas ces
+   remappé). Avec une seule table par passe, `VASLweb.html` ne relie pas ces
    correspondances.
 3. **Performance.** Une seule passe sur l'image au lieu d'une par règle.
 
@@ -173,7 +173,7 @@ le `BoardMetadata.xml` du board :
 - `<overlaySSRules>` contient les images SSR du board, ainsi que d'éventuels
   `underlaySSRule` supplémentaires.
 
-La table `LOS_SSR` de `carte.html` est calculée d'avance avec les couleurs
+La table `LOS_SSR` de `VASLweb.html` est calculée d'avance avec les couleurs
 **partagées**. Elle ne voit donc ni les couleurs redéfinies par un board, ni
 ses règles propres. L'archive du board est déjà téléchargée (`_archive`) :
 il suffit de lire en plus `<colors>`, `<colorSSRules>` et `<overlaySSRules>`
@@ -313,9 +313,9 @@ sauf pour les overlays `og*`. Si le board, sous ce pixel, n'est pas `OPEN`,
 on y peint la couleur `OPEN` la plus proche dans un rayon de 3 px. Il faut
 pour cela la table couleur → terrain → catégorie de
 `SharedBoardMetadata.xml`. À reporter **après** le reste. Ce n'est utile que
-si `carte.html` permet un jour de poser des overlays.
+si `VASLweb.html` permet un jour de poser des overlays.
 
-### 5.5 Grille du board : ce qui manque à `carte.html`
+### 5.5 Grille du board : ce qui manque à `VASLweb.html`
 
 `ASLHexGrid.getLocation(hex)` :
 
@@ -397,9 +397,9 @@ cases n'apparaissent donc pas dans son menu.
     (`SSO_FT283/284`), RBv2 (usines « gutted ») et bd80 à 83 et FB
     (`RogueKorea`) ont une image dans l'archive, ou une entrée de menu, mais
     pas d'`overlaySSRule`. D'après le code, VASL ne les dessine pas non plus.
-    `carte.html` fait de même.
+    `VASLweb.html` fait de même.
 
-**Dans `carte.html`** : rien de spécifique n'est nécessaire. `reglesBoard`
+**Dans `VASLweb.html`** : rien de spécifique n'est nécessaire. `reglesBoard`
 et `poserImagesSSR` (étape 3) appliquent ces règles, et `dessinerOverlay`
 (étape 4) applique celles des overlays. Le journal affiche maintenant le
 libellé du menu du board : « 🖼️ bd71 : SSO_AP101 (scenario AP101 overlay)
@@ -412,12 +412,12 @@ propriété `overlay` est non nulle (`ASLOverlayCounter`,
 `ASLOverlayBasicPiece`). VASL ne leur applique pas les SSR (le code
 correspondant de `ASLBoard.setTerrain` est commenté). Ils restent toujours
 visibles dans le mode d'affichage « carte seule » (`ASLMap`, `ShowMapOnly`).
-Dans `carte.html`, ils passent déjà par le rendu des pions. Il reste
+Dans `VASLweb.html`, ils passent déjà par le rendu des pions. Il reste
 seulement à les placer **sous** les autres pions et à les garder visibles
 quand on masque les pions.
 
 **Extension *VASL Overlays*.** Ses pièces nomment l'image d'un overlay
-d'hexagones (`ovrst3c.gif`). `carte.html` ne les dessine pas comme des
+d'hexagones (`ovrst3c.gif`). `VASLweb.html` ne les dessine pas comme des
 pions : il pose à leur place l'overlay du dépôt VASL, comme « Add
 overlays » (nom, hex1, hex2), dans l'image du board et dans la LOS
 (`majOverlaysExt`). La pièce reste cachée, jamais sélectionnable, et son
@@ -494,7 +494,7 @@ d'overlays depuis l'interface. Pour l'export, écrire
 
 ### Points de vigilance
 
-- **Export** : `carte.html` réécrit le segment `bd` d'origine, donc il n'y a
+- **Export** : `VASLweb.html` réécrit le segment `bd` d'origine, donc il n'y a
   rien à changer tant que les overlays restent en lecture seule.
 - **Taille des canvas** : composer au format natif (1800×645 pour un
   geomorphique), puis réduire à l'affichage avec `_sizeCanvasSafely`, comme
