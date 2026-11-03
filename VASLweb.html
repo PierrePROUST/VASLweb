@@ -550,6 +550,7 @@ body.maj .pion.immob{pointer-events:auto}
 @keyframes retire{0%,40%{opacity:.9;box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{opacity:0;box-shadow:none}}
 @keyframes coup{0%,40%{box-shadow:0 0 0 4px #ff3b3b,0 0 14px 6px rgba(255,59,59,.7)}100%{box-shadow:none}}
 .fantome{position:fixed;z-index:9999;pointer-events:none;opacity:.8}
+.fantome *{pointer-events:none!important}
 .cible{position:absolute;z-index:9000;pointer-events:none;width:24px;height:24px;margin:-12px 0 0 -12px;
   border:3px solid var(--accent);border-radius:50%}
 .survol{position:fixed;z-index:9500;pointer-events:none;background:var(--menu-fond);color:var(--menu-texte);
@@ -13330,7 +13331,7 @@ function _pionPointerDown(e, p){
     // Les pions HIP de l'adversaire, invisibles, restent où ils sont.
     return pile(k).filter(q => !q.cache);
   };
-  glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
+  glisser(e, p, p.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
     const l = aDeplacer();
     if(c && l.length) deplacer(l, c.x, c.y);
@@ -13348,6 +13349,8 @@ function _pionPointerDown(e, p){
 // faute de quoi le geste se perd en quittant l'élément de départ. Seul le
 // pointeur qui a commencé le geste le fait avancer ; un pincement
 // l'abandonne (rien n'est déplacé).
+//   src            : URL de l'image du fantôme, ou un pion de la carte,
+//                    dont le fantôme copie l'aspect (orientation, tourelle).
 //   opts.appuiLong : au doigt, dans une liste qui défile, le glissé ne
 //                    part qu'après cet appui maintenu (ms) ; avant, le
 //                    doigt fait défiler la liste.
@@ -13396,10 +13399,31 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
     if(opts.pendant) opts.pendant(ev, a);
   };
   const creerFantome = () => {
-    fantome = document.createElement('img');
+    const t = Math.max(24, taille);
+    if(src && src.el){
+      // Pion de la carte : le fantôme en est une copie, telle qu'affichée
+      // — CA du véhicule (trait rotate), tourelle (TCA), couches et
+      // étiquettes —, et non sa seule image de base, toujours droite.
+      fantome = document.createElement('div');
+      const c = src.el.cloneNode(true);
+      const w = parseFloat(src.el.style.width) || src.sz, h = parseFloat(src.el.style.height) || src.sz;
+      const k = t / (src.sz || w);
+      c.className = 'pion';
+      c.removeAttribute('title');
+      c.style.cssText = `left:${(t - w*k)/2}px;top:${(t - h*k)/2}px;width:${w}px;height:${h}px;`
+        + `transform:scale(${k});transform-origin:0 0;background:${src.el.style.background || ''}`;
+      // Vue tournée : à l'écran, le pion suit la même rotation que sur la
+      // carte (--rotVue, posé sur #mapInner, n'atteint pas le fantôme) ;
+      // une pièce de terrain tourne aussi avec la carte.
+      fantome.style.setProperty('--rotVue', _rotVue + 'deg');
+      if(src.el.classList.contains('terrain')) fantome.style.rotate = _rotVue + 'deg';
+      fantome.appendChild(c);
+    } else {
+      fantome = document.createElement('img');
+      if(src) fantome.src = src;
+    }
     fantome.className = 'fantome';
-    if(src) fantome.src = src;
-    fantome.style.width = fantome.style.height = Math.max(24, taille) + 'px';
+    fantome.style.width = fantome.style.height = t + 'px';
     document.body.appendChild(fantome);
     cible = document.createElement('div');
     cible.className = 'cible';
@@ -13684,7 +13708,7 @@ function afficherPile(){
     };
     l.addEventListener('pointerdown', e => {
       if(e.button > 0) return;
-      glisser(e, p.face.src, p.sz * zoom, (cx, cy) => {
+      glisser(e, p, p.sz * zoom, (cx, cy) => {
         const c = clientVersCarte(cx, cy);
         if(c) deplacer(aEmporter(p), c.x, c.y);
       }, ev => {
@@ -14352,7 +14376,7 @@ function _vignetteEventail(p, k, bande, marque){
       if(!best) return null;
       return {c: best.c, r: best.r, apres: ev.clientX > (best.r.left + best.r.right) / 2, i: cases.indexOf(best.c)};
     };
-    glisser(e, p.face.src, EVENTAIL_COTE, (cx, cy) => {
+    glisser(e, p, EVENTAIL_COTE, (cx, cy) => {
       // Lâché sur la carte : la sélection, ou ce pion s'il n'en est pas.
       const c = clientVersCarte(cx, cy);
       if(!c || masque) return;
