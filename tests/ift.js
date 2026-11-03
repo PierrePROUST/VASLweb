@@ -45,6 +45,24 @@ const {ouvrir} = require('./commun.js');
   await pg.waitForTimeout(1500);
   out.elan = await pg.evaluate(() => [document.querySelector('.feuille .iftItem.on').textContent, document.querySelector('.feuille .iftRes').firstChild.textContent]);
   await pg.screenshot({path: 'ift_mobile.png'});
+  // Déplacement : la poignée ⠿ de l'en-tête promène la feuille, qui garde
+  // sa place à la réouverture ; un double appui la remet en bas.
+  const glisser = async (dx, dy) => {
+    const [x, y] = await pg.evaluate(() => { const q = document.querySelector('.feuille .teteFeuille .poigneeVolant').getBoundingClientRect(); return [q.left + q.width/2, q.top + q.height/2]; });
+    await touche('touchStart', [[x, y, 1]]);
+    for(let i = 1; i <= 5; i++){ await touche('touchMove', [[x + dx*i/5, y + dy*i/5, 1]]); await pg.waitForTimeout(30); }
+    await touche('touchEnd', []); await pg.waitForTimeout(200);
+  };
+  const boite = () => pg.evaluate(() => { const f = document.querySelector('.feuille'); const r = f.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), f.classList.contains('deplacee'), getComputedStyle(document.querySelector('.voile')).backgroundColor]; });
+  out.avant = await boite();
+  await glisser(0, -200);
+  out.apres = await boite();
+  await tap('.feuille .fermer');
+  await tap('.navGauche :not([aria-hidden])[data-action="DR_IFT"]');
+  out.rouvert = await boite();
+  await pg.evaluate(() => document.querySelector('.feuille .poigneeVolant').dispatchEvent(new MouseEvent('dblclick', {bubbles: true})));
+  await pg.waitForTimeout(100);
+  out.remis = await boite();
   await b.close();
   const pc = await ouvrir(process.argv[2]);
   await pc.pg.click('.barreDes button[data-action="DR_IFT"]');
