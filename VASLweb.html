@@ -8543,6 +8543,14 @@ function piecesADeplacer(){
 // s'il en fait partie et qu'elle a été choisie pion par pion ; si elle
 // n'est que sa pile entière (le simple clic sur la pile), lui seul, comme
 // on tirait un pion de la liste.
+// Pion qui représente un groupe en mouvement dans le fantôme du glissé :
+// le plus haut de ceux qui partent de la pile de p (ou, à défaut, du
+// groupe), et non le sommet de la pile, qui peut rester sur place.
+function sommetDeplace(l, p){
+  const k = cle(p), dans = l.filter(q => cle(q) === k), s = dans.length ? dans : l;
+  return s.length ? s.reduce((a, b) => b.ordre > a.ordre ? b : a) : p;
+}
+
 function aEmporter(p){
   const k = cle(p);
   const seulementSaPile = pileEntiereSel(k) && selDans(k).length === _sel.size;
@@ -13337,7 +13345,7 @@ function _pionPointerDown(e, p){
     // Les pions HIP de l'adversaire, invisibles, restent où ils sont.
     return pile(k).filter(q => !q.cache);
   };
-  glisser(e, p, p.sz * zoom, (cx, cy) => {
+  glisser(e, () => sommetDeplace(aDeplacer(), p), q => q.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
     const l = aDeplacer();
     if(c && l.length) deplacer(l, c.x, c.y);
@@ -13356,7 +13364,9 @@ function _pionPointerDown(e, p){
 // pointeur qui a commencé le geste le fait avancer ; un pincement
 // l'abandonne (rien n'est déplacé).
 //   src            : URL de l'image du fantôme, ou un pion de la carte,
-//                    dont le fantôme copie l'aspect (orientation, tourelle).
+//                    dont le fantôme copie l'aspect (orientation, tourelle),
+//                    ou une fonction qui le donne au début du glissé ;
+//                    taille peut alors être une fonction de ce pion.
 //   opts.appuiLong : au doigt, dans une liste qui défile, le glissé ne
 //                    part qu'après cet appui maintenu (ms) ; avant, le
 //                    doigt fait défiler la liste.
@@ -13405,6 +13415,10 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
     if(opts.pendant) opts.pendant(ev, a);
   };
   const creerFantome = () => {
+    // Fantôme et taille choisis quand le geste devient un glissé : la
+    // sélection, qui décide de ce qui part, est alors arrêtée.
+    if(typeof src === 'function') src = src();
+    if(typeof taille === 'function') taille = taille(src);
     const t = Math.max(24, taille);
     if(src && src.el){
       // Pion de la carte : le fantôme en est une copie, telle qu'affichée
@@ -13714,7 +13728,7 @@ function afficherPile(){
     };
     l.addEventListener('pointerdown', e => {
       if(e.button > 0) return;
-      glisser(e, p, p.sz * zoom, (cx, cy) => {
+      glisser(e, () => sommetDeplace(aEmporter(p), p), q => q.sz * zoom, (cx, cy) => {
         const c = clientVersCarte(cx, cy);
         if(c) deplacer(aEmporter(p), c.x, c.y);
       }, ev => {
@@ -14403,7 +14417,7 @@ function _vignetteEventail(p, k, bande, marque){
       if(!best) return null;
       return {c: best.c, r: best.r, apres: ev.clientX > (best.r.left + best.r.right) / 2, i: cases.indexOf(best.c)};
     };
-    glisser(e, p, EVENTAIL_COTE, (cx, cy) => {
+    glisser(e, () => sommetDeplace(aEmporter(p), p), EVENTAIL_COTE, (cx, cy) => {
       // Lâché sur la carte : la sélection, ou ce pion s'il n'en est pas.
       const c = clientVersCarte(cx, cy);
       if(!c || masque) return;
