@@ -108,6 +108,12 @@ body[data-terminal=tactile]{--cible:44px}
 .corpsFeuille .act.ligne:disabled{opacity:.4}
 .videFeuille{padding:14px;color:var(--menu-doux);font-style:italic}
 .sepFeuille{height:6px;background:#262626}
+/* Feuille déplaçable (Lancer IFT) : sa poignée ⠿ la promène sur l'écran ;
+   une fois déplacée, elle flotte, arrondie de partout. */
+.teteFeuille .poigneeVolant{margin-left:-8px}
+.feuille.deplacee{right:auto;bottom:auto;margin:0;border:1px solid var(--menu-bord);border-radius:12px;
+  box-shadow:0 6px 24px rgba(0,0,0,.6);padding-bottom:0}
+.feuille.deplacee .poigneeFeuille{display:none}
 /* ── Lancer IFT : deux roues, colonne de FP et modificateur du DR ;
    le choix est la ligne sous le bandeau. */
 .iftCorps{padding:6px 12px 10px;display:flex;flex-direction:column;gap:8px}
@@ -13931,7 +13937,11 @@ function _appuiLong(e, p){
 // vers le bas, Échap ou appui sur le voile.
 //   hauteur : 'auto' | 'moitie' | 'plein'
 const _feuilles = new Map();      // id → {el, voile, fermer}
-function ouvrirFeuille({id = 'feuille', titre = '', hauteur = 'auto', fermer, voile = true} = {}){
+// deplacable : une poignée ⠿ dans l'en-tête promène la feuille sur
+// l'écran (double clic : elle revient en bas) ; la place est gardée, par
+// feuille, pour les ouvertures suivantes.
+const _posFeuilles = new Map();   // id → {x, y} à l'écran
+function ouvrirFeuille({id = 'feuille', titre = '', hauteur = 'auto', fermer, voile = true, deplacable = false} = {}){
   fermerFeuille(id);
   const v = document.createElement('div');
   v.className = 'voile' + (voile ? '' : ' transparent');
@@ -13953,6 +13963,23 @@ function ouvrirFeuille({id = 'feuille', titre = '', hauteur = 'auto', fermer, vo
   v.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); h.fermer(); });
   f.addEventListener('pointerdown', e => e.stopPropagation());
   f.querySelector('.ferme').addEventListener('click', () => h.fermer());
+  if(deplacable){
+    const placer = () => {
+      const p = _posFeuilles.get(id);
+      f.classList.toggle('deplacee', !!p);
+      if(!p){ f.style.left = f.style.top = f.style.width = ''; return; }
+      f.style.width = Math.min(720, innerWidth) + 'px';
+      const x = Math.max(0, Math.min(p.x, innerWidth - f.offsetWidth));
+      const y = Math.max(0, Math.min(p.y, innerHeight - f.offsetHeight));
+      f.style.left = x + 'px'; f.style.top = y + 'px';
+    };
+    const tete = f.querySelector('.teteFeuille');
+    tete.insertBefore(_poigneeVolant(() => { const r = f.getBoundingClientRect(); return {x: r.left, y: r.top}; },
+      (x, y) => { f.style.transition = 'none'; _posFeuilles.set(id, {x, y}); placer(); },
+      () => { _posFeuilles.delete(id); placer(); }), tete.firstChild);
+    h.placer = placer;
+    placer();
+  }
   // Glisser la poignée (ou l'en-tête) vers le bas referme la feuille.
   for(const prise of [f.querySelector('.poigneeFeuille'), f.querySelector('.teteFeuille')]){
     prise.addEventListener('pointerdown', e => {
@@ -16205,7 +16232,9 @@ function _iftRoue(libelles, i0, change){
 }
 
 function ouvrirIFT(){
-  const h = ouvrirFeuille({id: 'ift', titre: 'Lancer IFT'});
+  // Déplaçable, sur un voile transparent : on peut la pousser pour voir
+  // la carte en dessous.
+  const h = ouvrirFeuille({id: 'ift', titre: 'Lancer IFT', voile: false, deplacable: true});
   const c = document.createElement('div');
   c.className = 'iftCorps';
   c.innerHTML = '<div class="iftRoues">'
@@ -16254,6 +16283,7 @@ function ouvrirIFT(){
     valider.textContent = T('Relancer');
   };
   valider.addEventListener('click', () => { if(!valider.disabled){ valider.disabled = true; jouer(); } });
+  h.placer();      // la hauteur réelle, une fois le contenu posé
   return h;
 }
 
