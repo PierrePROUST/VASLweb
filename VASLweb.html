@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,viewport-fit=cover">
 <meta name="theme-color" content="#2b2b2b">
+<script src="pwa.js" defer></script>
 <title>VASL — Carte</title>
 <style>
 :root{
@@ -10486,10 +10487,12 @@ function _routeMvt(h){
   return h._pontMvt;
 }
 // Obstacle contournable : bois ou bâtiment (A4.3, D2.3) ; pas les
-// décombres (D2.31), ni un ravin-bois (A4.3).
+// décombres (D2.31), ni un ravin-bois (A4.3). Le centre ne suffit pas :
+// un bois traversé par une route, ou un demi-hexagone du bord dont le
+// centre tombe en terrain ouvert (20AA10), reste un bois.
+const _estObstacle = t => !!t && (t.isBuilding() || t.getLOSCategory() === 'WOODS');
 function _obstacleMvt(h){
-  const c = h.getCenterLocation().getTerrain();
-  return !!c && (c.isBuilding() || c.getLOSCategory() === 'WOODS');
+  return _estObstacle(h.getCenterLocation().getTerrain()) || _estObstacle(_autreTerrainMvt(h));
 }
 
 // Terrain d'un hexagone traversé par une route ou un chemin. La carte LOS
@@ -10691,6 +10694,14 @@ const _voisins = (m, a, b) => _coteVers(m, a, b) >= 0;
 // d'épaves et de véhicules). prec : les étapes déjà faites.
 function etapesDeplacement(m, P, Q, n, prec){
   const bypPrec = prec[prec.length - 1].byp;
+  // Un côté qui ne touche aucun obstacle n'est pas un contournement : le
+  // pion, lâché là, reste dans l'hexagone d'où il vient si le côté est le
+  // sien, sinon il est dans celui où tombe son centre.
+  const libre = c => c && !c.some(_obstacleMvt);
+  const dernier = [...prec].reverse().find(e => e.hex);
+  if(libre(P.cote) && !(bypPrec && P.cote.some(h => _nomLOS(h) === bypPrec)))
+    P = Object.assign({}, P, {cote: null, hex: dernier && P.cote.includes(dernier.hex) ? dernier.hex : P.hex});
+  if(libre(Q.cote)) Q = Object.assign({}, Q, {cote: null, hex: P.hex && Q.cote.includes(P.hex) ? P.hex : Q.hex});
   const chemin = (a, b) => {
     if(a === b) return [];
     const ch = _voisins(m, a, b) ? [coutEntree(m, a, b, n)] : cheminMoinsCher(m, a, b, n);
@@ -10705,21 +10716,29 @@ function etapesDeplacement(m, P, Q, n, prec){
   }
   if(Q.cote){
     const obs = Q.cote.filter(_obstacleMvt);
+    // L'étape garde tous les obstacles de son côté (byps) : un côté commun
+    // à deux obstacles (20AA10|BB9) contourne l'un et l'autre, et le
+    // contournement peut se poursuivre le long de chacun.
+    const marquer = res => { if(res.length) res[res.length - 1].byps = obs.map(_nomLOS); return res; };
+    const longe = (e, nom) => e.byp === nom || (e.byps || []).includes(nom);
+    const der = prec[prec.length - 1];
+    const Xs = X0 && obs.includes(X0) ? X0 : P.cote && obs.find(h => longe(der, _nomLOS(h)));
     // Suite du contournement le long du même obstacle. Infanterie
     // (A4.31) : un ou deux côtés contigus coûtent le terrain ouvert une
     // fois ; au-delà de deux, le coût de l'hexagone double — le troisième
     // côté coûte donc une fois de plus, les suivants rien. Véhicule
     // (D2.33) : 1 MP de VCA et 2 MP de VBM par côté.
-    if(X0 && obs.includes(X0)){
+    if(Xs){
       const veh = n.unite === 'MP';
       const og = _valeurTEC(_casesTEC('ETO:Open Ground', n.col), {cot: 1, mp: n.mp});
+      const nom = _nomLOS(Xs);
       let k = 0;
-      for(let i = prec.length - 1; i > 0 && prec[i].byp === _nomLOS(X0); i--) if(prec[i].pos !== '·') k++;
-      const nom = _nomLOS(X0), rang = k + 1;
-      if(veh) return [{cout: _estNb(og) ? _plus(1, _fois(og, 2)) : og,
-                       lib: 'suite du contournement de ' + X0.getName() + ' (VCA + VBM)', byp: nom}];
-      return [{cout: rang === 3 ? og : 0, byp: nom,
-               lib: `contournement de ${X0.getName()}, côté ${rang}` + (rang === 3 ? ' : coût doublé (A4.31)' : '')}];
+      for(let i = prec.length - 1; i > 0 && longe(prec[i], nom); i--) if(prec[i].pos !== '·') k++;
+      const rang = k + 1;
+      if(veh) return marquer([{cout: _estNb(og) ? _plus(1, _fois(og, 2)) : og,
+                       lib: 'suite du contournement de ' + Xs.getName() + ' (VCA + VBM)', byp: nom}]);
+      return marquer([{cout: rang === 3 ? og : 0, byp: nom,
+               lib: `contournement de ${Xs.getName()}, côté ${rang}` + (rang === 3 ? ' : coût doublé (A4.31)' : '')}]);
     }
     const A = X0 || P.hex;
     const X = obs.find(h => h !== A) || obs[0];
@@ -10729,7 +10748,7 @@ function etapesDeplacement(m, P, Q, n, prec){
       : [0, 1, 2, 3, 4, 5].map(s => m.getAdjacentHex(X, s)).filter(Boolean)
           .sort((u, v) => Math.hypot(u.getHexCenter().x - A.getHexCenter().x, u.getHexCenter().y - A.getHexCenter().y)
                         - Math.hypot(v.getHexCenter().x - A.getHexCenter().x, v.getHexCenter().y - A.getHexCenter().y))[0];
-    return [...chemin(A, voisin), Object.assign(coutContournement(m, voisin, X, n), {byp: _nomLOS(X)})];
+    return marquer([...chemin(A, voisin), Object.assign(coutContournement(m, voisin, X, n), {byp: _nomLOS(X)})]);
   }
   if(!Q.hex) return [];
   // Entrée depuis le hors-carte (zone de mise en place, renforts) : coût
@@ -10807,6 +10826,23 @@ function _vehiculesDans(m, h, groupe){
     if(!P.cote && P.hex === h) k++;
   }
   return k;
+}
+// Pions Smoke de la carte, lus comme le fait la ligne de vue (Smoke,
+// Dispersed Smoke, WP, grenades, Smoke d'OBA, avec leur Location et leur
+// hauteur) : rend (h, niveau) → la Location du niveau de h en
+// contient-elle ? CounterMetadata.xml range aussi Blaze et Veh Dust parmi
+// les SMOKE : ce n'est pas de la Smoke pour le mouvement.
+const _estFumee = nom => /Smoke|WP|\bSm\b/.test(nom || '') && !/Blaze|Dust/.test(nom || '');
+function _fumees(m){
+  if(!m || !m.pions) return () => false;
+  m.pions.updatePieces(_piecesLOS());
+  return (h, niveau) => {
+    const f = m.pions.getSmoke(h);
+    if(!f || !f.size) return false;
+    let l = h.getCenterLocation();
+    for(let k = 0; k < niveau && l && l.getUpLocation(); k++) l = l.getUpLocation();
+    return [...f].some(s => _estFumee(s.getName()) && LosMap.locationInSmoke(l, s));
+  };
 }
 // Équivalent squad d'une unité (A5.1) : squad 1, HS ou équipage ½, SMC
 // rien. Les traits de VASL ne le disent pas de façon sûre (iCVP 2 pour un
@@ -10910,6 +10946,7 @@ function compterMouvement(avant, portes, local){
   }
   portes = portes || new Set();
   const groupe = avant.map(a => a.p);
+  const enFumee = _fumees(m);
   const lignes = new Map();          // même texte → unités regroupées
   const pied = [];                   // infanterie : une ligne pour la pile
   const alertes = [], segments = [];
@@ -10929,7 +10966,17 @@ function compterMouvement(avant, portes, local){
     const vca = _vcaPion(p);
     const e = _mvtDepart(p, P.cle, vca);
     const ch = etapesDeplacement(m, P, Q, n, e);
-    if(!ch.length) continue;
+    // Replacé dans le même hexagone (sur un côté sans obstacle, ou en
+    // quittant un tel côté) : rien à payer, mais l'étape garde la position,
+    // sans quoi le coup suivant passerait pour un Undo et perdrait le cumul.
+    if(!ch.length){
+      if(P.hex){
+        e.push({pos: Q.cle, vca, cout: 0, lib: "dans l'hexagone", etat: _etatMvt(e).etat, recul: _etatMvt(e).recul});
+        if(veh){ const t = _texteMP(p, 0); if(!lignes.has(t)) lignes.set(t, []); lignes.get(t).push(nomRapport(p)); }
+        else pied.push({p, pas: '0'});
+      }
+      continue;
+    }
     // Entrée depuis le hors-carte : en Motion, sans démarrage (D2.12, A2.52).
     const demarrage = veh ? _demarrer(p, e, P.cle, vca, !P.hex || _enMotion(p, a.x, a.y, groupe)) : 0;
     // Épaves et véhicules dans l'hexagone entré : +1 MP chacun, +2 au
@@ -10978,6 +11025,9 @@ function compterMouvement(avant, portes, local){
         }
       }
     }
+    // Smoke (A24.7) : +1 MF / MP par Location entrée qui en contient,
+    // Dispersed Smoke comprise ; au rez-de-chaussée, où arrive l'unité.
+    for(const r of ch) if(r.hex && !r.all && _estNb(r.cout) && enFumee(r.hex, 0)){ r.cout = _plus(r.cout, 1); r.lib += ' + Smoke'; }
     ch.forEach((r, i) => e.push(Object.assign({pos: i === ch.length - 1 ? Q.cle : '·', vca,
       etat: d.etat, recul: d.recul}, r)));
     // Infanterie : sortie d'une fortification, étage d'arrivée (B23.4,
@@ -11022,8 +11072,17 @@ function _completerLigneMouvement(texte, avant){
   const j = document.getElementById('journal');
   const l = j && [...j.querySelectorAll('.rap')].reverse().find(x => / moves /.test(x.textContent));
   // Ligne écrite ici avec son décompte (« … * 2MF/ 4MF ») : elle le
-  // porte déjà, il n'est pas répété.
-  if(l && !l.dataset.mvt && /M[FP]\/ /.test(l.textContent)){ l.dataset.mvt = '1'; return; }
+  // porte déjà, il n'est pas répété. S'il diffère du décompte recalculé
+  // (log écrit par une version qui comptait mal), l'écran montre le bon ;
+  // le fichier, lui, garde son texte.
+  if(l && !l.dataset.mvt && /M[FP]\/ /.test(l.textContent)){
+    l.dataset.mvt = '1';
+    // Le décompte est dans le dernier nœud de texte, après les liens des
+    // hexagones : « … <span>20BB10</span> * 2MF/ 4MF ».
+    const x = l.lastChild, i = x && x.nodeType === 3 ? x.data.lastIndexOf(' * ') : -1;
+    if(i >= 0 && x.data.slice(i + 3).trim() !== texte) x.data = x.data.slice(0, i + 3) + texte;
+    return;
+  }
   if(l && !l.dataset.mvt){
     l.dataset.mvt = '1';
     l.appendChild(document.createTextNode(' ' + texte));
@@ -11409,6 +11468,11 @@ function _coutEntreeLieu(m, en){
 function compterLieux(avant, local){
   const m = _losPrete;
   const emettre = local ? t => afficherChat('* ' + t) : rapport;
+  const enFumee = _fumees(m);
+  // Smoke (A24.7) : +1 MF pour passer d'un niveau sans Smoke à un niveau
+  // qui en contient, dans le même hexagone.
+  const fumee = (p, n1, n2) => { const h = m && _hexDe(m, p.x, p.y);
+    return !!h && (n1 || 0) !== (n2 || 0) && enFumee(h, n2 || 0) && !enFumee(h, n1 || 0) ? 1 : 0; };
   for(const [p, l1] of avant){
     if(p.deleted) continue;
     const l2 = lieuDansPile(p);
@@ -11422,15 +11486,15 @@ function compterLieux(avant, local){
       const garde = {cout: der.cout, lib: der.lib, lieuArr: der.entree.lieuArr};
       der.entree.lieuArr = l2;
       der.entree.p = p;
-      const c = _coutEntreeLieu(m, der.entree);
-      der.cout = c.cout;
-      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : hexagone ${_texteMF(p, _fmtCout(c.cout), [c.lib.includes('tranchées') && 'tranchées reliées'])}`;
+      const c = _coutEntreeLieu(m, der.entree), f = fumee(p, 0, l2.niveau);
+      der.cout = f && _estNb(c.cout) ? _plus(c.cout, f) : c.cout;
+      txt = `${_decrireChangement(der.entree.lieuDep, l2)} : hexagone ${_texteMF(p, _fmtCout(der.cout), [c.lib.includes('tranchées') && 'tranchées reliées', f && 'Smoke'])}`;
       if(c.alerte) chatLog(`⚠️ ${nomRapport(p)} : ${c.alerte}`);
       if(!local) _histoJs(() => { der.cout = garde.cout; der.lib = garde.lib; der.entree.lieuArr = garde.lieuArr; });
     } else {
-      const c = _coutLieu(l1, l2, m ? _hexDe(m, p.x, p.y) : null, pile(cle(p)));
-      e.push({pos, vca: null, cout: c.cout, lib: _decrireChangement(l1, l2), etat: 'arret'});
-      txt = `${_decrireChangement(l1, l2)} : ${_texteMF(p, c.cout)}`;
+      const c = _coutLieu(l1, l2, m ? _hexDe(m, p.x, p.y) : null, pile(cle(p))), f = fumee(p, l1.niveau, l2.niveau);
+      e.push({pos, vca: null, cout: c.cout + f, lib: _decrireChangement(l1, l2) + (f ? ' + Smoke' : ''), etat: 'arret'});
+      txt = `${_decrireChangement(l1, l2)} : ${_texteMF(p, c.cout + f, [f && 'Smoke'])}`;
       if(c.alerte) chatLog(`⚠️ ${nomRapport(p)} : ${c.alerte}`);
       if(!local){
         const et = e;
