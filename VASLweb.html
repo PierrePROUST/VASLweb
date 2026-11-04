@@ -8158,6 +8158,10 @@ async function _vtElementPage(html){
 const VASL_IMAGES_URL =
   'https://raw.githubusercontent.com/vasl-developers/vasl/develop/dist/images/';
 const _imgCache = new Map();      // chemin → Promise<URL de Blob | null>
+// Exposant Smoke (A24.1) imprimé sur l'image d'une escouade : VASL ne le
+// porte nulle part ailleurs que dans le SVG (<text id="SmokeExponent">).
+// chemin → exposant (« 2 », « 3 »), '' si l'image n'en a pas.
+const _exposantsSmoke = new Map();
 
 function _ensureViewBox(svg){
   const m = svg.match(/<svg\b[^>]*>/i);
@@ -8175,6 +8179,7 @@ function chargerImage(path){
 }
 
 async function _chargerImage(path){
+  const demande = path;
   try {
     // Le module désigne bien des images sans extension (« MS/Gutted »,
     // « ML/NoMove ») et certaines n'existent qu'en SVG, d'autres qu'en GIF :
@@ -8198,6 +8203,9 @@ async function _chargerImage(path){
       return URL.createObjectURL(new Blob([await r.arrayBuffer()], {type: mime}));
     }
     let svg = await r.text();
+    const se = svg.match(/<text\b[^>]*\bid="SmokeExponent"[^>]*>\s*([^<]*)/);
+    _exposantsSmoke.set(demande, se ? se[1].trim() : '');
+    _exposantsSmoke.set(path, se ? se[1].trim() : '');
     svg = svg.replace(/@font-face\s*\{[^}]*\}/g, '')
              .replace(/font-family\s*:\s*Nimbus Sans L/g, 'font-family:Helvetica,Arial,sans-serif');
     // Images incluses, relatives au dossier du pion : la silhouette
@@ -11184,6 +11192,7 @@ function itemsVehicule(p){
   // arrête un véhicule en marche.
   const items = [cmd('Start/Stop', d.etat === 'marche' ? 'stop' : 'start')];
   if(_MULT_RECUL[n.col]) items.push(d.recul ? cmd('Marche avant', 'reverse') : cmd('Reverse', 'reverse'));
+  items.push(...itemsTransportVehicule(p), ...itemsSmoke(p, true));
   return items;
 }
 
@@ -11221,14 +11230,16 @@ const _quartMP = mp => Math.ceil(mp / 4);           // un quart de l'allocation,
 // dépensé. Unload (D6.5) : un quart des MP par pile qui descend ;
 // l'infanterie paie 1 MF et a déjà dépensé 1 MF par quart des MP du
 // véhicule utilisé avant (FRU). Undo annule l'un et l'autre.
-function commandeTransport(p, quoi){
+// veh : le véhicule choisi (commande lancée de son menu) ; sinon celui
+// de la pile, le plus haut.
+function commandeTransport(p, quoi, veh){
   const n = natureMouvement(p);
   if(!n || n.unite !== 'MF') return;
   const m = _losPrete;
   const posDe = q => m ? _posMvt(m, q.x, q.y).cle : lieu(q.x, q.y);
   const s = pile(cle(p));
   const v = quoi === 'unload' ? _vehiculeSous(p)
-          : s.filter(q => { const k = natureMouvement(q); return k && k.unite === 'MP'; }).pop();
+          : veh || s.filter(q => { const k = natureMouvement(q); return k && k.unite === 'MP'; }).pop();
   if(!v) return;
   const nv = natureMouvement(v);
   const avaitP = !!p.mvt, avaitV = !!v.mvt;
@@ -11290,6 +11301,117 @@ function itemsTransport(p){
   if(_estPassager(p)) return [cmd('Unload', 'unload')];
   const vehicule = pile(cle(p)).some(q => { const k = natureMouvement(q); return k && k.unite === 'MP'; });
   return vehicule ? [cmd('Load', 'load')] : [];
+}
+// Menu du véhicule : Load embarque l'infanterie à pied de son camp posée
+// dans son hexagone, Unload débarque ses passagers (D6.4, D6.5). Chaque
+// unité est comptée comme depuis son propre menu ; le véhicule ne paie
+// qu'un quart de ses MP pour toute la pile qui descend.
+function _aEmbarquer(v){
+  const c = campPion(v);
+  return pile(cle(v)).filter(q => { const k = natureMouvement(q);
+    if(!k || k.unite !== 'MF' || q.cache || accesRefuse(q) || _estPassager(q)) return false;
+    const cq = campPion(q);
+    return !c || !cq || cq === c; });
+}
+const _passagersDe = v => pile(cle(v)).filter(q => _estPassager(q) && _vehiculeSous(q) === v);
+function itemsTransportVehicule(v){
+  const r = [];
+  const cmd = (nom, quoi, liste) => r.push({nom, cmd: {nom, faire: ({effets}) =>
+    effets.push(() => { for(const q of liste) commandeTransport(q, quoi, v); })}});
+  const a = _aEmbarquer(v), d = _passagersDe(v);
+  if(a.length) cmd('Load', 'load', a);
+  if(d.length) cmd('Unload', 'unload', d);
+  return r;
+}
+
+// ── Smoke pendant le mouvement : seulement le comptage des MF / MP,
+// pour la saisie en PBEM ; les conditions des règles ne sont pas
+// vérifiées.
+// Grenades de l'infanterie (A24.1) : une escouade dont le FP porte un
+// exposant Smoke paie 1 MF dans sa propre Location (Smoke Hex), 2 MF dans
+// une Location ADJACENT (Smoke ADJ).
+// Dispositifs des AFV (D13) : sD, sM, sP, sN, d'après la bande de
+// caractéristiques du véhicule (« sD6 », « sM8 ») : 1 MP (D13.2).
+// Grenades Smoke d'un véhicule armé d'une MA (D13.35) : 1 MP, comme un
+// dispositif. Le coût est annoncé au chat et au log, et s'annule par Undo.
+// Exposant de l'image affichée (face cassée : pas d'exposant) ; null si
+// l'image n'est pas encore lue.
+function exposantSmoke(p){
+  const img = lirePiece(p.seg).img;
+  if(!img) return '';
+  if(!_exposantsSmoke.has(img)){ chargerImage(img); return null; }
+  return _exposantsSmoke.get(img);
+}
+// Dispositifs d'un véhicule, lus dans son trait info : [{type, usage}].
+function dispositifsSmoke(p){
+  const info = lirePiece(p.seg).info || '';
+  const r = [];
+  for(const x of info.matchAll(/(?:^|[,\s])s([DMPN])(\d+)/g))
+    if(!r.some(y => y.type === x[1])) r.push({type: x[1], usage: x[2]});
+  return r;
+}
+// Véhicule armé d'une MA (D13.35). Le module VASL ne la nomme pas (tous
+// ses véhicules ont « MA Malf ») : tourelle (prototype « …tur »),
+// munitions à épuisement (DeplAmmo), bande de caractéristiques qui cite
+// la MA (« MA:MMG ») ou une de ses munitions (A4, HE7, s8, WP6…), ou
+// chenillé / automitrailleuse blindé (prototype CT / OT). Un camion, une
+// Jeep, un bulldozer ou un half-track sans canon n'en ont pas.
+// Les prototypes sont développés dans le pion posé : leurs noms se lisent
+// dans la définition du PieceSlot (gpid).
+function aUneMA(p){
+  const n = natureMouvement(p);
+  if(!n || n.unite !== 'MP') return false;
+  if(/\bMA\b|(?:^|[,\s])(?:A|HE|s|WP|C|D|T|H)\^?\d/.test(lirePiece(p.seg).info || '')) return true;
+  const te = _typeEtEtat(p.seg), S = te ? decoderTraits(te.etat) : [];
+  const gpid = ((S[S.length - 1] || '').split(';')[3] || '').trim();
+  const x = gpid && _bdd && _bdd.parGpid && _bdd.parGpid.get(gpid);
+  const def = (x ? x.cmd : '') + '\n' + p.seg;
+  if(/prototype;[a-z]{2}[A-Z]{2}tur\b|prototype;DeplAmmo/.test(def)) return true;
+  return (n.col === 'ft' || n.col === 'ac') && /prototype;[a-z]{2}(CT|OT)/.test(def);
+}
+function commandeSmoke(p, quoi, usage){
+  const n = natureMouvement(p);
+  if(!n) return;
+  const m = _losPrete;
+  const P = m ? _posMvt(m, p.x, p.y) : {cle: lieu(p.x, p.y)};
+  const avait = !!p.mvt;
+  const veh = n.unite === 'MP';
+  const vca = veh ? _vcaPion(p) : null;
+  const e = _mvtDepart(p, P.cle, vca), n0 = e.length;
+  const d = _etatMvt(e);
+  if(veh){
+    const txt = quoi === 'G' ? 'Smoke grenades' : `s${quoi}${usage}`;
+    e.push({pos: P.cle, vca, cout: 1, lib: 'Smoke ' + txt, byp: d.byp, etat: d.etat, recul: d.recul});
+    rapport(`${nomRapport(p)} : ${txt} ${_texteMP(p, 1)}`);
+  } else {
+    const cout = quoi === 'adj' ? 2 : 1;
+    const txt = quoi === 'adj' ? 'Smoke ADJ' : 'Smoke Hex';
+    e.push({pos: P.cle, vca: null, cout, lib: txt, etat: 'arret'});
+    const x = exposantSmoke(p);
+    rapport(`${nomRapport(p)} : ${txt} ${_texteMF(p, cout, [x && `exposant ${x}`])}`);
+  }
+  const etapes = e;
+  _histoJs(() => {
+    if(p.mvt && p.mvt.etapes === etapes) etapes.length = n0;
+    if(!avait && p.mvt && p.mvt.etapes.length <= 1) delete p.mvt;
+  });
+}
+// Entrées du menu : Smoke Hex / Smoke ADJ pour une escouade à exposant,
+// à pied ; sD, sM, sP, sN pour un véhicule qui en est équipé, et Smoke
+// grenades pour un véhicule armé d'une MA.
+function itemsSmoke(p, vehicule){
+  const n = natureMouvement(p);
+  if(!n) return [];
+  const cmd = (nom, quoi, usage) => ({nom,
+    cmd: {nom, faire: ({effets}) => effets.push(() => commandeSmoke(p, quoi, usage))}});
+  if(n.unite === 'MP'){
+    if(!vehicule) return [];
+    const r = dispositifsSmoke(p).map(s => cmd(`s${s.type}${s.usage}`, s.type, s.usage));
+    if(aUneMA(p)) r.push(cmd('Smoke grenades', 'G'));
+    return r;
+  }
+  if(vehicule || n.unite !== 'MF' || _estPassager(p) || !exposantSmoke(p)) return [];
+  return [cmd('Smoke Hex', 'hex'), cmd('Smoke ADJ', 'adj')];
 }
 
 // ── Relecture d'un log : les coups relus (M/) sont comptés comme ceux
@@ -13079,7 +13201,8 @@ function arbreCommandes(p){
     if(!placer(racine.items)) racine.items.push(...ajoutes);
   }
   // Infanterie : Load / Unload en tête du menu (D6.4, D6.5).
-  const transport = !accesRefuse(p) && typeof itemsTransport === 'function' ? itemsTransport(p) : [];
+  // Puis Smoke Hex / Smoke ADJ d'une escouade à exposant Smoke (A24.1).
+  const transport = !accesRefuse(p) && typeof itemsTransport === 'function' ? [...itemsTransport(p), ...itemsSmoke(p)] : [];
   if(transport.length) racine.items.unshift(...transport);
   // MG : Fire Lane, posée et liée à la MG.
   if(!accesRefuse(p) && estMG(p))
