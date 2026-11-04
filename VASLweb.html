@@ -844,16 +844,17 @@ const EN = {
   'Comme le serveur de VASSAL : l\'hôte ouvre une salle et donne son code ; qui la rejoint reçoit la partie du propriétaire, puis chaque coup joué part chez les autres.':
     'Like the VASSAL server: the host opens a room and gives its code; whoever joins receives the owner\'s game, then every move is sent to the others.',
   'Vous jouez sous le nom': 'You are playing as',
-  'Liaison': 'Connection', 'Internet (WebRTC, d\'un poste à l\'autre)': 'Internet (WebRTC, peer to peer)',
+  'Liaison': 'Connection', 'Internet (direct ou par relais)': 'Internet (direct or relayed)',
   'Onglets de ce navigateur': 'Tabs of this browser',
   'Nom de la salle (pour héberger)': 'Room name (to host)', 'Code de la salle (pour rejoindre)': 'Room code (to join)',
   'ex. k7m2qa': 'e.g. k7m2qa',
   'Héberger': 'Host', 'Rejoindre': 'Join', 'Identification…': 'Login…',
-  'Internet : la mise en relation passe par le serveur public de PeerJS, puis les postes échangent directement. L\'hôte doit garder sa page ouverte : elle tient lieu de serveur.':
-    'Internet: peers meet through the public PeerJS server, then exchange directly. The host must keep their page open: it acts as the server.',
+  'Internet : l\'invité rejoint l\'hôte en direct (WebRTC) quand le réseau le permet, sinon par un relais chiffré (serveurs MQTT publics). L\'hôte doit garder sa page ouverte, au premier plan sur un téléphone : elle tient lieu de serveur. Mieux vaut héberger sur le PC.':
+    'Internet: the guest reaches the host directly (WebRTC) when the network allows it, otherwise through an encrypted relay (public MQTT servers). The host must keep their page open, in the foreground on a phone: it acts as the server. Hosting on the PC is best.',
   'Salle': 'Room', '— code': '— code', 'Connexion en cours… — code': 'Connecting… — code', 'Copier': 'Copy',
   'Onglets de ce navigateur.': 'Tabs of this browser.', 'Onglets de ce navigateur, vous hébergez.': 'Tabs of this browser, you are hosting.',
-  'Internet (WebRTC).': 'Internet (WebRTC).', 'Internet (WebRTC), vous hébergez.': 'Internet (WebRTC), you are hosting.',
+  'pas de chemin réseau': 'no network path', 'aucun serveur de relais joignable': 'no relay server reachable',
+  'serveur injoignable': 'server unreachable', 'pas d\'hôte sur le relais': 'no host on the relay',
   'Joueur': 'Player', 'propriétaire': 'owner', 'En attente du serveur…': 'Waiting for the server…',
   'Synchroniser': 'Synchronize', 'Fermer la salle': 'Close room', 'Quitter la salle': 'Leave room',
   'Donner le code à l\'adversaire. Fermer cette page ferme la salle.': 'Give the code to your opponent. Closing this page closes the room.',
@@ -893,6 +894,14 @@ const EN_MOTIFS = [
   ['{} [{}]', '{} [{}]'],
   ['Terminer le log « {} » et l\'écrire', 'End Logfile “{}” and write it'],
   ['Partie à distance — {}', 'Server — {}'],
+  ['Liaison : {} — vous hébergez.', 'Connection: {} — you are hosting.'],
+  ['Liaison : {}.', 'Connection: {}.'],
+  ['Internet : {}', 'Internet: {}'],
+  ['onglets de ce navigateur', 'tabs of this browser'],
+  ['relais {}', 'relay {}'],
+  ['directe + {}', 'direct + {}'],
+  ['directe', 'direct'],
+  ['relais', 'relay'],
   ['Utilisateur : {} — changer ou gérer les utilisateurs', 'User: {} — change or manage users'],
   ['Pile ({})', 'Stack ({})'],
   ['{} unité(s) sur {}', '{} of {} unit(s)'],
@@ -961,8 +970,10 @@ function _traduireNoeud(n){
     const p = n.parentElement;
     if(!p || p.closest(_HORS_TRADUCTION)) return;
     const v = n.nodeValue, t = T(v);
-    // Les espaces autour du libellé restent.
-    if(t !== v) n.nodeValue = /^\s*/.exec(v)[0] + t + /\s*$/.exec(v)[0];
+    // Les espaces autour du libellé restent. Réécrire la même valeur
+    // relancerait l'observateur sans fin : T rend « web » pour « web ».
+    const nv = /^\s*/.exec(v)[0] + t + /\s*$/.exec(v)[0];
+    if(t !== v && nv !== v) n.nodeValue = nv;
     return;
   }
   if(n.nodeType !== 1 || n.closest(_HORS_TRADUCTION)) return;
@@ -13078,12 +13089,17 @@ function arbreCommandes(p){
 }
 
 // Une commande choisie dans un menu, une feuille ou une barre : un pion
-// sélectionné la transmet à toute la sélection, comme son raccourci.
+// sélectionné la transmet aux pions de la sélection qui ont une commande
+// du même nom sur la même touche. Le raccourci clavier, lui, part à toute
+// la sélection, comme dans VASSAL : dans VASL, Ctrl+F casse les unités
+// (Break), mais met aussi la MMG en malf et fait tourner le marqueur
+// Prep Fire en Bnd. Fire (Flip) ; choisir « Break » sur une pile entière
+// ne doit casser que les unités.
 let _freqCmd = (() => { try { return JSON.parse(localStorage.getItem('aslweb.freqCmd') || '{}') || {}; } catch(e){ return {}; } })();
 function lancerCommande(p, c){
   _freqCmd[c.nom] = (_freqCmd[c.nom] || 0) + 1;
   try { localStorage.setItem('aslweb.freqCmd', JSON.stringify(_freqCmd)); } catch(e){}
-  if(c.touche && _sel.has(p) && _sel.size > 1) commanderSelection(c.touche);
+  if(c.touche && _sel.has(p) && _sel.size > 1) commanderSelection(c.touche, undefined, c.nom);
   else if(c.touche) commander([p], c.touche); else commander([p], null, c.cmd);
 }
 
@@ -13262,16 +13278,19 @@ function _brancherCommandes(){
 
 // Les pions visés par une touche : la sélection si elle existe, sinon la
 // pile courante. Ceux qui n'ont pas la touche sont écartés.
-function ciblesTouche(touche){
+// nom : seuls les pions dont la commande de cette touche porte ce nom
+// (voir lancerCommande).
+function ciblesTouche(touche, nom){
   const base = _sel.size ? [..._sel] : (_pileSel ? pile(_pileSel).filter(p => !p.cache) : []);
-  return trierParPile(base.filter(p => !p.cache && commandesDe((_typeEtEtat(p.seg) || {}).type || '')
-                                              .cmds.some(c => c.touche === touche)));
+  return trierParPile(base.filter(p => !p.cache && _aCommande(p, touche, nom)));
 }
+const _aCommande = (p, touche, nom) => commandesDe((_typeEtEtat(p.seg) || {}).type || '')
+  .cmds.some(c => c.touche === touche && (nom == null || c.nom === nom));
 // Comme un raccourci clavier de VASSAL : la touche part à toute la
 // sélection. Les pions masqués par un autre joueur ne la reçoivent pas ;
 // un seul avertissement pour tous.
-function commanderSelection(touche, cmd){
-  const tous = ciblesTouche(touche);
+function commanderSelection(touche, cmd, nom){
+  const tous = ciblesTouche(touche, nom);
   if(!tous.length) return false;
   const cibles = tous.filter(p => !accesRefuse(p, touche));
   if(!cibles.length){ refuser(tous[0]); return true; }
@@ -14234,8 +14253,8 @@ function _rangeeCommandes(boite, avecDeplacer){
       _freqCmd[c.nom] = (_freqCmd[c.nom] || 0) + 1;
       try { localStorage.setItem('aslweb.freqCmd', JSON.stringify(_freqCmd)); } catch(e){}
       if(c.etat) basculerCommandeEtat(c);
-      else if(_sel.size) commanderSelection(c.touche);
-      else commander(vises.filter(p => !accesRefuse(p, c.touche) && commandesDe(_typeEtEtat(p.seg).type).cmds.some(x => x.touche === c.touche)), c.touche);
+      else if(_sel.size) commanderSelection(c.touche, undefined, c.nom);
+      else commander(vises.filter(p => !accesRefuse(p, c.touche) && _aCommande(p, c.touche, c.nom)), c.touche);
       afficherPile();
     });
     boite.appendChild(b);
@@ -16565,35 +16584,376 @@ const _errPeer = e => new Error(e && e.type === 'peer-unavailable' ? 'salle intr
   : e && e.type === 'unavailable-id' ? 'ce code de salle est déjà pris'
   : (e && (e.message || e.type)) || 'erreur WebRTC');
 
+// « Internet » ouvre deux voies vers l'hôte. La voie directe (WebRTC,
+// mise en relation par le serveur public de PeerJS) échoue souvent entre
+// un PC et un téléphone : NAT de l'opérateur mobile, adresses locales en
+// « .local » que la box ne résout pas, box qui ne renvoie pas vers son
+// propre réseau ce qui vise son adresse publique. Le relais (des serveurs
+// MQTT publics, joints en WebSocket chiffré) passe partout où passe le
+// web. L'hôte écoute sur les deux voies. L'invité essaie les deux à la
+// fois : il garde la voie directe si elle s'ouvre, le relais sinon.
 async function _hebergerPeer(n, srv){
   const Peer = await _chargerPeerJS();
   const peer = new Peer(NET_PREFIXE + n.code);
-  n.fermerTransport = () => peer.destroy();
-  await _attendre((ok, ko) => { peer.on('open', ok); peer.on('error', e => ko(_errPeer(e))); },
-                  15000, 'serveur de rendez-vous PeerJS injoignable');
+  try {
+    await _attendre((ok, ko) => { peer.on('open', ok); peer.on('error', e => ko(_errPeer(e))); },
+                    15000, 'serveur de rendez-vous PeerJS injoignable');
+  } catch(e){ peer.destroy(); throw e; }
   // Coupé du serveur de rendez-vous, l'hôte s'y réinscrit : les joueurs
-  // déjà là restent reliés, les nouveaux pourront entrer.
-  peer.on('disconnected', () => { if(_net === n && !peer.destroyed) peer.reconnect(); });
+  // déjà là restent reliés, les nouveaux pourront entrer. Un téléphone
+  // coupe ce lien quand la page passe en arrière-plan : on le reprend
+  // aussi au retour au premier plan.
+  const reprendre = () => { if(_net === n && peer.disconnected && !peer.destroyed) peer.reconnect(); };
+  peer.on('disconnected', reprendre);
+  n.aReprendre.push(reprendre);
   peer.on('connection', conn => {
     const lien = {envoyer: l => { if(conn.open) conn.send(l); }};
     conn.on('data', l => srv.recevoir(lien, l));
     conn.on('close', () => srv.quitter(lien));
     conn.on('error', () => srv.quitter(lien));
   });
+  return {fermer: () => peer.destroy()};
 }
 
-async function _rejoindrePeer(n){
+// Voie directe de l'invité : une voie ouverte, ou une erreur qui dit où
+// elle a échoué (rendez-vous, hôte absent, ou ICE : pas de chemin réseau).
+async function _essaiPeer(n){
   const Peer = await _chargerPeerJS();
   const peer = new Peer();
-  n.fermerTransport = () => peer.destroy();
-  await _attendre((ok, ko) => { peer.on('open', ok); peer.on('error', e => ko(_errPeer(e))); },
-                  15000, 'serveur de rendez-vous PeerJS injoignable');
-  const conn = peer.connect(NET_PREFIXE + n.code, {reliable: true});
-  await _attendre((ok, ko) => { conn.on('open', ok); conn.on('error', ko); peer.on('error', e => ko(_errPeer(e))); },
-                  20000, 'salle injoignable');
-  conn.on('data', l => _netRecevoir(n, l));
-  conn.on('close', () => _netPerdu(n));
-  n.envoyer = l => { if(conn.open) conn.send(l); };
+  try {
+    await _attendre((ok, ko) => { peer.on('open', ok); peer.on('error', e => ko(_errPeer(e))); },
+                    15000, 'serveur de rendez-vous PeerJS injoignable');
+    const conn = peer.connect(NET_PREFIXE + n.code, {reliable: true});
+    try {
+      await _attendre((ok, ko) => { conn.on('open', ok); conn.on('error', ko); peer.on('error', e => ko(_errPeer(e))); },
+                      20000, 'salle injoignable');
+    } catch(e){
+      const ice = conn.peerConnection && conn.peerConnection.iceConnectionState;
+      throw ice && ice !== 'new' && ice !== 'connected' ? new Error(`pas de chemin réseau (ICE ${ice})`) : e;
+    }
+    return {nom: 'directe', envoyer: l => { if(conn.open) conn.send(l); }, fermer: () => peer.destroy(),
+            brancher(recevoir, perdu){ conn.on('data', recevoir); conn.on('close', perdu); }};
+  } catch(e){ peer.destroy(); throw e; }
+}
+
+// ── Relais MQTT : MQTT 3.1.1 sur WebSocket, qualité de service 0. Une
+// liste propre peut remplacer les serveurs publics :
+//   localStorage['aslweb.relais'] = '["wss://…/mqtt"]'
+const RELAIS_PUBLICS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt',
+                        'wss://test.mosquitto.org:8081/mqtt'];
+const CLE_RELAIS = 'aslweb.relais';
+const NET_MORCEAU = 16000;                  // caractères par publication
+function relaisReseau(){
+  try {
+    const l = JSON.parse(_lireLocal(CLE_RELAIS, 'null'));
+    if(Array.isArray(l) && l.some(u => /^wss?:\/\//.test(u))) return l.filter(u => /^wss?:\/\//.test(u));
+  } catch(e){}
+  return RELAIS_PUBLICS;
+}
+
+// Connexion à un serveur MQTT. `testament` : le message que le serveur
+// publie si la connexion meurt sans DISCONNECT (page fermée, réseau perdu).
+function _mqtt(url, id, testament){
+  return new Promise((ok, ko) => {
+    let ws;
+    try { ws = new WebSocket(url, 'mqtt'); } catch(e){ ko(e); return; }
+    ws.binaryType = 'arraybuffer';
+    const enc = new TextEncoder(), dec = new TextDecoder();
+    const octets = (...l) => {
+      const u = new Uint8Array(l.reduce((s, x) => s + x.length, 0));
+      let i = 0;
+      for(const x of l){ u.set(x, i); i += x.length; }
+      return u;
+    };
+    const chaine = s => { const b = typeof s === 'string' ? enc.encode(s) : s; return octets([b.length >> 8, b.length & 255], b); };
+    const paquet = (type, corps) => {
+      const lg = [];
+      let r = corps.length;
+      do { let d = r % 128; r = Math.floor(r / 128); if(r) d |= 128; lg.push(d); } while(r);
+      return octets([type], lg, corps);
+    };
+    const envoyer = p => { if(ws.readyState === 1) ws.send(p); };
+    const c = {ouvert: false, surMessage: null, surFin: null, pid: 0, attentes: new Map()};
+    let recu = new Uint8Array(0), ping = null;
+    const delai = setTimeout(() => { ko(new Error('serveur injoignable')); try { ws.close(); } catch(e){} }, 10000);
+    ws.onopen = () => {
+      let drapeaux = 0x02;                      // session propre
+      const charge = [chaine(id)];
+      if(testament){ drapeaux |= 0x04; charge.push(chaine(testament.sujet), chaine(testament.texte)); }
+      envoyer(paquet(0x10, octets(chaine('MQTT'), [4, drapeaux, 0, 30], ...charge)));
+    };
+    const traiter = (type, corps) => {
+      switch(type >> 4){
+        case 2:                                 // CONNACK
+          clearTimeout(delai);
+          if(corps[1] !== 0){ ko(new Error('connexion refusée (' + corps[1] + ')')); ws.close(); return; }
+          c.ouvert = true;
+          ping = setInterval(() => envoyer(new Uint8Array([0xC0, 0])), 20000);
+          ok(c);
+          break;
+        case 3: {                               // PUBLISH
+          const lt = (corps[0] << 8) | corps[1];
+          const sujet = dec.decode(corps.subarray(2, 2 + lt));
+          const debut = 2 + lt + ((type >> 1) & 3 ? 2 : 0);
+          if(c.surMessage) c.surMessage(sujet, dec.decode(corps.subarray(debut)));
+          break;
+        }
+        case 9: {                               // SUBACK
+          const f = c.attentes.get((corps[0] << 8) | corps[1]);
+          if(f) f(corps[2] !== 0x80);
+          break;
+        }
+      }
+    };
+    ws.onmessage = e => {
+      recu = octets(recu, new Uint8Array(e.data));
+      for(;;){
+        let lg = 0, m = 1, i = 1, d;
+        do { if(i >= recu.length) return; d = recu[i++]; lg += (d & 127) * m; m *= 128; } while(d & 128);
+        if(recu.length < i + lg) return;
+        const type = recu[0], corps = recu.slice(i, i + lg);
+        recu = recu.slice(i + lg);
+        traiter(type, corps);
+      }
+    };
+    ws.onclose = ws.onerror = () => {
+      clearTimeout(delai); clearInterval(ping);
+      if(!c.ouvert){ ko(new Error('serveur injoignable')); return; }
+      c.ouvert = false;
+      const f = c.surFin;
+      c.surFin = null;
+      if(f) f();
+    };
+    c.abonner = sujet => new Promise((oui, non) => {
+      const pid = c.pid = c.pid % 65535 + 1;
+      const t = setTimeout(() => { c.attentes.delete(pid); non(new Error('abonnement sans réponse')); }, 8000);
+      c.attentes.set(pid, r => { clearTimeout(t); c.attentes.delete(pid); r ? oui() : non(new Error('abonnement refusé')); });
+      envoyer(paquet(0x82, octets([pid >> 8, pid & 255], chaine(sujet), [0])));
+    });
+    c.publier = (sujet, texte) => envoyer(paquet(0x30, octets(chaine(sujet), enc.encode(texte))));
+    // DISCONNECT : le testament n'est pas publié.
+    c.fermer = () => { c.surFin = null; envoyer(new Uint8Array([0xE0, 0])); try { ws.close(); } catch(e){} };
+  });
+}
+
+// Sujets et chiffrement d'une salle, tirés de son code : le serveur de
+// relais ne voit ni le code ni les coups. AES-GCM si le navigateur
+// l'offre (page en https) ; sinon les messages vont en clair.
+async function _canalRelais(code){
+  const enc = new TextEncoder();
+  let base, cle = null;
+  if(window.crypto && crypto.subtle){
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('aslweb-salle|' + code)));
+    base = 'aslweb/' + [...h.subarray(0, 12)].map(x => x.toString(16).padStart(2, '0')).join('');
+    const k = await crypto.subtle.digest('SHA-256', enc.encode('aslweb-cle|' + code));
+    cle = await crypto.subtle.importKey('raw', k, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  } else base = 'aslweb/' + _empreinte('aslweb-salle|' + code) + _empreinte(code + '|aslweb-salle');
+  return {
+    serveur: base + '/s', fin: base + '/f', client: id => base + '/c/' + id,
+    async emballer(o){
+      const t = JSON.stringify(o);
+      if(!cle) return t;
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ch = new Uint8Array(await crypto.subtle.encrypt({name: 'AES-GCM', iv}, cle, enc.encode(t)));
+      return '~' + _b64(iv) + '.' + _b64(ch);
+    },
+    async deballer(t){
+      try {
+        if(t[0] !== '~') return cle ? null : JSON.parse(t);
+        if(!cle) return null;
+        const [iv, ch] = t.substring(1).split('.');
+        return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name: 'AES-GCM', iv: _deB64(iv)}, cle, _deB64(ch))));
+      } catch(e){ return null; }
+    }
+  };
+}
+
+// Envoi d'une ligne vers `sujet`, en morceaux, dans l'ordre malgré le
+// chiffrement asynchrone. `entete` accompagne chaque morceau.
+function _voieRelais(c, canal, sujet, entete){
+  let file = Promise.resolve(), k = 0;
+  return l => {
+    const nb = Math.max(1, Math.ceil(l.length / NET_MORCEAU)), id = ++k;
+    for(let i = 0; i < nb; i++){
+      const l2 = l.substring(i * NET_MORCEAU, (i + 1) * NET_MORCEAU);
+      file = file.then(async () => { if(c.ouvert) c.publier(sujet, await canal.emballer({...entete, k: id, i, n: nb, l: l2})); })
+                 .catch(e => console.error(e));
+    }
+  };
+}
+// Réception : déchiffrée et recollée, dans l'ordre d'arrivée.
+function _recepteurRelais(c, canal, traiter){
+  let file = Promise.resolve();
+  const morceaux = new Map();
+  c.surMessage = (sujet, texte) => {
+    file = file.then(async () => {
+      const e = await canal.deballer(texte);
+      if(!e || typeof e !== 'object') return;
+      if(typeof e.l === 'string' && e.n > 1){
+        const cle = e.de + '|' + e.k, t = morceaux.get(cle) || [];
+        t[e.i] = e.l;
+        morceaux.set(cle, t);
+        if(t.filter(x => typeof x === 'string').length < e.n) return;
+        morceaux.delete(cle);
+        e.l = t.join('');
+      }
+      traiter(sujet, e);
+    }).catch(err => console.error(err));
+  };
+}
+
+// L'hôte s'abonne sur chaque serveur de relais joignable. Un invité y est
+// une connexion (`cnx`) : une nouvelle connexion remplace l'ancienne, et
+// la fin d'une ancienne (son testament, publié en retard) est ignorée.
+async function _hebergerRelais(n, srv){
+  const canal = await _canalRelais(n.code);
+  const ouverts = new Map();                  // url → client MQTT
+  let actif = true;
+  const ouvrir = async url => {
+    const c = await _mqtt(url, 'aslw' + Math.random().toString(36).substring(2, 14),
+                          {sujet: canal.fin, texte: await canal.emballer({fin: 1})});
+    const liens = new Map();                  // invité → lien
+    _recepteurRelais(c, canal, (sujet, e) => {
+      if(sujet !== canal.serveur || !e.de) return;
+      let lien = liens.get(e.de);
+      if(e.fin){
+        if(lien && lien.cnx === e.cnx){ srv.quitter(lien); liens.delete(e.de); }
+        return;
+      }
+      if(!lien || lien.cnx !== e.cnx){
+        if(lien) srv.quitter(lien);
+        lien = {cnx: e.cnx, envoyer: _voieRelais(c, canal, canal.client(e.de), {})};
+        liens.set(e.de, lien);
+      }
+      if(e.ping) canal.emballer({pong: 1}).then(t => c.publier(canal.client(e.de), t));
+      else if(typeof e.l === 'string') srv.recevoir(lien, e.l);
+    });
+    await c.abonner(canal.serveur).catch(err => { c.fermer(); throw err; });
+    if(!actif){ c.fermer(); return c; }
+    ouverts.set(url, c);
+    // Connexion perdue : les invités de ce serveur le sont aussi ; on y
+    // revient tant que la salle est ouverte.
+    c.surFin = () => {
+      ouverts.delete(url);
+      for(const l of liens.values()) srv.quitter(l);
+      const relancer = d => setTimeout(() => {
+        if(actif && _net === n) ouvrir(url).catch(() => relancer(Math.min(d * 2, 30000)));
+      }, d);
+      relancer(2000);
+    };
+    return c;
+  };
+  const r = await Promise.allSettled(relaisReseau().map(ouvrir));
+  const nb = r.filter(x => x.status === 'fulfilled').length;
+  if(!nb){ actif = false; throw new Error('aucun serveur de relais joignable'); }
+  return {info: `${nb}/${r.length}`, fermer: () => {
+    actif = false;
+    for(const c of ouverts.values())
+      canal.emballer({fin: 1, definitif: 1}).then(t => { c.publier(canal.fin, t); c.fermer(); });
+    ouverts.clear();
+  }};
+}
+
+// Relais de l'invité : un ping sur chaque serveur, le premier où l'hôte
+// répond est gardé. Perdu en cours de partie, il est repris, puis
+// l'invité se réinscrit et se resynchronise, comme une nouvelle arrivée.
+async function _essaiRelais(n){
+  const canal = await _canalRelais(n.code);
+  const connecter = async () => {
+    const cnx = Math.random().toString(36).substring(2, 10);
+    const testament = {sujet: canal.serveur, texte: await canal.emballer({de: n.moi, cnx, fin: 1})};
+    let gagne = null;
+    const essais = relaisReseau().map(async url => {
+      const c = await _mqtt(url, 'aslw' + cnx + Math.random().toString(36).substring(2, 6), testament);
+      try {
+        const pong = new Promise(ok => _recepteurRelais(c, canal, (s, e) => { if(e.pong) ok(); }));
+        await c.abonner(canal.client(n.moi));
+        await c.abonner(canal.fin);
+        c.publier(canal.serveur, await canal.emballer({de: n.moi, cnx, ping: 1}));
+        await _attendre(ok => pong.then(ok), 8000, 'pas d\'hôte sur le relais');
+        if(gagne) throw new Error('inutile');
+        gagne = c;
+        return c;
+      } catch(e){ c.fermer(); throw e; }
+    });
+    try { return {c: await Promise.any(essais), cnx}; }
+    catch(e){ throw new Error([...new Set((e.errors || [e]).map(x => x.message))].join(', ')); }
+  };
+  let {c, cnx} = await connecter();
+  let recevoir = null, perdu = null, fini = false, enReprise = false, envoyerLigne = null;
+  const brancherC = () => {
+    envoyerLigne = _voieRelais(c, canal, canal.serveur, {de: n.moi, cnx});
+    _recepteurRelais(c, canal, (sujet, e) => {
+      if(sujet === canal.fin){ if(e.definitif){ fini = true; c.fermer(); if(perdu) perdu(); } else reprise(); }
+      else if(typeof e.l === 'string' && recevoir) recevoir(e.l);
+    });
+    c.surFin = () => reprise();
+  };
+  const reprise = async () => {
+    if(fini || enReprise) return;
+    enReprise = true;
+    c.fermer();
+    chatLog('📶 Liaison au relais perdue : reconnexion…');
+    for(let i = 0; i < 10 && !fini && _net === n; i++){
+      await new Promise(ok => setTimeout(ok, 3000));
+      if(fini || _net !== n) break;
+      try { ({c, cnx} = await connecter()); } catch(e){ continue; }
+      brancherC();
+      enReprise = false;
+      chatLog('📶 Relais retrouvé : nouvelle synchronisation');
+      n.attente = null; n.dernierSync = 0;
+      _netInscrire(n);
+      return;
+    }
+    enReprise = false;
+    if(!fini && perdu) perdu();
+  };
+  brancherC();
+  return {nom: 'relais', envoyer: l => envoyerLigne(l),
+    fermer(){
+      fini = true;
+      const c0 = c;
+      canal.emballer({de: n.moi, cnx, fin: 1}).then(t => { c0.publier(canal.serveur, t); c0.fermer(); });
+    },
+    brancher(r, p){ recevoir = r; perdu = p; }};
+}
+
+async function _hebergerInternet(n, srv){
+  const fermetures = [];
+  n.fermerTransport = () => { n.ferme = true; fermetures.splice(0).forEach(f => { try { f(); } catch(e){} }); };
+  const garder = (p, nom) => p.then(v => {
+    if(_net !== n || n.ferme){ v.fermer(); return v; }
+    fermetures.push(v.fermer);
+    n.voies[nom] = v.info || true;
+    majNet();
+    return v;
+  });
+  const d = garder(_hebergerPeer(n, srv), 'directe'), r = garder(_hebergerRelais(n, srv), 'relais');
+  try { await Promise.any([d, r]); }
+  catch(e){ throw new Error(`ni voie directe (${e.errors[0].message}), ni relais (${e.errors[1].message})`); }
+  // La voie directe met souvent plus longtemps : on lui laisse un instant.
+  await Promise.race([Promise.allSettled([d, r]), new Promise(ok => setTimeout(ok, 3000))]);
+  d.catch(e => { if(_net === n) chatLog(`⚠️ Voie directe indisponible (${e.message}) : les invités passeront par le relais`); });
+  r.catch(e => { if(_net === n) chatLog(`⚠️ Relais indisponible (${e.message}) : seule la voie directe est ouverte`); });
+}
+
+async function _rejoindreInternet(n){
+  const d = _essaiPeer(n), r = _essaiRelais(n);
+  let direct = null;
+  d.then(v => { direct = v; }, () => {});
+  let g;
+  try { g = await Promise.any([d, r]); }
+  catch(e){ throw new Error(`voie directe : ${e.errors[0].message} ; relais : ${e.errors[1].message}`); }
+  // Le relais répond d'ordinaire le premier : la voie directe, plus
+  // rapide ensuite, a encore quelques secondes pour s'ouvrir.
+  if(g !== direct) g = await Promise.race([d.catch(() => g), new Promise(ok => setTimeout(() => ok(g), 4000))]);
+  for(const p of [d, r]) p.then(v => { if(v !== g) v.fermer(); }, () => {});
+  if(_net !== n){ g.fermer(); throw new Error('connexion abandonnée'); }
+  n.envoyer = g.envoyer;
+  n.fermerTransport = g.fermer;
+  n.voies[g.nom] = true;
+  g.brancher(l => _netRecevoir(n, l), () => _netPerdu(n));
+  d.catch(e => { if(_net === n && g.nom === 'relais') chatLog(`📶 Voie directe impossible (${e.message}) : la partie passe par le relais`); });
 }
 
 function _hebergerOnglets(n, srv){
@@ -16626,7 +16986,7 @@ function _nouvelleConnexion(hote, moyen, code, salle){
   return {hote, moyen, code, salleVoulue: salle, moi: 'p' + Math.random().toString(36).substring(2, 10),
           salle: null, joueurs: [], proprios: {}, attente: null, dernierSync: 0,
           envoi: Promise.resolve(), reception: Promise.resolve(), tampon: null,
-          envoyer: () => {}, fermerTransport: () => {}};
+          voies: {}, aReprendre: [], envoyer: () => {}, fermerTransport: () => {}};
 }
 
 function _codeSalle(){
@@ -16642,7 +17002,7 @@ async function heberger(moyen, salle){
   n.serveur = srv;
   _net = n;
   try {
-    if(moyen === 'onglets') _hebergerOnglets(n, srv); else await _hebergerPeer(n, srv);
+    if(moyen === 'onglets') _hebergerOnglets(n, srv); else await _hebergerInternet(n, srv);
   } catch(e){ _netEchec(n, e); throw e; }
   // Le client de l'hôte parle à son serveur sans réseau, mais pas dans le
   // même tour, comme à travers une socket.
@@ -16650,7 +17010,7 @@ async function heberger(moyen, salle){
   n.envoyer = l => setTimeout(() => srv.recevoir(lien, l));
   _netInscrire(n);
   _netRejoindreSalle(n, n.salleVoulue);
-  chatLog(`🌐 Salle « ${n.salleVoulue} » ouverte — code ${n.code} (${moyen === 'onglets' ? 'onglets de ce navigateur' : 'Internet'})`);
+  chatLog(`🌐 Salle « ${n.salleVoulue} » ouverte — code ${n.code} (${_texteLiaison(n)})`);
   majNet();
   return n.code;
 }
@@ -16662,15 +17022,24 @@ async function rejoindre(moyen, code){
   const n = _nouvelleConnexion(false, moyen, code, null);
   _net = n;
   try {
-    if(moyen === 'onglets') _rejoindreOnglets(n); else await _rejoindrePeer(n);
+    if(moyen === 'onglets') _rejoindreOnglets(n); else await _rejoindreInternet(n);
   } catch(e){ _netEchec(n, e); throw e; }
   _netInscrire(n);
-  chatLog(`🌐 Connexion à la salle ${code}…`);
+  chatLog(`🌐 Connexion à la salle ${code} (${_texteLiaison(n)})…`);
   // Sans LIST du serveur, personne n'héberge ce code.
   setTimeout(() => {
     if(_net === n && !n.joueurs.length){ chatLog('❌ Aucune réponse : salle fermée ou code erroné'); netQuitter(); }
   }, 8000);
   majNet();
+}
+
+// Liaison en service : onglets, ou voies Internet ouvertes.
+function _texteLiaison(n){
+  if(n.moyen === 'onglets') return 'onglets de ce navigateur';
+  const v = [];
+  if(n.voies.directe) v.push('directe');
+  if(n.voies.relais) v.push(n.hote ? `relais ${n.voies.relais}` : 'relais');
+  return 'Internet' + (v.length ? ' : ' + v.join(' + ') : '');
 }
 
 function _netEchec(n, e){
@@ -16899,11 +17268,12 @@ function ouvrirReseau(){
           rejoint reçoit la partie du propriétaire, puis chaque coup joué part chez les autres.</p>
         <p>Vous jouez sous le nom <b>${qui}</b>.</p>
         <label>Liaison<select id="nwMoyen">
-          <option value="internet">Internet (WebRTC, d'un poste à l'autre)</option>
+          <option value="internet">Internet (direct ou par relais)</option>
           <option value="onglets">Onglets de ce navigateur</option></select></label>
         <label>Nom de la salle (pour héberger)<input id="nwSalle" maxlength="40" autocomplete="off"
           value="${_esc(garde.salle || (_source ? _nomFichier : 'Partie de ' + joueur()))}"></label>
         <label>Code de la salle (pour rejoindre)<input id="nwCode" maxlength="16" autocomplete="off"
+          autocapitalize="none" autocorrect="off" spellcheck="false"
           placeholder="ex. k7m2qa" value="${_esc(garde.code || '')}"></label>
         <div class="ferr" id="nwErr"></div>
         <div class="fb">
@@ -16912,9 +17282,10 @@ function ouvrirReseau(){
           <button id="nwIdent">Identification…</button>
           <button id="nwFermer">Fermer</button>
         </div>
-        <p class="fnote">Internet : la mise en relation passe par le serveur public de PeerJS, puis
-          les postes échangent directement. L'hôte doit garder sa page ouverte : elle tient lieu
-          de serveur.</p>
+        <p class="fnote">Internet : l'invité rejoint l'hôte en direct (WebRTC) quand le réseau le
+          permet, sinon par un relais chiffré (serveurs MQTT publics). L'hôte doit garder sa page
+          ouverte, au premier plan sur un téléphone : elle tient lieu de serveur. Mieux vaut
+          héberger sur le PC.</p>
       </div>`;
   } else {
     const s = _netSalleCourante(n), proprio = _netProprio(n);
@@ -16925,7 +17296,7 @@ function ouvrirReseau(){
         <p>${s ? `Salle <b>${_esc(s)}</b>` : 'Connexion en cours…'} — code
           <b id="nwCodeAff" style="font-family:monospace;font-size:15px">${_esc(n.code)}</b>
           <button id="nwCopier" class="petit">Copier</button>
-          <br>${n.moyen === 'onglets' ? 'Onglets de ce navigateur' : 'Internet (WebRTC)'}${n.hote ? ', vous hébergez' : ''}.</p>
+          <br>Liaison : ${_esc(_texteLiaison(n))}${n.hote ? ' — vous hébergez' : ''}.</p>
         <table><tr><th>Joueur</th><th></th></tr>
           ${lignes.map(j => `<tr><td>${_esc(j.name || j.id)}${j.id === n.moi ? ' <b>(vous)</b>' : ''}</td>
             <td>${j.id === proprio ? 'propriétaire' : ''}</td></tr>`).join('')
@@ -18825,7 +19196,10 @@ document.addEventListener('DOMContentLoaded', () => {
   dessinerPalette();
   majNet();
   window.addEventListener('pagehide', () => { _garderLog(); _garderPartie(); if(_net) netQuitter(); });
-  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden'){ _garderLog(); _garderPartie(); } });
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'hidden'){ _garderLog(); _garderPartie(); }
+    else if(_net) _net.aReprendre.forEach(f => f());
+  });
   setTimeout(() => { _reprendreLogGarde(); _reprendrePartieGardee(); }, 0);
   // Comme VASSAL à la fermeture : des coups enregistrés et pas encore
   // écrits ne partent pas sans avertissement.
