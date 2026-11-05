@@ -537,6 +537,12 @@ body.maj .pion.immob{pointer-events:auto}
 .pion > img,.pion > .couche{pointer-events:auto}
 .pion.verrou *,.pion.retire *,.mini *,.survol *{pointer-events:none!important}
 .pion.sel{outline:2px solid var(--accent);outline-offset:1px}
+/* Pion saisi au doigt (appui maintenu) : soulevé, prêt à glisser. La
+   propriété scale laisse rotate à la vue tournée. */
+.pion.saisi{scale:1.08;filter:drop-shadow(0 4px 6px rgba(0,0,0,.55))}
+@media (prefers-reduced-motion: reduce){
+  .pion.saisi{scale:none;filter:none;outline:2px solid var(--accent);outline-offset:2px}
+}
 /* Pile dépliée : une trame et un liseré sous ses pions écartés ; le pion
    survolé est cerné, pour que le clic soit sans surprise. */
 .fondPile{position:absolute;z-index:4999;pointer-events:none;border:1px solid var(--accent);border-radius:4px;
@@ -10142,16 +10148,24 @@ function positionDepot(x, y){
   return best ? {x: best.x, y: best.y, label: a.label} : a;
 }
 
-function deplacer(liste, x, y, campConfirme){
+// opts.ignorerSurPlace (lâcher au doigt) : si tous les pions sont déjà à
+// l'ancrage d'arrivée, rien n'est fait (ni log, ni rapport, ni rang, ni
+// Undo) ; à la souris, la pile lâchée sur elle-même passe au sommet,
+// comme dans VASSAL.
+function deplacer(liste, x, y, campConfirme, opts = {}){
   // Un pion invisible pour moi (HIP adverse) ne part jamais avec les miens.
   liste = liste.filter(p => !p.cache && !p.deleted);
   if(!liste.length) return;
   if(surTables(x, y)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien déplacé'); return; }
+  const pos = positionDepot(x, y);
+  if(opts.ignorerSurPlace && liste.every(p => p.x === pos.x && p.y === pos.y)){
+    new Set(liste.map(cle)).forEach(k => rendrePile(k));
+    return;
+  }
   // Pion du camp adverse (camp choisi à l'identification) : le déplacement
   // est bloqué jusqu'à la réponse de la fenêtre de confirmation.
-  if(!campConfirme && !confirmerCampAdverse(liste, () => deplacer(liste, x, y, true))) return;
+  if(!campConfirme && !confirmerCampAdverse(liste, () => deplacer(liste, x, y, true, opts))) return;
   _avantAction();
-  const pos = positionDepot(x, y);
   const kArr = pos.x + ',' + pos.y;
   // Une unité dissimulée sortie de sa pile emporte sa dissimulation
   // (A12.15) : le « ? » qui ne couvrirait plus rien la suit, et entre
@@ -13530,6 +13544,9 @@ function fermerMenu(){
 let _dernierPointeur = 'mouse';
 document.addEventListener('pointerdown', e => { _dernierPointeur = e.pointerType || 'mouse'; }, true);
 const vibrer = () => { try { if(navigator.vibrate) navigator.vibrate(10); } catch(e){} };
+// Au doigt, un pion de la carte ne se saisit qu'après cet appui maintenu
+// (ms) ; avant, le doigt qui bouge fait défiler la carte.
+const DELAI_SAISIE_TACTILE = 300;
 
 // À la souris, comme KeyBufferer.mousePressed : l'appui sélectionne.
 //   · pion hors de la sélection : elle est remplacée (Maj : complétée) par
@@ -13579,10 +13596,29 @@ function _pionPointerDown(e, p){
     // Les pions HIP de l'adversaire, invisibles, restent où ils sont.
     return pile(k).filter(q => !q.cache);
   };
-  glisser(e, () => sommetDeplace(aDeplacer(), p), q => q.sz * zoom, (cx, cy) => {
+  // Au doigt : saisie après DELAI_SAISIE_TACTILE ms d'appui immobile (les
+  // pions qui vont partir se soulèvent) ; un doigt qui bouge avant rend
+  // son pointeur à la carte, qui défile en rattrapant le chemin parcouru.
+  const tactile = souris ? {} : {
+    appuiLong: DELAI_SAISIE_TACTILE,
+    arme: () => { for(const q of aDeplacer()) if(q.el) q.el.classList.add('saisi'); },
+    fin: () => { document.querySelectorAll('.pion.saisi').forEach(el => el.classList.remove('saisi')); },
+    surAbandon: ev => {
+      const pt = _pointeursCarte.get(e.pointerId);
+      if(!pt) return;
+      pt.pion = false; pt.surPion = true;
+      const wrap = document.getElementById('mapWrap');
+      wrap.classList.add('pan');
+      wrap.scrollLeft -= ev.clientX - pt.x0;
+      wrap.scrollTop  -= ev.clientY - pt.y0;
+      pt.x = ev.clientX; pt.y = ev.clientY;
+    }
+  };
+  glisser(e, () => sommetDeplace(aDeplacer(), p), q => q.sz * zoom, (cx, cy, ev) => {
     const c = clientVersCarte(cx, cy);
     const l = aDeplacer();
-    if(c && l.length) deplacer(l, c.x, c.y);
+    const doigt = !!ev && !!ev.pointerType && ev.pointerType !== 'mouse';
+    if(c && l.length) deplacer(l, c.x, c.y, false, {ignorerSurPlace: doigt});
   }, () => {
     if(souris){
       if(!selectionnable(p)) selectionnerPile(k);
@@ -13590,7 +13626,7 @@ function _pionPointerDown(e, p){
     }
     else if(deplie() && selectionnable(p)) selectionner([p]);
     else appuiSurPile(k);
-  });
+  }, tactile);
 }
 
 // Glisser générique avec fantôme : la capture est prise sur le document,
@@ -13611,6 +13647,12 @@ function _pionPointerDown(e, p){
 //   opts.tapSeul   : pas de glissé (le geste revient à la carte) ; seul le
 //                    toucher compte.
 //   opts.debut     : appelé quand le geste devient un glissé.
+//   opts.arme      : appelé quand l'appui maintenu (opts.appuiLong) arme
+//                    le glissé, après la vibration.
+//   opts.surAbandon: appelé (avec l'événement) quand le doigt a bougé
+//                    avant l'armement : le geste n'est pas un glissé. Pas
+//                    pour les autres abandons (pincement, menu).
+//   opts.fin       : appelé à la fin du geste, quelle qu'elle soit.
 let _glisse = null;
 function glisser(e, src, taille, auLacher, auClic, opts = {}){
   if(_glisse) _glisse.abandonner();
@@ -13619,7 +13661,7 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
   const seuil = doigt ? 12 : 8;
   let arme = !(doigt && opts.appuiLong), timer = null;
   let fantome = null, cible = null, rects = null, raf = 0, dernier = null, demarre = false;
-  if(!arme) timer = setTimeout(() => { arme = true; vibrer(); }, opts.appuiLong);
+  if(!arme) timer = setTimeout(() => { arme = true; vibrer(); if(opts.arme) opts.arme(); }, opts.appuiLong);
   const wrap = document.getElementById('mapWrap');
   const oublierRects = () => { rects = null; };
   const zr = opts.zone ? opts.zone.getBoundingClientRect() : null;
@@ -13686,7 +13728,12 @@ function glisser(e, src, taille, auLacher, auClic, opts = {}){
   const bouge = ev => {
     if(ev.pointerId !== id) return;
     if(!demarre && Math.hypot(ev.clientX-x0, ev.clientY-y0) < seuil) return;
-    if(!arme || opts.tapSeul){ abandonner(); return; }
+    if(!arme || opts.tapSeul){
+      const avantArme = !arme;
+      abandonner();
+      if(avantArme && opts.surAbandon) opts.surAbandon(ev);
+      return;
+    }
     ev.preventDefault();
     if(!demarre){
       demarre = true;
@@ -14008,9 +14055,9 @@ function afficherPile(){
     }
     l.addEventListener('pointerdown', e => {
       if(e.button > 0) return;
-      glisser(e, () => sommetDeplace(aEmporter(p), p), q => q.sz * zoom, (cx, cy) => {
+      glisser(e, () => sommetDeplace(aEmporter(p), p), q => q.sz * zoom, (cx, cy, ev) => {
         const c = clientVersCarte(cx, cy);
-        if(c) deplacer(aEmporter(p), c.x, c.y);
+        if(c) deplacer(aEmporter(p), c.x, c.y, false, {ignorerSurPlace: !!ev && !!ev.pointerType && ev.pointerType !== 'mouse'});
       }, ev => {
         if(!selectionnable(p)) return;
         if(ev && (ev.ctrlKey || ev.metaKey)) selectionner([p], 'basculer');
@@ -14678,11 +14725,11 @@ function _vignetteEventail(p, k, bande, marque){
       if(!best) return null;
       return {c: best.c, r: best.r, apres: ev.clientX > (best.r.left + best.r.right) / 2, i: cases.indexOf(best.c)};
     };
-    glisser(e, () => sommetDeplace(aEmporter(p), p), EVENTAIL_COTE, (cx, cy) => {
+    glisser(e, () => sommetDeplace(aEmporter(p), p), EVENTAIL_COTE, (cx, cy, ev) => {
       // Lâché sur la carte : la sélection, ou ce pion s'il n'en est pas.
       const c = clientVersCarte(cx, cy);
       if(!c || masque) return;
-      deplacer(aEmporter(p), c.x, c.y);
+      deplacer(aEmporter(p), c.x, c.y, false, {ignorerSurPlace: !!ev && !!ev.pointerType && ev.pointerType !== 'mouse'});
     }, () => {
       clearTimeout(timer);
       selectionner([p]); vibrer();
