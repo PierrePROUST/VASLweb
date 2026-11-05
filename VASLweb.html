@@ -168,6 +168,13 @@ body[data-terminal=tactile]{--cible:44px}
 .ckEv{position:absolute;right:-6px;top:-6px;width:28px;height:28px;padding:0;border-radius:14px;font-size:16px;
   line-height:26px;background:#1e1e1e}
 .inserEv{position:absolute;width:3px;background:var(--accent);border-radius:2px;pointer-events:none}
+/* Éventail tourné de 90° : les vignettes en colonne, du fond (en haut)
+   vers le sommet, à côté de la pile ; les commandes en colonne aussi. */
+.eventail.vertical{display:flex;flex-direction:column;max-height:calc(100vh - 16px)}
+.eventail.vertical .bandeEv{flex:1 1 auto;min-height:140px;max-height:none;flex-direction:column;flex-wrap:nowrap;align-items:center}
+.eventail.vertical .actionsEv{flex:none;display:grid;grid-template-columns:1fr 1fr}
+.eventail .tournerEv{position:absolute;left:-12px;top:-12px;z-index:2;width:30px;height:30px;min-width:30px;padding:0;
+  border-radius:50%;border:2px solid #fff;font:700 16px/26px system-ui,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.6)}
 .croixFermer{flex:none;width:30px;height:30px;min-width:30px;padding:0;border-radius:50%;background:#c0392b;color:#fff;
   border:2px solid #fff;font:700 15px/26px system-ui,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.6)}
 .eventail .croixFermer{position:absolute;right:-12px;top:-12px;z-index:2}
@@ -750,6 +757,7 @@ const EN = {
   'Retirer de la carte': 'Delete from map',
   'Pions de la pile': 'Counters in stack',
   'Tout': 'All', 'Sélectionner toute la pile': 'Select the whole stack',
+  'Tourner l\'éventail de 90°': 'Rotate the stack view 90°',
   'Aucun': 'None', 'Désélectionner tous les pions de la pile': 'Deselect all counters of the stack',
   'Retirer de la sélection': 'Remove from selection', 'Ajouter à la sélection': 'Add to selection',
   'poses multiples': 'multiple placements', 'Annuler': 'Cancel',
@@ -8595,9 +8603,12 @@ function sommetDeplace(l, p){
   return s.length ? s.reduce((a, b) => b.ordre > a.ordre ? b : a) : p;
 }
 
-function aEmporter(p){
+// Au doigt (doigt vrai), un pion sélectionné emporte toujours toute la
+// sélection, pile entière comprise : pour n'en tirer qu'un, on le touche
+// d'abord (il reste seul sélectionné) ou on décoche les autres.
+function aEmporter(p, doigt){
   const k = cle(p);
-  const seulementSaPile = pileEntiereSel(k) && selDans(k).length === _sel.size;
+  const seulementSaPile = !doigt && pileEntiereSel(k) && selDans(k).length === _sel.size;
   return _sel.has(p) && _sel.size > 1 && !seulementSaPile ? piecesADeplacer() : [p];
 }
 
@@ -9781,6 +9792,16 @@ function poserFireLane(mg){
   return q;
 }
 
+// CX (A4.51) : le marqueur « CX » de la palette de VASL, posé juste
+// au-dessus de l'unité, comme si on l'y glissait depuis la palette.
+function poserCX(u){
+  if(!_bdd){ chatLog('⚠️ Base VASL pas encore chargée'); return null; }
+  const x = _bdd.pions.find(y => y.n === 'CX');
+  const def = x && developperDefinition(x.cmd);
+  if(!def){ chatLog(`⚠️ ${u.nom} : marqueur CX introuvable`); return null; }
+  return poserTraits(def.T, def.S, u.x, u.y, u, 2);
+}
+
 // ═══ JEU : DÉPLACER, POSER, RETIRER ═══
 // Chaque action est appliquée puis consignée au log, comme VASSAL :
 // un M/ par pion déplacé, du fond vers le sommet, chacun désignant la
@@ -10148,24 +10169,16 @@ function positionDepot(x, y){
   return best ? {x: best.x, y: best.y, label: a.label} : a;
 }
 
-// opts.ignorerSurPlace (lâcher au doigt) : si tous les pions sont déjà à
-// l'ancrage d'arrivée, rien n'est fait (ni log, ni rapport, ni rang, ni
-// Undo) ; à la souris, la pile lâchée sur elle-même passe au sommet,
-// comme dans VASSAL.
-function deplacer(liste, x, y, campConfirme, opts = {}){
+function deplacer(liste, x, y, campConfirme){
   // Un pion invisible pour moi (HIP adverse) ne part jamais avec les miens.
   liste = liste.filter(p => !p.cache && !p.deleted);
   if(!liste.length) return;
   if(surTables(x, y)){ chatLog('⛔ Pas de pion sur les tables QRDC : rien déplacé'); return; }
-  const pos = positionDepot(x, y);
-  if(opts.ignorerSurPlace && liste.every(p => p.x === pos.x && p.y === pos.y)){
-    new Set(liste.map(cle)).forEach(k => rendrePile(k));
-    return;
-  }
   // Pion du camp adverse (camp choisi à l'identification) : le déplacement
   // est bloqué jusqu'à la réponse de la fenêtre de confirmation.
-  if(!campConfirme && !confirmerCampAdverse(liste, () => deplacer(liste, x, y, true, opts))) return;
+  if(!campConfirme && !confirmerCampAdverse(liste, () => deplacer(liste, x, y, true))) return;
   _avantAction();
+  const pos = positionDepot(x, y);
   const kArr = pos.x + ',' + pos.y;
   // Une unité dissimulée sortie de sa pile emporte sa dissimulation
   // (A12.15) : le « ? » qui ne couvrirait plus rien la suit, et entre
@@ -13246,6 +13259,10 @@ function arbreCommandes(p){
   // Puis Smoke Hex / Smoke ADJ d'une escouade à exposant Smoke (A24.1).
   const transport = !accesRefuse(p) && typeof itemsTransport === 'function' ? [...itemsTransport(p), ...itemsSmoke(p)] : [];
   if(transport.length) racine.items.unshift(...transport);
+  // Unité à pied : CX, le marqueur posé sur elle.
+  const nat = !accesRefuse(p) && typeof natureMouvement === 'function' ? natureMouvement(p) : null;
+  if(nat && nat.unite === 'MF')
+    racine.items.push({nom: 'CX', cmd: {nom: 'CX', faire: ({effets}) => effets.push(() => poserCX(p))}});
   // MG : Fire Lane, posée et liée à la MG.
   if(!accesRefuse(p) && estMG(p))
     racine.items.push({nom: 'Fire Lane', cmd: {nom: 'Fire Lane', faire: ({effets}) => effets.push(() => poserFireLane(p))}});
@@ -13614,11 +13631,10 @@ function _pionPointerDown(e, p){
       pt.x = ev.clientX; pt.y = ev.clientY;
     }
   };
-  glisser(e, () => sommetDeplace(aDeplacer(), p), q => q.sz * zoom, (cx, cy, ev) => {
+  glisser(e, () => sommetDeplace(aDeplacer(), p), q => q.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
     const l = aDeplacer();
-    const doigt = !!ev && !!ev.pointerType && ev.pointerType !== 'mouse';
-    if(c && l.length) deplacer(l, c.x, c.y, false, {ignorerSurPlace: doigt});
+    if(c && l.length) deplacer(l, c.x, c.y);
   }, () => {
     if(souris){
       if(!selectionnable(p)) selectionnerPile(k);
@@ -14055,9 +14071,10 @@ function afficherPile(){
     }
     l.addEventListener('pointerdown', e => {
       if(e.button > 0) return;
-      glisser(e, () => sommetDeplace(aEmporter(p), p), q => q.sz * zoom, (cx, cy, ev) => {
+      const doigt = !!e.pointerType && e.pointerType !== 'mouse';
+      glisser(e, () => sommetDeplace(aEmporter(p, doigt), p), q => q.sz * zoom, (cx, cy) => {
         const c = clientVersCarte(cx, cy);
-        if(c) deplacer(aEmporter(p), c.x, c.y, false, {ignorerSurPlace: !!ev && !!ev.pointerType && ev.pointerType !== 'mouse'});
+        if(c) deplacer(aEmporter(p, doigt), c.x, c.y);
       }, ev => {
         if(!selectionnable(p)) return;
         if(ev && (ev.ctrlKey || ev.metaKey)) selectionner([p], 'basculer');
@@ -14600,6 +14617,8 @@ function _poigneeVolant(depart, bouger, revenir){
 // (à gauche) vers le sommet, au-dessus de la pile.
 let _eventail = null;            // {k, el}
 let _posEventail = null;         // {x, y} à l'écran, une fois déplacé
+// Éventail tourné de 90° (en colonne) : réglage du poste.
+let _eventailVertical = _lirePref('aslweb.eventailVertical') === '1';
 const EVENTAIL_COTE = 60, EVENTAIL_PAR_RANG = 6;
 function ouvrirEventail(k){
   if(_filArme) return;
@@ -14629,9 +14648,10 @@ function majEventail(){
   el.setAttribute('aria-label', 'Pions de la pile');
   el.addEventListener('pointerdown', e => e.stopPropagation());
   el.addEventListener('contextmenu', e => e.preventDefault());
+  el.classList.toggle('vertical', _eventailVertical);
   const bande = document.createElement('div');
   bande.className = 'bandeEv';
-  bande.style.maxWidth = (EVENTAIL_PAR_RANG * (EVENTAIL_COTE + 8) + 56) + 'px';
+  if(!_eventailVertical) bande.style.maxWidth = (EVENTAIL_PAR_RANG * (EVENTAIL_COTE + 8) + 56) + 'px';
   const tout = document.createElement('button');
   tout.type = 'button'; tout.className = 'act bouton tout';
   tout.textContent = 'Tout';
@@ -14660,7 +14680,20 @@ function majEventail(){
   const poignee = _poigneeVolant(() => ({x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0}),
     (x, y) => { _posEventail = {x, y}; placerEventail(); },
     () => { _posEventail = null; placerEventail(); });
-  el.append(_croixFermer('Fermer la pile'), poignee, bande, actions);
+  // Tourner de 90° : bande ↔ colonne ; l'éventail se replace près de la pile.
+  const tourner = document.createElement('button');
+  tourner.type = 'button'; tourner.className = 'tournerEv';
+  tourner.textContent = '⟳';            // celui de « Tourner la carte de 90° »
+  tourner.title = 'Tourner l\'éventail de 90°';
+  tourner.setAttribute('aria-label', tourner.title);
+  tourner.addEventListener('click', e => {
+    e.stopPropagation();
+    _eventailVertical = !_eventailVertical;
+    try { localStorage.setItem('aslweb.eventailVertical', _eventailVertical ? '1' : '0'); } catch(err){}
+    _posEventail = null;
+    majEventail();
+  });
+  el.append(tourner, _croixFermer('Fermer la pile'), poignee, bande, actions);
   document.body.appendChild(el);
   bande.scrollTop = defil;
   placerEventail();
@@ -14677,6 +14710,12 @@ function placerEventail(){
   let x = (r.left + r.right) / 2 - L / 2;
   let y = Math.min(r.top, bas.top) - H - 10;
   if(y < w.top + 4) y = Math.max(r.bottom, bas.bottom) + 10;
+  // En colonne : à droite de la pile, ou à gauche faute de place.
+  if(el.classList.contains('vertical')){
+    x = Math.max(r.right, bas.right) + 10;
+    if(x + L > w.right - 8) x = Math.min(r.left, bas.left) - L - 10;
+    y = (r.top + r.bottom) / 2 - H / 2;
+  }
   // Déplacé par sa poignée : il reste où on l'a mis, d'une pile à l'autre.
   if(_posEventail){ x = _posEventail.x; y = _posEventail.y; }
   x = Math.max(w.left + 8, Math.min(x, w.right - L - 8));
@@ -14723,13 +14762,17 @@ function _vignetteEventail(p, k, bande, marque){
         if(d < bd){ bd = d; best = {c, r}; }
       }
       if(!best) return null;
-      return {c: best.c, r: best.r, apres: ev.clientX > (best.r.left + best.r.right) / 2, i: cases.indexOf(best.c)};
+      // En colonne, « après » (plus haut dans la pile) est au-dessous.
+      const apres = _eventailVertical ? ev.clientY > (best.r.top + best.r.bottom) / 2
+                                      : ev.clientX > (best.r.left + best.r.right) / 2;
+      return {c: best.c, r: best.r, apres, i: cases.indexOf(best.c)};
     };
-    glisser(e, () => sommetDeplace(aEmporter(p), p), EVENTAIL_COTE, (cx, cy, ev) => {
+    const doigt = !!e.pointerType && e.pointerType !== 'mouse';
+    glisser(e, () => sommetDeplace(aEmporter(p, doigt), p), EVENTAIL_COTE, (cx, cy) => {
       // Lâché sur la carte : la sélection, ou ce pion s'il n'en est pas.
       const c = clientVersCarte(cx, cy);
       if(!c || masque) return;
-      deplacer(aEmporter(p), c.x, c.y, false, {ignorerSurPlace: !!ev && !!ev.pointerType && ev.pointerType !== 'mouse'});
+      deplacer(aEmporter(p, doigt), c.x, c.y);
     }, () => {
       clearTimeout(timer);
       selectionner([p]); vibrer();
@@ -14742,9 +14785,16 @@ function _vignetteEventail(p, k, bande, marque){
         if(!r) return;
         const br = bande.getBoundingClientRect();
         marque.hidden = false;
-        marque.style.left = ((r.apres ? r.r.right + 3 : r.r.left - 5) - br.left + bande.scrollLeft) + 'px';
-        marque.style.top = (r.r.top - br.top + bande.scrollTop) + 'px';
-        marque.style.height = r.r.height + 'px';
+        if(_eventailVertical){
+          // Trait horizontal, au-dessus ou au-dessous de la vignette visée.
+          marque.style.left = (r.r.left - br.left + bande.scrollLeft) + 'px';
+          marque.style.top = ((r.apres ? r.r.bottom + 3 : r.r.top - 5) - br.top + bande.scrollTop) + 'px';
+          marque.style.width = r.r.width + 'px'; marque.style.height = '3px';
+        } else {
+          marque.style.left = ((r.apres ? r.r.right + 3 : r.r.left - 5) - br.left + bande.scrollLeft) + 'px';
+          marque.style.top = (r.r.top - br.top + bande.scrollTop) + 'px';
+          marque.style.width = ''; marque.style.height = r.r.height + 'px';
+        }
       },
       horsZone: () => { marque.hidden = true; },
       lacherZone: ev => {
