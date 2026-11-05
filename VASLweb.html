@@ -9517,6 +9517,22 @@ const parUid = uid => pions.find(p => p.uid === uid && !p.deleted);
 // Contenu d'une pile VASSAL d'après son état « carte;x;y;id0;…;@@couche ».
 const _idsPile = etat => etat.replace(/\\/g, '').split(';').slice(3).filter(c => c && !c.startsWith('@@'));
 
+// Pièces d'une pile VASSAL que déplace un M/ (champs t de _decoupeCmd),
+// du fond vers le sommet, ou null si l'id est celui d'une pièce. Une
+// pile que l'état de départ ne connaît pas (un .vlog écrit par une
+// version précédente de VASLweb renommait les piles de l'état de départ
+// sans renommer celles des coups relus) est la pile qui se trouvait à
+// l'ancienne place du M/ : dans VASSAL, les pièces empilables d'un même
+// emplacement forment une seule pile.
+function _idsPileM(t, piles = _pilesVassal){
+  const id = _nul(t[0]);
+  if(!id || pions.some(q => q.uid === id)) return null;
+  if(piles.has(id)) return piles.get(id);
+  if(t.length < 8 || t[5] !== _carteJeu) return null;
+  const s = pile((parseInt(t[6], 10) || 0) + ',' + (parseInt(t[7], 10) || 0));
+  return s.length ? s.map(p => p.uid) : null;
+}
+
 // Retrait d'une pièce, ou de toute une pile : VASSAL retire une pile
 // entière (« Delete » sur la pile, commande globale « remove all ») par
 // un seul -/ portant l'identifiant de la pile.
@@ -9592,10 +9608,13 @@ function rejouerLog(segs){
       if(t.length < 5) continue;
       const id = _nul(t[0]), dessous = _nul(t[4]);
       const pos = [t[1], parseInt(t[2], 10) || 0, parseInt(t[3], 10) || 0];
-      if(_pilesVassal.has(id)){
+      const idsPile = _idsPileM(t);
+      if(idsPile){
         // VASSAL déplace une pile entière d'un seul M/ portant son
         // identifiant : ses pions la suivent, du fond vers le sommet.
-        const ids = _pilesVassal.get(id);
+        // Une pile retrouvée à sa place prend ici son identifiant.
+        _pilesVassal.set(id, idsPile);
+        const ids = idsPile;
         let sous = dessous;
         for(const u of ids){
           if(_deplacerPiece(u, pos, sous)){ n++; sous = u; }
@@ -9977,7 +9996,7 @@ function _ciblesEtape(segs){
         if(t.length < 5) continue;
         const id = _nul(t[0]);
         const x = parseInt(t[2], 10) || 0, y = parseInt(t[3], 10) || 0;
-        for(const u of piles.get(id) || [id]){
+        for(const u of _idsPileM(t, piles) || [id]){
           const p = parUid(u);
           const vu = p ? !p.cache : nes.get(u);
           if(!vu) continue;
@@ -11469,7 +11488,7 @@ function _avantRelecture(etape){
     const k = _M_RELU.exec(c);
     if(!k) continue;
     // VASSAL déplace une pile entière d'un seul M/ portant son id.
-    const ids = parUid(k[1]) ? [k[1]] : (_pilesVassal.get(k[1]) || []);
+    const ids = parUid(k[1]) ? [k[1]] : (_idsPileM(_decoupeCmd(c.replace(/\\+$/, '').substring(2))) || []);
     for(const id of ids){
       const p = parUid(id);
       if(p && !p.deleted && !avant.some(a => a.p === p)) avant.push({p, x: p.x, y: p.y, lieu: lieuDansPile(p)});
@@ -17640,6 +17659,12 @@ function _logCmd(c){
   if(!_etapeLog && !_relecture) _partieModifiee = true;
   // Un coup joué ici (ni reçu, ni relu) : les CVP recomptés le suivent.
   if(!_netReception && !_etapeLog && !_relecture && !/^(MutableProperty|GlobalProperty)\t/.test(c)) _planifierCVP();
+  // Pièce déplacée ici : elle quitte sa pile VASSAL, comme dans VASSAL
+  // (un coup reçu, relu ou annulé passe déjà par rejouerLog).
+  if(!_netReception && !_etapeLog && !_relecture && !_annulation && c.startsWith('M/')){
+    const t = _decoupeCmd(c.substring(2));
+    if(parUid(_nul(t[0]))) _changerDePile(t[0], _nul(t[4]));
+  }
   if(!_actionOuverte){
     _actionNo++; _actionOuverte = true;
     setTimeout(() => { _actionOuverte = false; }, 0);
@@ -17814,17 +17839,39 @@ function majBoutons(){ rafraichirActions(['vsav', 'log', 'logTxt']); }
 // Piles de la carte de jeu, d'après l'état courant. VASL écrit aussi les
 // piles d'un seul pion. La couche (@@n) est celle de la pièce du fond
 // dans le fichier d'origine, -1 (« non liée ») sinon.
+// Une pile garde l'identifiant de sa pile VASSAL (_pilesVassal) : les
+// coups relus puis consignés dans un nouveau log, ou reçus d'un joueur
+// sous VASL, déplacent une pile par cet identifiant (« M/<id pile>/… »).
+// Renommée, elle ne bougerait plus à la relecture, ni ici ni dans VASL.
+// Chaque identifiant va à la pile qui partage le plus de pièces avec lui ;
+// une pile qui n'en partage aucune en reçoit un neuf.
 function _segmentsPiles(){
   const out = [];
   let n = 0;
   // Une pièce qui ne s'empile pas n'appartient à aucune pile VASSAL.
-  for(const k of new Set(vivants().filter(p => !p.seul).map(cle))){
-    const s = pile(k);
+  const piles = [...new Set(vivants().filter(p => !p.seul).map(cle))].map(pile);
+  const paires = [];
+  piles.forEach((s, i) => {
+    const uids = new Set(s.map(p => p.uid));
+    for(const [id, ids] of _pilesVassal){
+      const k = ids.filter(u => uids.has(u)).length;
+      if(k) paires.push({i, id, k, fond: ids[0] === s[0].uid});
+    }
+  });
+  paires.sort((a, b) => b.k - a.k || b.fond - a.fond);
+  const idDe = new Map(), pris = new Set();
+  for(const c of paires){
+    if(idDe.has(c.i) || pris.has(c.id)) continue;
+    idDe.set(c.i, c.id); pris.add(c.id);
+  }
+  piles.forEach((s, i) => {
     let couche = -1;
     for(const p of s) if(_coucheParUid.has(p.uid)){ couche = _coucheParUid.get(p.uid); break; }
-    out.push(`+/w${Date.now()}${++n}/stack/${_carteJeu};${s[0].x};${s[0].y};`
+    let id = idDe.get(i);
+    if(!id) do { id = `w${Date.now()}${++n}`; } while(_pilesVassal.has(id));
+    out.push(`+/${id}/stack/${_carteJeu};${s[0].x};${s[0].y};`
              + s.map(p => p.uid).join(';') + `;@@${couche}`);
-  }
+  });
   return out;
 }
 
