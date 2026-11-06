@@ -9551,9 +9551,14 @@ function _retirer(id){
   return n;
 }
 
+// M/ de pile rejoués : commande d'origine → un M/ par pion, du fond vers
+// le sommet (voir _cmdsConsignees).
+let _mParPion = new Map();
+
 function rejouerLog(segs){
   let n = 0;
   for(let s of segs){
+    const brut = s;
     if(s.startsWith('LOG\t')) s = s.substring(4);
     s = s.replace(/\\+$/, '');
     if(s.startsWith('CHAT')){
@@ -9615,10 +9620,17 @@ function rejouerLog(segs){
         // Une pile retrouvée à sa place prend ici son identifiant.
         _pilesVassal.set(id, idsPile);
         const ids = idsPile;
+        const parPion = [];
         let sous = dessous;
         for(const u of ids){
-          if(_deplacerPiece(u, pos, sous)){ n++; sous = u; }
+          const p = parUid(u);
+          const ancien = p ? `${_carteJeu}/${p.x}/${p.y}/${_dessous(p)}` : 'null/0/0/null';
+          if(_deplacerPiece(u, pos, sous)){
+            parPion.push(`M/${u}/${pos.join('/')}/${sous || 'null'}/${ancien}/${t[9] || joueur()}`);
+            n++; sous = u;
+          }
         }
+        _mParPion.set(brut, parPion);
         // Posée sur une autre pile, elle s'y fond.
         if(dessous){
           _pilesVassal.delete(id);
@@ -10030,8 +10042,8 @@ function _avancerLog(muet, precadre){
   _actionOuverte = false;
   _etapeLog = true;
   try {
-    for(const c of etape) if(!c.startsWith('UNDO')) _logCmd(c);
-  } finally { _etapeLog = false; }
+    for(const c of _cmdsConsignees(etape)) _logCmd(c);
+  } finally { _etapeLog = false; _mParPion = new Map(); }
   _actionOuverte = false;
   _logPos++;
   if(!_rendreDiffere){ rendreToutes(); if(_pileSel) afficherPile(); }
@@ -10044,6 +10056,26 @@ function _avancerLog(muet, precadre){
     proposerLog(false);
   }
   return true;
+}
+
+// Commandes d'un coup relu telles que le log en cours les consigne. Un
+// M/ sur une pile que l'état de départ de ce log ne connaît pas (fichier
+// écrit par une version de VASLweb qui renommait les piles) ne
+// déplacerait rien à la relecture, ni ici ni dans VASL : il est écrit pion
+// par pion, comme VASLweb écrit ses propres déplacements de pile.
+const _pilesDuDepart = new WeakMap();
+function _cmdsConsignees(etape){
+  const cmds = etape.filter(c => !c.startsWith('UNDO'));
+  if(!_logEnr || !_logDepart) return cmds;
+  let connues = _pilesDuDepart.get(_logDepart);
+  if(!connues){
+    connues = new Set(_logDepart.map(x => (/^\+\/([^/]+)\/stack\//.exec(x) || [])[1]).filter(Boolean));
+    _pilesDuDepart.set(_logDepart, connues);
+  }
+  return cmds.flatMap(c => {
+    const pp = _mParPion.get(c);
+    return pp && !connues.has(_decoupeCmd(c.replace(/\\+$/, '').substring(2))[0]) ? pp : [c];
+  });
 }
 
 function reculerLog(muet){
