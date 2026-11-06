@@ -820,7 +820,7 @@ const EN = {
   'Raccourcis clavier et gestes': 'Keyboard shortcuts and gestures',
   'Menus': 'Menus',
   'Pions et piles': 'Counters and stacks',
-  'Commandes du pion (menu)': 'Counter commands (menu)', 'clic droit · appui long': 'right-click · long press',
+  'Commandes du pion (menu)': 'Counter commands (menu)', 'clic droit · double appui': 'right-click · double tap',
   'Sélectionner la pile': 'Select stack', 'clic': 'click',
   'Déplier / replier la pile': 'Expand / collapse stack', 'double-clic': 'double-click',
   'Ajouter ou retirer un pion': 'Add or remove a counter', 'Ctrl+clic': 'Ctrl+click', 'Maj+clic': 'Shift+click',
@@ -848,7 +848,7 @@ const EN = {
   'Mot de passe incorrect pour cet utilisateur.': 'Incorrect password for this user.',
   'Camp': 'Side', '— choisir —': '— choose —', 'Axe': 'Axis', 'Alliés': 'Allied', 'Les deux': 'Both',
   'Choisir le camp.': 'Choose the side.', 'Pion du camp adverse': 'Opposing side counter',
-  'Déplacer quand même': 'Move anyway',
+  'Déplacer quand même': 'Move anyway', 'Déplacement inhabituel': 'Unusual move',
   'Déplacer un pion du camp adverse demande une confirmation ; « Les deux » ne demande rien. Le camp reste sur ce poste, hors des fichiers VASL.':
     'Moving a counter of the opposing side asks for confirmation; “Both” asks nothing. The side stays on this device, outside VASL files.',
   'Connecté :': 'Logged in as:', 'Pions masqués': 'Hidden counters', '(vous)': '(you)',
@@ -943,6 +943,9 @@ const EN_MOTIFS = [
   ['Choisir l\'utilisateur, puis saisir son mot de passe. Les pions dissimulés et HIP ne sont visibles que de leur joueur.',
    'Choose the user, then enter their password. Concealed and HIP counters are only visible to their player.'],
   ['Retirer {} pions de la carte ?', 'Delete {} counters from the map?'],
+  ['Déplacement de {} hexagones (plus de {}) : {}. Le faire quand même ?', 'Move of {} hexes (more than {}): {}. Move anyway?'],
+  ['Déplacement de {} hexagones (plus de {}) : {}… Le faire quand même ?', 'Move of {} hexes (more than {}): {}… Move anyway?'],
+  ['↩️ Déplacement annulé : {} hexagones', '↩️ Move cancelled: {} hexes'],
   ['{} pion(s) du camp adverse ({}) : {}. Les déplacer quand même ?', '{} counter(s) of the opposing side ({}): {}. Move them anyway?'],
   ['Dernier camp : {}', 'Last side: {}'],
   ['Le log « {} » n\'est pas écrit ({} coup(s)). L\'écrire maintenant ?', 'Logfile “{}” is not written ({} move(s)). Write it now?'],
@@ -8659,8 +8662,8 @@ function creerPion(seg, ordre){
   el.addEventListener('pointerdown', e => _pionPointerDown(e, p));
   el.addEventListener('contextmenu', e => {
     e.preventDefault(); e.stopPropagation();
-    // Au doigt, c'est l'appui long qui ouvre le menu (Android enverrait
-    // aussi ce contextmenu, iOS jamais).
+    // Au doigt, le menu passe par l'éventail (double appui sur la pile) ;
+    // Android enverrait aussi ce contextmenu, iOS jamais.
     if(_dernierPointeur !== 'mouse') return;
     cacherSurvol();
     // KeyBufferer : le clic droit sur un pion non sélectionné le
@@ -13638,7 +13641,6 @@ function _pionPointerDown(e, p){
     glisser(e, null, 0, () => {}, () => toucherModeCarte({x: p.x, y: p.y}), {tapSeul: true});
     return;
   }
-  if(!souris) _appuiLong(e, p);
   // Pions verrouillés : le doigt qui glisse déplace la carte.
   if(!souris && _verrouPions){
     glisser(e, null, 0, () => {}, () => { if(deplie() && selectionnable(p)) selectionner([p]); else appuiSurPile(k); }, {tapSeul: true});
@@ -13664,10 +13666,13 @@ function _pionPointerDown(e, p){
     // Les pions HIP de l'adversaire, invisibles, restent où ils sont.
     return pile(k).filter(q => !q.cache);
   };
-  // Au doigt : saisie après DELAI_SAISIE_TACTILE ms d'appui immobile (les
-  // pions qui vont partir se soulèvent) ; un doigt qui bouge avant rend
-  // son pointeur à la carte, qui défile en rattrapant le chemin parcouru.
-  const tactile = souris ? {} : {
+  // Au doigt : un pion déjà sélectionné (par un appui simple, ou arrivé
+  // avec la sélection en mouvement) part dès que le doigt glisse. Sinon,
+  // saisie après DELAI_SAISIE_TACTILE ms d'appui immobile (les pions qui
+  // vont partir se soulèvent) ; un doigt qui bouge avant rend son pointeur
+  // à la carte, qui défile en rattrapant le chemin parcouru.
+  const pris = _sel.has(p) || enCours;
+  const tactile = souris ? {} : pris ? {} : {
     appuiLong: DELAI_SAISIE_TACTILE,
     arme: () => { for(const q of aDeplacer()) if(q.el) q.el.classList.add('saisi'); },
     fin: () => { document.querySelectorAll('.pion.saisi').forEach(el => el.classList.remove('saisi')); },
@@ -13685,7 +13690,7 @@ function _pionPointerDown(e, p){
   glisser(e, () => sommetDeplace(aDeplacer(), p), q => q.sz * zoom, (cx, cy) => {
     const c = clientVersCarte(cx, cy);
     const l = aDeplacer();
-    if(c && l.length) deplacer(l, c.x, c.y);
+    if(c && l.length) (souris ? deplacer : deplacerAuDoigt)(l, c.x, c.y);
   }, () => {
     if(souris){
       if(!selectionnable(p)) selectionnerPile(k);
@@ -14125,7 +14130,7 @@ function afficherPile(){
       const doigt = !!e.pointerType && e.pointerType !== 'mouse';
       glisser(e, () => sommetDeplace(aEmporter(p, doigt), p), q => q.sz * zoom, (cx, cy) => {
         const c = clientVersCarte(cx, cy);
-        if(c) deplacer(aEmporter(p, doigt), c.x, c.y);
+        if(c) (doigt ? deplacerAuDoigt : deplacer)(aEmporter(p, doigt), c.x, c.y);
       }, ev => {
         if(!selectionnable(p)) return;
         if(ev && (ev.ctrlKey || ev.metaKey)) selectionner([p], 'basculer');
@@ -14284,39 +14289,11 @@ function _placerSurvol(t, cx, cy){
   t.style.left = x + 'px'; t.style.top = y + 'px';
 }
 
-// Au doigt, pas de clic droit : un appui maintenu sans bouger (500 ms)
-// ouvre le menu du pion, comme le clic droit, et vibre. C'est le seul
-// accès au menu sur iOS, qui n'envoie pas de contextmenu.
+// Durée d'un appui long (ms) : menu d'une vignette de l'éventail, menu
+// long d'une icône. Sur un pion de la carte, l'appui maintenu ne sert
+// qu'à le saisir (DELAI_SAISIE_TACTILE) : le menu passe par l'éventail,
+// ouvert d'un double appui sur la pile.
 const APPUI_LONG = 500;
-function _appuiLong(e, p){
-  const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
-  const timer = setTimeout(() => {
-    if(_glisse) _glisse.abandonner();
-    if(_pointeursCarte.size > 1) return;
-    vibrer();
-    if(!_sel.has(p)) selectionnerPile(cle(p));
-    ouvrirMenu(p, x0, y0, 'touch');
-  }, APPUI_LONG);
-  const bouge = ev => {
-    if(ev.pointerId !== id || Math.hypot(ev.clientX - x0, ev.clientY - y0) < 12) return;
-    clearTimeout(timer);
-    fin();
-  };
-  const leve = ev => {
-    if(ev.pointerId !== id) return;
-    clearTimeout(timer);
-    fin();
-  };
-  const fin = () => {
-    document.removeEventListener('pointermove', bouge);
-    document.removeEventListener('pointerup', leve);
-    document.removeEventListener('pointercancel', leve);
-  };
-  document.addEventListener('pointermove', bouge);
-  document.addEventListener('pointerup', leve);
-  document.addEventListener('pointercancel', leve);
-}
-
 
 // ═══════════════════════════════════════════════════════════════
 // COMPOSANTS TACTILES — feuille du bas, barre de pile, éventail,
@@ -14823,7 +14800,7 @@ function _vignetteEventail(p, k, bande, marque){
       // Lâché sur la carte : la sélection, ou ce pion s'il n'en est pas.
       const c = clientVersCarte(cx, cy);
       if(!c || masque) return;
-      deplacer(aEmporter(p, doigt), c.x, c.y);
+      (doigt ? deplacerAuDoigt : deplacer)(aEmporter(p, doigt), c.x, c.y);
     }, () => {
       clearTimeout(timer);
       selectionner([p]); vibrer();
@@ -14943,7 +14920,7 @@ function armerDeplacement(){
   const l = _sel.size ? piecesADeplacer() : (_pileSel ? pile(_pileSel) : []);
   if(!l.length) return;
   armerModeCarte({texte: `➡️ ${l.length > 1 ? l.length + ' pions' : l[0].nom} — touchez la destination`,
-    toucher: c => deplacer(l.filter(p => !p.deleted), c.x, c.y)});
+    toucher: c => deplacerAuDoigt(l.filter(p => !p.deleted), c.x, c.y)});
 }
 function armerPose(x){
   armerModeCarte({texte: `♟ ${x.n} — touchez la carte pour poser`, optionMultiple: true,
@@ -14980,15 +14957,17 @@ function pileProche(cx, cy){
   return best;
 }
 
-// Appui (doigt) sur une pile : elle est sélectionnée ; de deux pions ou
-// plus, l'éventail s'ouvre ; un double appui l'ouvre même pour un seul.
+// Appui (doigt) sur une pile : elle est sélectionnée, prête à être
+// déplacée (un glissé depuis elle la déplace aussitôt), et la barre de
+// pile paraît. Seul
+// un double appui ouvre l'éventail, même pour un pion seul : c'est là que
+// sont le choix d'un pion de la pile et le menu de ses commandes.
 let _dernierAppui = {k: null, t: 0};
 function appuiSurPile(k){
   const double = _dernierAppui.k === k && Date.now() - _dernierAppui.t < 350;
   _dernierAppui = {k, t: Date.now()};
   if(!(_sel.size && pileEntiereSel(k)) || !_eventail || _eventail.k !== k) selectionnerPile(k);
-  const n = pile(k).filter(selectionnable).length;
-  if(n >= 2 || (double && n >= 1)) ouvrirEventail(k);
+  if(double && pile(k).some(selectionnable)) ouvrirEventail(k);
   else majBarrePile();
 }
 
@@ -16105,31 +16084,84 @@ function confirmerCampAdverse(liste, refaire){
   const camp = CAMPS[monCamp() === 'axe' ? 'allies' : 'axe'];
   const noms = adverses.slice(0, 5).map(p => accesRefuse(p) ? T('Pion dissimulé') : p.nom).join(', ')
              + (adverses.length > 5 ? '…' : '');
-  const ancienne = document.getElementById('fenCamp');
+  return _fenetreConfirmerDeplacement('camp', T('Pion du camp adverse'),
+    T(`${adverses.length} pion(s) du camp adverse (${camp}) : ${noms}. Les déplacer quand même ?`),
+    `↩️ Déplacement annulé : ${adverses.length} pion(s) du camp ${camp}`, refaire);
+}
+
+// Fenêtre de confirmation d'un déplacement bloqué (la même au PC et au
+// doigt) : « Déplacer quand même » (ou Entrée) appelle refaire(),
+// « Annuler » (ou Échap) laisse les pions où ils sont. Identifiants :
+// fen<Nom>, <nom>Oui, <nom>Non. Rend toujours faux (déplacement suspendu).
+function _fenetreConfirmerDeplacement(nom, titre, texte, annule, refaire){
+  const N = nom[0].toUpperCase() + nom.slice(1);
+  const ancienne = document.getElementById('fen' + N);
   if(ancienne) ancienne.remove();
   const w = document.createElement('div');
-  w.id = 'fenCamp'; w.className = 'fenetre';
+  w.id = 'fen' + N; w.className = 'fenetre';
   w.innerHTML = `
-    <div class="ft">${T('Pion du camp adverse')}</div>
+    <div class="ft">${_esc(titre)}</div>
     <div class="fc">
-      <p>${_esc(T(`${adverses.length} pion(s) du camp adverse (${camp}) : ${noms}. Les déplacer quand même ?`))}</p>
+      <p>${_esc(texte)}</p>
       <div class="fb">
-        <button id="campOui" class="prim">${T('Déplacer quand même')}</button>
-        <button id="campNon">${T('Annuler')}</button>
+        <button id="${nom}Oui" class="prim">${T('Déplacer quand même')}</button>
+        <button id="${nom}Non">${T('Annuler')}</button>
       </div>
     </div>`;
   document.body.appendChild(w);
   const fermer = () => { w.remove(); document.removeEventListener('keydown', clavier, true); };
-  const non = () => { fermer(); chatLog(`↩️ Déplacement annulé : ${adverses.length} pion(s) du camp ${camp}`); };
+  const non = () => { fermer(); chatLog(annule); };
   const clavier = ev => {
     if(ev.key === 'Escape'){ ev.preventDefault(); ev.stopImmediatePropagation(); non(); }
     else if(ev.key === 'Enter'){ ev.preventDefault(); ev.stopImmediatePropagation(); fermer(); refaire(); }
   };
   document.addEventListener('keydown', clavier, true);
-  w.querySelector('#campOui').onclick = () => { fermer(); refaire(); };
-  w.querySelector('#campNon').onclick = non;
-  w.querySelector('#campOui').focus();
+  w.querySelector(`#${nom}Oui`).onclick = () => { fermer(); refaire(); };
+  w.querySelector(`#${nom}Non`).onclick = non;
+  w.querySelector(`#${nom}Oui`).focus();
   return false;
+}
+
+// ── Déplacement anormal, au doigt : plus de DISTANCE_ANORMALE hexagones
+// entre la place d'un pion et la destination (doigt qui glisse trop loin,
+// appui à côté en « Déplacer… »). Le déplacement attend la confirmation ;
+// la souris, les commandes et la relecture n'y passent pas.
+const DISTANCE_ANORMALE = 6;
+// Portée en hexagones entre deux points de la carte, comme LosMap.range
+// quand la carte LOS est prête (elle se construit à l'ouverture de la
+// partie) ; sinon d'après la grille du board le plus proche, à la taille
+// de ses hexagones (56,25 × 64,5 px, ou plus grands sur les boards HD).
+// null hors des boards.
+function distanceHex(x1, y1, x2, y2){
+  const m = _losPrete;
+  if(m){
+    const a = _hexDe(m, x1, y1), b = _hexDe(m, x2, y2);
+    return a && b ? LosMap.range(a, b, m.getMapConfiguration()) : null;
+  }
+  const proche = (x, y) => {
+    let best = null, bd = Infinity;
+    for(const h of _hexTable || []){ const d = Math.hypot(h.x - x, h.y - y); if(d < bd){ bd = d; best = h; } }
+    return best && {h: best, d: bd};
+  };
+  const a = proche(x1, y1), b = proche(x2, y2);
+  if(!a || !b) return null;
+  // Colonnes verticales : le voisin NE est à (hw, −hh/2), le côté N à hh/2.
+  const hw = Math.abs(2 * (a.h.cotes[2].x - a.h.x)), hh = Math.abs(2 * (a.h.y - a.h.cotes[1].y));
+  if(!hw || !hh || a.d > hh || b.d > hh) return null;
+  const col = Math.round(Math.abs(b.h.x - a.h.x) / hw);
+  return col + Math.max(0, Math.round((Math.abs(b.h.y - a.h.y) - col * hh / 2) / hh));
+}
+function deplacerAuDoigt(liste, x, y){
+  liste = liste.filter(p => !p.cache && !p.deleted);
+  if(!liste.length) return;
+  const pos = positionDepot(x, y);
+  const loin = Math.max(-1, ...liste.map(p => distanceHex(p.x, p.y, pos.x, pos.y) ?? -1));
+  if(loin <= DISTANCE_ANORMALE) return deplacer(liste, x, y);
+  const noms = liste.slice(0, 5).map(p => accesRefuse(p) ? T('Pion dissimulé') : p.nom).join(', ')
+             + (liste.length > 5 ? '…' : '');
+  _fenetreConfirmerDeplacement('distance', T('Déplacement inhabituel'),
+    T(`Déplacement de ${loin} hexagones (plus de ${DISTANCE_ANORMALE}) : ${noms}${noms.endsWith('…') ? '' : '.'} Le faire quand même ?`),
+    `↩️ Déplacement annulé : ${loin} hexagones`, () => deplacer(liste, x, y));
 }
 
 // ── Boîte d'identification, ouverte à chaque carte chargée.
@@ -19483,7 +19515,7 @@ function aideRaccourcis(){
     ${lignes('Partie', [...actions, ['Menus', 'Alt']])}
     ${lignes('Dés', DES.map(d => [d.titre, d.touche]))}
     ${lignes('Pions et piles', [
-      ['Commandes du pion (menu)', 'clic droit · appui long'],
+      ['Commandes du pion (menu)', 'clic droit · double appui'],
       ['Sélectionner la pile', 'clic'], ['Déplier / replier la pile', 'double-clic'],
       ['Ajouter ou retirer un pion', 'Ctrl+clic'], ['Ajouter à la sélection', 'Maj+clic'],
       ['Rectangle de sélection', 'Maj+glisser dans le vide'],
